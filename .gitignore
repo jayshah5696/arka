@@ -12,3 +12,4 @@ scratch/
 .env.*
 .idea/
 .vscode/
+*.pi/
