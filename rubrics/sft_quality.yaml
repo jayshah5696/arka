@@ -1,0 +1,35 @@
+version: "1.0"
+description: "SFT instruction-response quality rubric"
+dimensions:
+  - name: instruction_clarity
+    description: Is the instruction unambiguous and well-scoped?
+    scale_min: 1
+    scale_max: 5
+    criteria:
+      1: Unclear, multiple valid interpretations
+      3: Mostly clear, minor ambiguity
+      5: Perfectly clear, single interpretation
+  - name: response_quality
+    description: Accurate, complete, on-topic, appropriately concise?
+    scale_min: 1
+    scale_max: 5
+    criteria:
+      1: Wrong, incomplete, or off-topic
+      3: Mostly correct, minor gaps
+      5: Accurate, complete, well-calibrated length
+overall_weights:
+  instruction_clarity: 0.4
+  response_quality: 0.6
+few_shot:
+  - instruction: "What is 2+2?"
+    response: "4"
+    scores:
+      instruction_clarity: 5
+      response_quality: 5
+    reasoning: "Clear simple question, correct answer."
+  - instruction: "Tell me stuff"
+    response: "Here is some stuff."
+    scores:
+      instruction_clarity: 1
+      response_quality: 1
+    reasoning: "Vague instruction, non-answer response."

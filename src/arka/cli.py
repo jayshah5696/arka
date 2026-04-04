@@ -6,6 +6,8 @@ from pathlib import Path
 
 from arka.config.loader import ConfigLoader
 from arka.pipeline.runner import PipelineRunner
+from arka.pipeline.source_stages import SeedSourceStage
+from arka.pipeline.transforms import NormalizeConversationStage
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -22,9 +24,16 @@ def main(argv: Sequence[str] | None = None) -> None:
     config_path = Path(args.config).expanduser().resolve()
     project_root = config_path.parent
     config = ConfigLoader().load(config_path)
+    stages = []
+    if config.data_source.type == "seeds":
+        stages = [
+            SeedSourceStage(project_root=project_root),
+            NormalizeConversationStage(),
+        ]
+
     PipelineRunner(project_root=project_root).run(
         config=config,
-        stages=[],
+        stages=stages,
         run_id=args.run_id,
         resume=args.resume,
     )

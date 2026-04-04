@@ -32,6 +32,7 @@ output:
 def test_cli_runs_with_local_config(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    (tmp_path / "seeds.jsonl").write_text('{"instruction":"Hello?","response":"Hi."}\n')
     (tmp_path / "config.yaml").write_text(CONFIG_TEXT)
 
     main([])
@@ -45,6 +46,7 @@ def test_cli_supports_explicit_config_run_id_and_resume(
 ) -> None:
     config_path = tmp_path / "custom-config.yaml"
     config_path.write_text(CONFIG_TEXT)
+    (tmp_path / "seeds.jsonl").write_text('{"instruction":"Hello?","response":"Hi."}\n')
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
     main(["--config", str(config_path), "--run-id", "custom-run"])

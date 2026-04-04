@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, HttpUrl
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 
 class StrictModel(BaseModel):
@@ -40,13 +40,25 @@ class GeneratorConfig(StrictModel):
     generation_multiplier: int
 
 
+class LabelingFilterConfig(StrictModel):
+    enabled: bool = False
+    rubric_path: str | None = None
+    min_overall_score: float | None = None
+
+
 class FiltersConfig(StrictModel):
     target_count: int
+    labeling_engine: LabelingFilterConfig = Field(default_factory=LabelingFilterConfig)
 
 
 class OutputConfig(StrictModel):
     format: str
     path: str
+
+
+class LabelingEngineConfig(StrictModel):
+    rubric_path: str | None = None
+    mode: Literal["single", "multi"] = "single"
 
 
 class ResolvedConfig(StrictModel):
@@ -57,4 +69,5 @@ class ResolvedConfig(StrictModel):
     data_source: DataSourceConfig
     generator: GeneratorConfig
     filters: FiltersConfig
+    labeling_engine: LabelingEngineConfig = Field(default_factory=LabelingEngineConfig)
     output: OutputConfig

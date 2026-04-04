@@ -1,36 +1,39 @@
 # arka (अर्क)
 
-**Arka** is a Sanskrit term from Ayurveda for a steam distillate: apply heat to raw material, collect the pure essence.
+Config-driven synthetic data generation framework built from first principles.
 
-This repository is the starting point for tools, experiments, and systems built around that idea — turn noisy inputs into clear, useful outputs.
+## Quick Start
 
-## Status
+```bash
+just setup
+export OPENAI_API_KEY=your_key_here
+printf '{"instruction":"Say hello","response":"Hello"}\n' > seeds.jsonl
+uv run arka --config config.smoke.yaml --run-id smoke-run
+```
 
-Bootstrap stage. The project conventions and working rules are being set before the codebase expands.
+Artifacts will be written under `runs/smoke-run/` and `output/smoke-dataset.jsonl`.
 
-## Principles
+## Common Commands
 
-- Config over hidden state
-- Inspectable outputs over opaque pipelines
-- Small, composable tools over heavy frameworks
-- Decisions and responses written down as project artifacts
+- `just test` — run tests
+- `just check` — lint, format-check, test
+- `just run` — run `arka` with default `config.yaml`
+- `uv run arka --config config.smoke.yaml --run-id smoke-run` — run smoke pipeline
 
-## Working Conventions
+## Current Implemented Slice
 
-- For Python work, initialize and manage the project with `uv`
-- Prefer `uv init`, `uv add`, `uv run`, and `uvx`
-- Use `just` for common project tasks
-- Save timestamped notes and responses under `docs/logs/YYYY/MM/`
-- Keep root docs concise; move longer rationale into `docs/`
+- typed records and stage protocol
+- seed source stage (JSONL/CSV)
+- normalize transform stage
+- resumable pipeline runner
+- Parquet stage artifacts + JSONL output
+- manifest + `run_report.json`
+- LabelingEngine single-judge scaffold
 
-## Project Docs
+## Key Files
 
-- `AGENTS.md` — focused rules for agents working in this repo
-- `justfile` — common developer tasks
-- `docs/logs/` — timestamped logs, notes, and response artifacts
-
-## Next
-
-- Continue Slice 1 foundation work
-- Expand the LLM client abstraction
-- Add CLI/resume polish and stage stats
+- `config.smoke.yaml` — simplest runnable config
+- `config.example.yaml` — basic OpenAI config
+- `config.openrouter.yaml` — OpenRouter-compatible example
+- `rubrics/sft_quality.yaml` — starter labeling rubric
+- `docs/SPEC.md` — approved engineering spec

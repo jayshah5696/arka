@@ -22,3 +22,11 @@ def test_example_configs_load(
     resolved = ConfigLoader().load(Path(config_name))
 
     assert resolved.llm.api_key == env_value
+
+
+def test_smoke_config_loads(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "openai-test-key")
+
+    resolved = ConfigLoader().load(Path("config.smoke.yaml"))
+
+    assert resolved.data_source.type == "seeds"
