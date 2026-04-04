@@ -1,0 +1,24 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from arka.config.loader import ConfigLoader
+
+
+@pytest.mark.parametrize(
+    ("config_name", "env_name", "env_value"),
+    [
+        ("config.example.yaml", "OPENAI_API_KEY", "openai-test-key"),
+        ("config.openrouter.yaml", "OPENROUTER_API_KEY", "openrouter-test-key"),
+    ],
+)
+def test_example_configs_load(
+    config_name: str, env_name: str, env_value: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(env_name, env_value)
+
+    resolved = ConfigLoader().load(Path(config_name))
+
+    assert resolved.llm.api_key == env_value

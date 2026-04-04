@@ -1,0 +1,30 @@
+version: "1"
+run_id: null
+
+llm:
+  provider: openai
+  model: gpt-4o-mini
+  api_key: ${OPENAI_API_KEY}
+  base_url: https://api.openai.com/v1
+  timeout_seconds: 30
+  max_retries: 3
+
+executor:
+  mode: threadpool
+  max_workers: 4
+
+data_source:
+  type: seeds
+  path: ./seeds.jsonl
+
+generator:
+  type: prompt_based
+  target_count: 10
+  generation_multiplier: 2
+
+filters:
+  target_count: 10
+
+output:
+  format: jsonl
+  path: ./output/dataset.jsonl

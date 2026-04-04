@@ -19,16 +19,18 @@ Bootstrap stage. The project conventions and working rules are being set before 
 
 - For Python work, initialize and manage the project with `uv`
 - Prefer `uv init`, `uv add`, `uv run`, and `uvx`
+- Use `just` for common project tasks
 - Save timestamped notes and responses under `docs/logs/YYYY/MM/`
 - Keep root docs concise; move longer rationale into `docs/`
 
 ## Project Docs
 
 - `AGENTS.md` — focused rules for agents working in this repo
+- `justfile` — common developer tasks
 - `docs/logs/` — timestamped logs, notes, and response artifacts
 
 ## Next
 
-- Scaffold the Python project shape
-- Add `pyproject.toml`, `src/`, and `tests/`
-- Set up Ruff and pytest
+- Continue Slice 1 foundation work
+- Expand the LLM client abstraction
+- Add CLI/resume polish and stage stats

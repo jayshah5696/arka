@@ -2,11 +2,14 @@
 
 - Keep this file short and project-specific. Put longer rationale in `docs/`.
 - For Python projects, bootstrap with `uv init` (`--package` if this becomes a library/CLI).
+- Use `just` for common project tasks instead of a `Makefile`.
 - Manage dependencies with `uv add` / `uv add --dev`.
 - Run everything through `uv run`; use `uvx` for one-off tools.
 - Do not mix `pip`, manual `venv`, or `requirements.txt` with uv unless asked.
 - Prefer a `src/` + `tests/` layout once scaffolding starts.
 - Add `pytest` and `ruff` early for Python work.
+- Use red/green TDD for logic changes: write or update a failing test first, then implement the minimal code to make it pass.
+- Prefer typed Pydantic record/stage models over raw `dict[str, Any]` data flowing through the pipeline.
 - Keep edits minimal, clear, and reversible.
 - Ask before adding major frameworks, cloud services, or heavy dependencies.
 - Avoid destructive commands or force operations unless explicitly requested.

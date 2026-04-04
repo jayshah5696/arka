@@ -1,0 +1,241 @@
+from __future__ import annotations
+
+import httpx
+import pytest
+from openai import APITimeoutError, AuthenticationError, BadRequestError, RateLimitError
+from pydantic import BaseModel
+
+from arka.config.models import LLMConfig
+from arka.llm.client import LLMClient, LLMClientError, LLMOutput
+
+
+class GreetingResponse(BaseModel):
+    greeting: str
+
+
+class FakeChatCompletionsAPI:
+    def __init__(self, responses: list[object]) -> None:
+        self._responses = responses
+        self.calls = 0
+
+    def create(self, **kwargs):
+        response = self._responses[self.calls]
+        self.calls += 1
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+
+class FakeClient:
+    def __init__(self, responses: list[object]) -> None:
+        self.chat = type("ChatNamespace", (), {})()
+        self.chat.completions = FakeChatCompletionsAPI(responses)
+
+
+class FakeMessage:
+    def __init__(self, content: str) -> None:
+        self.content = content
+
+
+class FakeChoice:
+    def __init__(self, content: str, finish_reason: str = "stop") -> None:
+        self.message = FakeMessage(content)
+        self.finish_reason = finish_reason
+
+
+class FakeUsage:
+    def __init__(self, prompt_tokens: int, completion_tokens: int) -> None:
+        self.prompt_tokens = prompt_tokens
+        self.completion_tokens = completion_tokens
+        self.total_tokens = prompt_tokens + completion_tokens
+
+
+class FakeResponse:
+    def __init__(
+        self,
+        content: str,
+        prompt_tokens: int = 5,
+        completion_tokens: int = 7,
+        model: str = "gpt-4o-mini",
+    ) -> None:
+        self.choices = [FakeChoice(content)]
+        self.usage = FakeUsage(prompt_tokens, completion_tokens)
+        self.model = model
+        self.id = "req_123"
+
+
+def build_config(base_url: str = "https://api.openai.com/v1") -> LLMConfig:
+    return LLMConfig(
+        provider="openai",
+        model="gpt-4o-mini",
+        api_key="test-key",
+        base_url=base_url,
+    )
+
+
+def test_complete_returns_text_and_usage() -> None:
+    client = LLMClient(
+        config=build_config(),
+        client_factory=lambda _: FakeClient([FakeResponse("hello world")]),
+        sleep=lambda _: None,
+    )
+
+    output = client.complete(
+        messages=[{"role": "user", "content": "Say hello"}],
+    )
+
+    assert isinstance(output, LLMOutput)
+    assert output.text == "hello world"
+    assert output.provider == "openai"
+    assert output.model == "gpt-4o-mini"
+    assert output.usage.prompt_tokens == 5
+    assert output.usage.completion_tokens == 7
+
+
+def test_complete_retries_rate_limits_then_succeeds() -> None:
+    request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+    response = httpx.Response(429, request=request)
+    rate_limit_error = RateLimitError("rate limited", response=response, body=None)
+    fake_client = FakeClient([rate_limit_error, FakeResponse("ok")])
+    sleep_calls: list[float] = []
+
+    client = LLMClient(
+        config=build_config(),
+        client_factory=lambda _: fake_client,
+        sleep=sleep_calls.append,
+    )
+
+    output = client.complete(messages=[{"role": "user", "content": "test"}])
+
+    assert output.text == "ok"
+    assert fake_client.chat.completions.calls == 2
+    assert sleep_calls == [1.0]
+
+
+def test_complete_fails_fast_on_auth_error() -> None:
+    request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+    response = httpx.Response(401, request=request)
+    auth_error = AuthenticationError("bad key", response=response, body=None)
+    fake_client = FakeClient([auth_error])
+
+    client = LLMClient(
+        config=build_config(),
+        client_factory=lambda _: fake_client,
+        sleep=lambda _: None,
+    )
+
+    with pytest.raises(LLMClientError, match="auth"):
+        client.complete(messages=[{"role": "user", "content": "test"}])
+
+    assert fake_client.chat.completions.calls == 1
+
+
+def test_complete_retries_timeout_then_succeeds() -> None:
+    request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+    timeout_error = APITimeoutError(request=request)
+    fake_client = FakeClient([timeout_error, FakeResponse("ok")])
+    sleep_calls: list[float] = []
+
+    client = LLMClient(
+        config=build_config(),
+        client_factory=lambda _: fake_client,
+        sleep=sleep_calls.append,
+    )
+
+    output = client.complete(messages=[{"role": "user", "content": "test"}])
+
+    assert output.text == "ok"
+    assert fake_client.chat.completions.calls == 2
+    assert sleep_calls == [1.0]
+
+
+def test_complete_does_not_retry_bad_request() -> None:
+    request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+    response = httpx.Response(400, request=request)
+    bad_request_error = BadRequestError("bad request", response=response, body=None)
+    fake_client = FakeClient([bad_request_error])
+
+    client = LLMClient(
+        config=build_config(),
+        client_factory=lambda _: fake_client,
+        sleep=lambda _: None,
+    )
+
+    with pytest.raises(LLMClientError, match="bad_request"):
+        client.complete(messages=[{"role": "user", "content": "test"}])
+
+    assert fake_client.chat.completions.calls == 1
+
+
+def test_complete_structured_parses_pydantic_model() -> None:
+    client = LLMClient(
+        config=build_config(),
+        client_factory=lambda _: FakeClient([FakeResponse('{"greeting":"hello"}')]),
+        sleep=lambda _: None,
+    )
+
+    output = client.complete_structured(
+        messages=[{"role": "user", "content": "Return greeting JSON"}],
+        schema=GreetingResponse,
+    )
+
+    assert output.text == '{"greeting":"hello"}'
+    assert output.parsed == GreetingResponse(greeting="hello")
+
+
+def test_complete_uses_custom_openai_compatible_base_url() -> None:
+    captured_config: list[LLMConfig] = []
+
+    def capture_factory(config: LLMConfig) -> FakeClient:
+        captured_config.append(config)
+        return FakeClient([FakeResponse("ok")])
+
+    client = LLMClient(
+        config=build_config(base_url="https://openrouter.ai/api/v1"),
+        client_factory=capture_factory,
+        sleep=lambda _: None,
+    )
+
+    output = client.complete(messages=[{"role": "user", "content": "test"}])
+
+    assert output.text == "ok"
+    assert str(captured_config[0].base_url) == "https://openrouter.ai/api/v1"
+
+
+def test_complete_batch_returns_outputs_in_input_order() -> None:
+    client = LLMClient(
+        config=build_config(),
+        client_factory=lambda _: FakeClient([]),
+        sleep=lambda _: None,
+    )
+
+    messages_seen: list[str] = []
+
+    def fake_complete(messages: list[dict[str, str]]) -> LLMOutput:
+        content = messages[0]["content"]
+        messages_seen.append(content)
+        return LLMOutput(
+            text=content.upper(),
+            parsed=None,
+            usage={"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            finish_reason="stop",
+            model="gpt-4o-mini",
+            provider="openai",
+            request_id="req_batch",
+            latency_ms=1,
+            error=None,
+        )
+
+    client.complete = fake_complete  # type: ignore[method-assign]
+
+    outputs = client.complete_batch(
+        batch=[
+            [{"role": "user", "content": "alpha"}],
+            [{"role": "user", "content": "beta"}],
+            [{"role": "user", "content": "gamma"}],
+        ],
+        max_workers=3,
+    )
+
+    assert [output.text for output in outputs] == ["ALPHA", "BETA", "GAMMA"]
+    assert messages_seen == ["alpha", "beta", "gamma"]

@@ -1,0 +1,52 @@
+[project]
+name = "arka"
+version = "0.1.0"
+description = "Config-driven synthetic data generation framework from first principles."
+authors = [
+    { name = "Jay Shah", email = "jayshah5696@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "openai>=2.30.0",
+    "polars>=1.39.3",
+    "pydantic>=2.12.5",
+    "pyyaml>=6.0.3",
+    "tenacity>=9.1.4",
+]
+
+[project.scripts]
+arka = "arka:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--cov=src/arka",
+    "--cov-report=term-missing",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "C4", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[build-system]
+requires = ["uv_build>=0.10.12,<0.11.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.15.8",
+]
