@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -26,7 +27,12 @@ from arka.records.models import (
     RecordLineage,
     RecordScores,
     RecordSource,
+    StageEvent,
 )
+
+__all__ = ["PromptBasedGeneratorStage", "compute_prompt_hash"]
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_PROMPT_TEMPLATE = """You generate synthetic instruction-response pairs for supervised fine-tuning.
 Create one new instruction and one strong response inspired by the seed example.
@@ -87,10 +93,12 @@ class PromptBasedGeneratorStage(Stage):
         llm_client: Any | None = None,
         checkpoint_manager: CheckpointManager | None = None,
         output_writer: OutputWriter | None = None,
+        project_root: Path | None = None,
     ) -> None:
         self._llm_client = llm_client
         self._checkpoint = checkpoint_manager
         self._output_writer = output_writer or OutputWriter()
+        self._project_root = project_root
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
         seed_records = [
@@ -165,7 +173,7 @@ class PromptBasedGeneratorStage(Stage):
                 row = RawGeneratorResponse(
                     plan_index=item.plan_index,
                     seed_id=item.seed_record.id,
-                    generated_text=(output.text or "").strip(),
+                    generated_text=self._generated_text_from_output(output),
                     prompt_hash=prompt_hash,
                     model=output.model,
                     latency_ms=output.latency_ms,
@@ -196,16 +204,20 @@ class PromptBasedGeneratorStage(Stage):
         ctx: StageContext,
     ) -> LLMOutput:
         messages = self._messages_for_seed(seed_record, ctx.config.generator)
-        if hasattr(llm_client, "complete"):
-            return llm_client.complete(
-                messages=messages,
-                temperature=ctx.config.generator.temperature,
-                max_tokens=ctx.config.generator.max_tokens,
-            )
-        return llm_client.complete_structured(
-            messages=messages,
-            schema=GeneratedConversation,
-        )
+        kwargs = {
+            "messages": messages,
+            "schema": GeneratedConversation,
+            "temperature": ctx.config.generator.temperature,
+            "max_tokens": ctx.config.generator.max_tokens,
+        }
+        try:
+            return llm_client.complete_structured(**kwargs)
+        except TypeError as exc:
+            if "unexpected keyword argument" not in str(exc):
+                raise
+            kwargs.pop("temperature", None)
+            kwargs.pop("max_tokens", None)
+            return llm_client.complete_structured(**kwargs)
 
     def _messages_for_seed(
         self,
@@ -259,12 +271,35 @@ class PromptBasedGeneratorStage(Stage):
         plan_by_index = {item.plan_index: item for item in plan}
         config_hash = self._config_hash(ctx)
         generated_records: list[Record] = []
+        dropped_records: list[Record] = []
+        drop_reasons: dict[str, int] = {}
 
         for row in raw_rows:
             item = plan_by_index.get(row.plan_index)
             if item is None:
                 continue
-            payload = self._parse_generated_payload(row.generated_text)
+            try:
+                payload = self._parse_generated_payload(row.generated_text)
+            except ValueError as exc:
+                reason_code = "generator_parse_failure"
+                drop_reasons[reason_code] = drop_reasons.get(reason_code, 0) + 1
+                details = (
+                    f"plan_index={row.plan_index}; seed_id={row.seed_id}; "
+                    f"error={exc}; generated_text={row.generated_text}"
+                )
+                logger.warning(
+                    "Skipping malformed generator response for plan_index=%s: %s",
+                    row.plan_index,
+                    exc,
+                )
+                dropped_records.append(
+                    self._drop_record(
+                        record=item.seed_record,
+                        reason_code=reason_code,
+                        details=details,
+                    )
+                )
+                continue
             generated_records.append(
                 self._build_generated_record(
                     payload=payload,
@@ -273,11 +308,13 @@ class PromptBasedGeneratorStage(Stage):
                 )
             )
 
-        if len(generated_records) != len(plan):
-            raise ValueError(
-                "Generator responses did not cover the full generation plan: "
-                f"expected {len(plan)}, got {len(generated_records)}"
-            )
+        self._write_parse_artifacts(
+            ctx=ctx,
+            attempted_count=len(plan),
+            generated_records=generated_records,
+            dropped_records=dropped_records,
+            drop_reasons=drop_reasons,
+        )
         return generated_records
 
     def _parse_generated_payload(self, text: str) -> GeneratedConversation:
@@ -304,6 +341,13 @@ class PromptBasedGeneratorStage(Stage):
         if json_object_match is not None:
             return json_object_match.group(0)
         return stripped
+
+    def _generated_text_from_output(self, output: LLMOutput) -> str:
+        if output.text is not None:
+            return output.text.strip()
+        if output.parsed is not None:
+            return output.parsed.model_dump_json()
+        raise ValueError("Generator structured output returned neither text nor parsed")
 
     def _build_generated_record(
         self,
@@ -339,6 +383,50 @@ class PromptBasedGeneratorStage(Stage):
             created_at=datetime.now(UTC).isoformat(),
         )
 
+    def _drop_record(
+        self,
+        record: Record,
+        reason_code: str,
+        details: str,
+    ) -> Record:
+        return record.model_copy(
+            update={
+                "stage_events": [
+                    *record.stage_events,
+                    StageEvent(
+                        stage=self.name,
+                        action="dropped",
+                        reason_code=reason_code,
+                        details=details,
+                        seq=len(record.stage_events) + 1,
+                    ),
+                ]
+            }
+        )
+
+    def _write_parse_artifacts(
+        self,
+        *,
+        ctx: StageContext,
+        attempted_count: int,
+        generated_records: list[Record],
+        dropped_records: list[Record],
+        drop_reasons: dict[str, int],
+    ) -> None:
+        ctx.work_dir.mkdir(parents=True, exist_ok=True)
+        self._output_writer.write_dropped_parquet(
+            records=dropped_records,
+            path=ctx.work_dir / "dropped.parquet",
+        )
+        stats = {
+            "stage": self.name,
+            "count_in": attempted_count,
+            "count_out": len(generated_records),
+            "dropped_count": len(dropped_records),
+            "drop_reasons": drop_reasons,
+        }
+        (ctx.work_dir / "stats.json").write_text(json.dumps(stats, indent=2))
+
     def _content_hash(self, payload: ConversationPayload) -> str:
         return hashlib.sha256(
             payload.model_dump_json(exclude_none=True).encode("utf-8")
@@ -365,6 +453,14 @@ class PromptBasedGeneratorStage(Stage):
     def _checkpoint_manager(self, ctx: StageContext) -> CheckpointManager:
         if self._checkpoint is not None:
             return self._checkpoint
-        project_root = ctx.work_dir.parents[3]
+        project_root = self._project_root or self._project_root_from_work_dir(
+            ctx.work_dir
+        )
         self._checkpoint = CheckpointManager(project_root / "state.db")
         return self._checkpoint
+
+    def _project_root_from_work_dir(self, work_dir: Path) -> Path:
+        for parent in work_dir.parents:
+            if parent.name == "runs":
+                return parent.parent
+        raise ValueError(f"Could not determine project_root from work_dir: {work_dir}")

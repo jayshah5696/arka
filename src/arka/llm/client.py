@@ -67,6 +67,9 @@ class StructuredOutputStrategy:
         client: LLMClient,
         messages: Sequence[Message],
         schema: type[BaseModel],
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> LLMOutput | None:
         raise NotImplementedError
 
@@ -86,6 +89,9 @@ class OpenAICompatibleJsonSchemaStrategy(StructuredOutputStrategy):
         client: LLMClient,
         messages: Sequence[Message],
         schema: type[BaseModel],
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> LLMOutput | None:
         started_at = time.perf_counter()
 
@@ -104,10 +110,10 @@ class OpenAICompatibleJsonSchemaStrategy(StructuredOutputStrategy):
             sleep=client._sleep,
         )
         def create_completion() -> Any:
-            return client._client.chat.completions.create(
-                model=client.config.model,
-                messages=list(messages),
-                response_format={
+            request_kwargs: dict[str, Any] = {
+                "model": client.config.model,
+                "messages": list(messages),
+                "response_format": {
                     "type": "json_schema",
                     "json_schema": {
                         "name": schema.__name__,
@@ -115,7 +121,12 @@ class OpenAICompatibleJsonSchemaStrategy(StructuredOutputStrategy):
                         "schema": schema.model_json_schema(),
                     },
                 },
-            )
+            }
+            if temperature is not None:
+                request_kwargs["temperature"] = temperature
+            if max_tokens is not None:
+                request_kwargs["max_tokens"] = max_tokens
+            return client._client.chat.completions.create(**request_kwargs)
 
         try:
             response = create_completion()
@@ -159,6 +170,9 @@ class OpenAINativeParseStrategy(StructuredOutputStrategy):
         client: LLMClient,
         messages: Sequence[Message],
         schema: type[BaseModel],
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> LLMOutput | None:
         parse_api = getattr(
             getattr(getattr(client._client, "beta", None), "chat", None),
@@ -185,11 +199,16 @@ class OpenAINativeParseStrategy(StructuredOutputStrategy):
             sleep=client._sleep,
         )
         def create_completion() -> Any:
-            return parse_api.parse(
-                model=client.config.model,
-                messages=list(messages),
-                response_format=schema,
-            )
+            request_kwargs: dict[str, Any] = {
+                "model": client.config.model,
+                "messages": list(messages),
+                "response_format": schema,
+            }
+            if temperature is not None:
+                request_kwargs["temperature"] = temperature
+            if max_tokens is not None:
+                request_kwargs["max_tokens"] = max_tokens
+            return parse_api.parse(**request_kwargs)
 
         try:
             response = create_completion()
@@ -226,8 +245,15 @@ class PromptParseFallbackStrategy(StructuredOutputStrategy):
         client: LLMClient,
         messages: Sequence[Message],
         schema: type[BaseModel],
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> LLMOutput | None:
-        output = client.complete(messages=messages)
+        output = client.complete(
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
         if output.text is None:
             raise LLMClientError(
                 "invalid_structured_response",
@@ -318,11 +344,20 @@ class LLMClient:
         self,
         messages: Sequence[Message],
         schema: type[BaseModel],
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> LLMOutput:
         for strategy in self._structured_output_strategies:
             if not strategy.is_applicable(self):
                 continue
-            output = strategy.complete(self, messages=messages, schema=schema)
+            output = strategy.complete(
+                self,
+                messages=messages,
+                schema=schema,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
             if output is not None:
                 return output
         raise LLMClientError(

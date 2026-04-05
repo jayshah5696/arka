@@ -263,6 +263,33 @@ def test_complete_structured_parses_pydantic_model() -> None:
     assert output.parsed == GreetingResponse(greeting="hello")
 
 
+def test_complete_structured_forwards_temperature_and_max_tokens_to_native_parse() -> (
+    None
+):
+    fake_client = FakeStructuredClient(
+        structured_responses=[
+            FakeStructuredResponse(GreetingResponse(greeting="hello"))
+        ]
+    )
+    client = LLMClient(
+        config=build_config(),
+        client_factory=lambda _: fake_client,
+        sleep=lambda _: None,
+    )
+
+    output = client.complete_structured(
+        messages=[{"role": "user", "content": "Return greeting JSON"}],
+        schema=GreetingResponse,
+        temperature=0.2,
+        max_tokens=123,
+    )
+
+    assert output.parsed == GreetingResponse(greeting="hello")
+    assert fake_client.beta.chat.completions.last_kwargs is not None
+    assert fake_client.beta.chat.completions.last_kwargs["temperature"] == 0.2
+    assert fake_client.beta.chat.completions.last_kwargs["max_tokens"] == 123
+
+
 def test_complete_structured_prefers_native_parse_when_available() -> None:
     fake_client = FakeStructuredClient(
         structured_responses=[

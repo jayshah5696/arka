@@ -4,6 +4,7 @@ from pathlib import Path
 
 from arka.config.models import ResolvedConfig
 from arka.pipeline.cheap_filters import LanguageFilterStage, LengthFilterStage
+from arka.pipeline.checkpoint import CheckpointManager
 from arka.pipeline.dedup_stages import ExactDedupStage
 from arka.pipeline.filter_stages import LabelingQualityFilterStage
 from arka.pipeline.generator_stages import PromptBasedGeneratorStage
@@ -18,6 +19,7 @@ class StageBuilder:
     def __init__(self, config: ResolvedConfig, project_root: Path) -> None:
         self.config = config
         self.project_root = project_root
+        self._checkpoint_manager = CheckpointManager(project_root / "state.db")
 
     def build(self) -> list[Stage]:
         stages: list[Stage] = []
@@ -39,7 +41,12 @@ class StageBuilder:
 
     def _generator_stages(self) -> list[Stage]:
         if self.config.generator.type == "prompt_based":
-            return [PromptBasedGeneratorStage()]
+            return [
+                PromptBasedGeneratorStage(
+                    checkpoint_manager=self._checkpoint_manager,
+                    project_root=self.project_root,
+                )
+            ]
         raise ValueError(f"Unsupported generator.type: {self.config.generator.type!r}")
 
     def _dedup_stages(self) -> list[Stage]:

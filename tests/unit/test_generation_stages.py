@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
+from pydantic import BaseModel
+
+import arka.pipeline.generation_stages as generation_stages
 from arka.config.loader import ConfigLoader
 from arka.llm.models import LLMOutput, TokenUsage
 from arka.pipeline.checkpoint import CheckpointManager
@@ -22,19 +26,27 @@ from arka.records.models import (
 
 
 class SequentialFakeLLMClient:
-    def __init__(self, responses: list[str]) -> None:
+    def __init__(
+        self, responses: list[str], *, return_parsed_only: bool = False
+    ) -> None:
         self.responses = responses
+        self.return_parsed_only = return_parsed_only
         self.calls = 0
         self.call_args: list[dict[str, object | None]] = []
 
-    def complete(
+    def complete(self, *args, **kwargs) -> LLMOutput:
+        raise AssertionError("Generator should use complete_structured, not complete")
+
+    def complete_structured(
         self,
         messages,
+        schema: type[BaseModel],
         *,
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> LLMOutput:
         text = self.responses[self.calls]
+        parsed = schema.model_validate(json.loads(text))
         self.calls += 1
         self.call_args.append(
             {
@@ -44,8 +56,8 @@ class SequentialFakeLLMClient:
             }
         )
         return LLMOutput(
-            text=text,
-            parsed=None,
+            text=None if self.return_parsed_only else text,
+            parsed=parsed,
             usage=TokenUsage(prompt_tokens=10, completion_tokens=20, total_tokens=30),
             finish_reason="stop",
             model="gpt-4o-mini",
@@ -57,13 +69,10 @@ class SequentialFakeLLMClient:
 
 
 class FailingFakeLLMClient:
-    def complete(
-        self,
-        messages,
-        *,
-        temperature: float | None = None,
-        max_tokens: int | None = None,
-    ) -> LLMOutput:
+    def complete(self, *args, **kwargs) -> LLMOutput:
+        raise AssertionError("LLM should not have been called")
+
+    def complete_structured(self, *args, **kwargs) -> LLMOutput:
         raise AssertionError("LLM should not have been called")
 
 
@@ -338,6 +347,88 @@ def test_prompt_based_generator_resumes_partial_raw_response_file(
         "seed-1",
         "seed-2",
     ]
+
+
+def test_prompt_based_generator_skips_malformed_rows_and_records_drop_stats(
+    tmp_path: Path,
+    caplog,
+) -> None:
+    ctx = _config(tmp_path)
+    prompt_hash = compute_prompt_hash(ctx.config.generator, ctx.config.llm)
+    stage = PromptBasedGeneratorStage(
+        checkpoint_manager=CheckpointManager(tmp_path / "state.db")
+    )
+    seeds = [_seed_record("seed-1", "Seed instruction", "Seed response")]
+    raw_rows = [
+        {
+            "plan_index": 0,
+            "seed_id": "seed-1",
+            "generated_text": _generated_json("good-1", "resp-1"),
+            "prompt_hash": prompt_hash,
+            "model": "gpt-4o-mini",
+            "latency_ms": 25,
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 20,
+                "total_tokens": 30,
+            },
+        },
+        {
+            "plan_index": 1,
+            "seed_id": "seed-1",
+            "generated_text": '{"instruction":"broken"}',
+            "prompt_hash": prompt_hash,
+            "model": "gpt-4o-mini",
+            "latency_ms": 25,
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 20,
+                "total_tokens": 30,
+            },
+        },
+    ]
+
+    responses_path = ctx.work_dir / "raw_responses.jsonl"
+    responses_path.write_text("\n".join(json.dumps(row) for row in raw_rows) + "\n")
+
+    with caplog.at_level(logging.WARNING, logger="arka.pipeline.generator_stages"):
+        records = stage._parse_responses(
+            stage._load_raw_responses(responses_path),
+            stage._generation_plan(seeds, ctx.config.generator),
+            ctx,
+        )
+
+    assert len(records) == 1
+    assert records[0].payload.instruction == "good-1"
+    assert "Skipping malformed generator response for plan_index=1" in caplog.text
+
+    stats = json.loads((ctx.work_dir / "stats.json").read_text())
+    assert stats["count_in"] == 2
+    assert stats["count_out"] == 1
+    assert stats["dropped_count"] == 1
+    assert stats["drop_reasons"] == {"generator_parse_failure": 1}
+
+    dropped = OutputWriter().read_parquet(ctx.work_dir / "dropped.parquet")
+    assert len(dropped) == 1
+    assert dropped[0].stage_events[-1].reason_code == "generator_parse_failure"
+
+
+def test_prompt_based_generator_uses_injected_checkpoint_manager_without_ctx_path_inference(
+    tmp_path: Path,
+) -> None:
+    checkpoint_manager = CheckpointManager(tmp_path / "state.db")
+    stage = PromptBasedGeneratorStage(checkpoint_manager=checkpoint_manager)
+    ctx = _config(tmp_path)
+
+    assert stage._checkpoint_manager(ctx) is checkpoint_manager
+
+
+def test_generation_stages_shim_exports_only_public_symbols() -> None:
+    assert hasattr(generation_stages, "PromptBasedGeneratorStage")
+    assert hasattr(generation_stages, "compute_prompt_hash")
+    assert not hasattr(generation_stages, "GenerationPlanItem")
+    assert not hasattr(generation_stages, "RawGeneratorResponse")
+    assert not hasattr(generation_stages, "_DEFAULT_PROMPT_TEMPLATE")
 
 
 def test_prompt_based_generator_returns_empty_for_no_seed_records(
