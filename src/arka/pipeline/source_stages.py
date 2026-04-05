@@ -19,6 +19,7 @@ from arka.records.models import (
 
 class SeedSourceStage(Stage):
     name = "01_source"
+    stage_action = "sourced"
 
     def __init__(self, project_root: Path) -> None:
         self.project_root = project_root

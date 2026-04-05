@@ -311,6 +311,70 @@ def test_complete_structured_falls_back_when_native_parse_is_rejected() -> None:
     assert fake_client.chat.completions.calls == 1
 
 
+def test_complete_structured_uses_json_schema_strategy_when_config_flag_set() -> None:
+    """supports_json_schema=True in config triggers json_schema strategy
+    regardless of base_url."""
+    fake_client = FakeStructuredClient(
+        structured_responses=[
+            FakeStructuredResponse(GreetingResponse(greeting="from-native-parse"))
+        ],
+        fallback_responses=[FakeResponse('{"greeting":"from-json-schema"}')],
+    )
+    config = build_config(base_url="https://api.together.xyz/v1")
+    config = LLMConfig(
+        provider=config.provider,
+        model=config.model,
+        api_key=config.api_key,
+        base_url="https://api.together.xyz/v1",
+        supports_json_schema=True,
+    )
+    client = LLMClient(
+        config=config,
+        client_factory=lambda _: fake_client,
+        sleep=lambda _: None,
+    )
+
+    output = client.complete_structured(
+        messages=[{"role": "user", "content": "Return greeting JSON"}],
+        schema=GreetingResponse,
+    )
+
+    assert output.parsed == GreetingResponse(greeting="from-json-schema")
+    assert fake_client.chat.completions.calls == 1
+    assert fake_client.beta.chat.completions.calls == 0
+
+
+def test_complete_structured_skips_json_schema_when_flag_false() -> None:
+    """supports_json_schema=False skips json_schema even for openrouter."""
+    fake_client = FakeStructuredClient(
+        structured_responses=[
+            FakeStructuredResponse(GreetingResponse(greeting="from-native-parse"))
+        ],
+    )
+    config = LLMConfig(
+        provider="openai",
+        model="gpt-4o-mini",
+        api_key="test-key",
+        base_url="https://openrouter.ai/api/v1",
+        supports_json_schema=False,
+    )
+    client = LLMClient(
+        config=config,
+        client_factory=lambda _: fake_client,
+        sleep=lambda _: None,
+    )
+
+    output = client.complete_structured(
+        messages=[{"role": "user", "content": "Return greeting JSON"}],
+        schema=GreetingResponse,
+    )
+
+    # Should skip json_schema and use native parse instead
+    assert output.parsed == GreetingResponse(greeting="from-native-parse")
+    assert fake_client.beta.chat.completions.calls == 1
+    assert fake_client.chat.completions.calls == 0
+
+
 def test_complete_structured_uses_openrouter_json_schema_strategy_first() -> None:
     fake_client = FakeStructuredClient(
         structured_responses=[
@@ -587,3 +651,38 @@ def test_extract_json_text_whitespace_padding() -> None:
     text = '\n  \n  {"greeting": "hello"}  \n  '
     result = client._extract_json_text(text)
     assert result == '{"greeting": "hello"}'
+
+
+# --- cost_usd extraction tests ---
+
+
+class FakeUsageWithCost:
+    def __init__(
+        self, prompt_tokens: int, completion_tokens: int, total_cost: float
+    ) -> None:
+        self.prompt_tokens = prompt_tokens
+        self.completion_tokens = completion_tokens
+        self.total_tokens = prompt_tokens + completion_tokens
+        self.total_cost = total_cost
+
+
+class FakeResponseWithCost:
+    def __init__(self, content: str, total_cost: float) -> None:
+        self.choices = [FakeChoice(content)]
+        self.usage = FakeUsageWithCost(5, 7, total_cost)
+        self.model = "gpt-4o-mini"
+        self.id = "req_cost_123"
+
+
+def test_usage_from_response_extracts_cost_when_present() -> None:
+    client = _make_client_for_extraction()
+    response = FakeResponseWithCost("hello", total_cost=0.00042)
+    usage = client._usage_from_response(response)
+    assert usage.cost_usd == 0.00042
+
+
+def test_usage_from_response_leaves_cost_none_when_absent() -> None:
+    client = _make_client_for_extraction()
+    response = FakeResponse("hello")
+    usage = client._usage_from_response(response)
+    assert usage.cost_usd is None

@@ -110,6 +110,7 @@ class PipelineRunner:
                 records = self._append_stage_events(
                     records=stage_output,
                     stage_name=stage.name,
+                    action=stage.stage_action,
                 )
                 self.output_writer.write_parquet(records=records, path=stage_path)
                 checkpoint_manager.save_stage(
@@ -202,7 +203,7 @@ class PipelineRunner:
         path.write_text(yaml.safe_dump(config.model_dump(mode="json"), sort_keys=False))
 
     def _append_stage_events(
-        self, records: list[Record], stage_name: str
+        self, records: list[Record], stage_name: str, action: str = "transformed"
     ) -> list[Record]:
         updated_records: list[Record] = []
         for record in records:
@@ -211,7 +212,7 @@ class PipelineRunner:
                 *record.stage_events,
                 StageEvent(
                     stage=stage_name,
-                    action="transformed",
+                    action=action,
                     seq=next_seq,
                 ),
             ]

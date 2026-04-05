@@ -16,6 +16,7 @@ from arka.records.models import (
 
 class SourceStage(Stage):
     name = "01_source"
+    stage_action = "sourced"
 
     def run(self, records: list[Record], ctx) -> list[Record]:
         return [
@@ -46,6 +47,7 @@ class TransformStage(Stage):
 
 class FilteringStage(Stage):
     name = "03_filter"
+    stage_action = "filtered"
 
     def run(self, records: list[Record], ctx) -> list[Record]:
         kept_records: list[Record] = []
@@ -125,8 +127,10 @@ def test_runner_appends_stage_events_and_writes_run_report(tmp_path: Path) -> No
 
     restored = runner.output_writer.read_parquet(stage_path)
     assert restored[0].stage_events[0].stage == "01_source"
+    assert restored[0].stage_events[0].action == "sourced"
     assert restored[0].stage_events[0].seq == 1
     assert restored[0].stage_events[1].stage == "02_transform"
+    assert restored[0].stage_events[1].action == "transformed"
     assert restored[0].stage_events[1].seq == 2
 
     report = json.loads(report_path.read_text())

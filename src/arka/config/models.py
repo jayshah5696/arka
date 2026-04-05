@@ -19,6 +19,7 @@ class LLMConfig(StrictModel):
     base_url: HttpUrl
     timeout_seconds: float = 30.0
     max_retries: int = 3
+    supports_json_schema: bool | None = None
     openai_compatible: OpenAICompatibleConfig | None = None
 
 

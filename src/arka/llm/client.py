@@ -75,6 +75,10 @@ class OpenAICompatibleJsonSchemaStrategy(StructuredOutputStrategy):
     name = "openai_compatible_json_schema"
 
     def is_applicable(self, client: LLMClient) -> bool:
+        flag = client.config.supports_json_schema
+        if flag is not None:
+            return flag
+        # Legacy fallback: auto-detect known providers by URL
         return "openrouter.ai" in str(client.config.base_url)
 
     def complete(
@@ -367,10 +371,14 @@ class LLMClient:
         prompt_tokens = getattr(usage, "prompt_tokens", 0)
         completion_tokens = getattr(usage, "completion_tokens", 0)
         total_tokens = getattr(usage, "total_tokens", prompt_tokens + completion_tokens)
+        # Some providers (e.g. OpenRouter) include cost in the usage object.
+        raw_cost = getattr(usage, "total_cost", None)
+        cost_usd = float(raw_cost) if raw_cost is not None else None
         return TokenUsage(
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
+            cost_usd=cost_usd,
         )
 
     def _latency_ms(self, started_at: float) -> int:

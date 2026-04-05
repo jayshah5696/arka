@@ -8,6 +8,7 @@ from arka.records.models import Record
 
 class Stage(ABC):
     name: str
+    stage_action: str = "transformed"
 
     @abstractmethod
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:

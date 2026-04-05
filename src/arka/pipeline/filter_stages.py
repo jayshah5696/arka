@@ -21,6 +21,7 @@ from arka.records.models import (
 
 class LabelingQualityFilterStage(Stage):
     name = "03_label_quality"
+    stage_action = "filtered"
 
     def __init__(self, project_root: Path, llm_client: Any | None = None) -> None:
         self.project_root = project_root

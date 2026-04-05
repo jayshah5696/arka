@@ -14,6 +14,7 @@ class LengthFilterStage(Stage):
     """Drop records whose instruction or response length is outside bounds."""
 
     name = "02a_length_filter"
+    stage_action = "filtered"
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
         cfg = ctx.config.filters.length
@@ -101,6 +102,7 @@ class LanguageFilterStage(Stage):
     """
 
     name = "02b_language_filter"
+    stage_action = "filtered"
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
         cfg = ctx.config.filters.language
