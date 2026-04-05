@@ -49,6 +49,19 @@ class CheckpointManager:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS generator_runs (
+                    run_id TEXT NOT NULL,
+                    stage_name TEXT NOT NULL,
+                    prompt_hash TEXT NOT NULL,
+                    responses_path TEXT NOT NULL,
+                    response_count INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    PRIMARY KEY (run_id, stage_name)
+                )
+                """
+            )
 
     def register_run(self, run_id: str, config_hash: str, status: str) -> None:
         with self._connect() as connection:
@@ -103,6 +116,61 @@ class CheckpointManager:
         if row is None:
             return None
         return Path(row["artifact_path"])
+
+    def save_generator(
+        self,
+        run_id: str,
+        stage_name: str,
+        prompt_hash: str,
+        responses_path: Path,
+        response_count: int,
+        status: str,
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO generator_runs (
+                    run_id, stage_name, prompt_hash, responses_path, response_count, status
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(run_id, stage_name) DO UPDATE SET
+                    prompt_hash = excluded.prompt_hash,
+                    responses_path = excluded.responses_path,
+                    response_count = excluded.response_count,
+                    status = excluded.status
+                """,
+                (
+                    run_id,
+                    stage_name,
+                    prompt_hash,
+                    str(responses_path),
+                    response_count,
+                    status,
+                ),
+            )
+
+    def load_generator(
+        self, run_id: str, stage_name: str
+    ) -> dict[str, str | int] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT run_id, stage_name, prompt_hash, responses_path, response_count, status
+                FROM generator_runs
+                WHERE run_id = ? AND stage_name = ?
+                """,
+                (run_id, stage_name),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "run_id": str(row["run_id"]),
+            "stage_name": str(row["stage_name"]),
+            "prompt_hash": str(row["prompt_hash"]),
+            "responses_path": str(row["responses_path"]),
+            "response_count": int(row["response_count"]),
+            "status": str(row["status"]),
+        }
 
     def update_run_status(self, run_id: str, status: str) -> None:
         with self._connect() as connection:

@@ -37,6 +37,16 @@ class GeneratorConfig(StrictModel):
     type: str
     target_count: int
     generation_multiplier: int
+    prompt_template: str = (
+        "You generate synthetic instruction-response pairs for supervised fine-tuning.\n"
+        "Create one new instruction and one strong response inspired by the seed example.\n"
+        "The new pair must be self-contained, specific, and meaningfully different from the seed.\n"
+        'Return only JSON with keys "instruction" and "response".\n\n'
+        "Seed instruction:\n{seed_instruction}\n\n"
+        "Seed response:\n{seed_response}\n"
+    )
+    temperature: float = 0.7
+    max_tokens: int = 512
 
 
 class ExactDedupConfig(StrictModel):

@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
-
-from pydantic import BaseModel
 
 from arka.config.loader import ConfigLoader
 from arka.llm.models import LLMOutput, TokenUsage
-from arka.pipeline.generation_stages import PromptBasedGeneratorStage
+from arka.pipeline.checkpoint import CheckpointManager
+from arka.pipeline.generator_stages import (
+    PromptBasedGeneratorStage,
+    compute_prompt_hash,
+)
 from arka.pipeline.models import StageContext
+from arka.pipeline.output import OutputWriter
 from arka.records.models import (
     ConversationPayload,
     ConversationRecord,
@@ -18,19 +22,30 @@ from arka.records.models import (
 
 
 class SequentialFakeLLMClient:
-    def __init__(self, pairs: list[tuple[str, str]]) -> None:
-        self.pairs = pairs
+    def __init__(self, responses: list[str]) -> None:
+        self.responses = responses
         self.calls = 0
+        self.call_args: list[dict[str, object | None]] = []
 
-    def complete_structured(self, messages, schema: type[BaseModel]) -> LLMOutput:
-        instruction, response = self.pairs[self.calls]
+    def complete(
+        self,
+        messages,
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> LLMOutput:
+        text = self.responses[self.calls]
         self.calls += 1
-        parsed = schema.model_validate(
-            {"instruction": instruction, "response": response}
+        self.call_args.append(
+            {
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            }
         )
         return LLMOutput(
-            text=parsed.model_dump_json(),
-            parsed=parsed,
+            text=text,
+            parsed=None,
             usage=TokenUsage(prompt_tokens=10, completion_tokens=20, total_tokens=30),
             finish_reason="stop",
             model="gpt-4o-mini",
@@ -39,6 +54,21 @@ class SequentialFakeLLMClient:
             latency_ms=25,
             error=None,
         )
+
+
+class FailingFakeLLMClient:
+    def complete(
+        self,
+        messages,
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> LLMOutput:
+        raise AssertionError("LLM should not have been called")
+
+
+def _generated_json(instruction: str, response: str) -> str:
+    return json.dumps({"instruction": instruction, "response": response})
 
 
 def _config(tmp_path: Path, **generator_overrides) -> StageContext:
@@ -64,7 +94,7 @@ def _config(tmp_path: Path, **generator_overrides) -> StageContext:
             "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
         }
     )
-    work_dir = tmp_path / "02_generate"
+    work_dir = tmp_path / "runs" / "run-1" / "stages" / "02_generate"
     work_dir.mkdir(parents=True, exist_ok=True)
     return StageContext(
         run_id="run-1",
@@ -89,22 +119,25 @@ def _seed_record(record_id: str, instruction: str, response: str) -> Conversatio
     )
 
 
-def test_prompt_based_generator_emits_target_count_times_multiplier(
+def _raw_rows(path: Path) -> list[dict[str, object]]:
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+
+def test_prompt_based_generator_emits_target_count_times_multiplier_and_writes_raw_responses(
     tmp_path: Path,
 ) -> None:
     ctx = _config(tmp_path, target_count=3, generation_multiplier=2)
-    stage = PromptBasedGeneratorStage(
-        llm_client=SequentialFakeLLMClient(
-            [
-                ("gen-1", "resp-1"),
-                ("gen-2", "resp-2"),
-                ("gen-3", "resp-3"),
-                ("gen-4", "resp-4"),
-                ("gen-5", "resp-5"),
-                ("gen-6", "resp-6"),
-            ]
-        )
+    llm_client = SequentialFakeLLMClient(
+        [
+            _generated_json("gen-1", "resp-1"),
+            _generated_json("gen-2", "resp-2"),
+            _generated_json("gen-3", "resp-3"),
+            _generated_json("gen-4", "resp-4"),
+            _generated_json("gen-5", "resp-5"),
+            _generated_json("gen-6", "resp-6"),
+        ]
     )
+    stage = PromptBasedGeneratorStage(llm_client=llm_client)
 
     records = stage.run(
         [
@@ -123,51 +156,188 @@ def test_prompt_based_generator_emits_target_count_times_multiplier(
         ["seed-1"],
         ["seed-2"],
     ]
+    assert llm_client.calls == 6
+    assert llm_client.call_args[0]["temperature"] == 0.7
+    assert llm_client.call_args[0]["max_tokens"] == 512
 
+    raw_rows = _raw_rows(ctx.work_dir / "raw_responses.jsonl")
+    assert [row["plan_index"] for row in raw_rows] == [0, 1, 2, 3, 4, 5]
+    assert [row["seed_id"] for row in raw_rows] == [
+        "seed-1",
+        "seed-2",
+        "seed-1",
+        "seed-2",
+        "seed-1",
+        "seed-2",
+    ]
 
-def test_prompt_based_generator_sets_generated_source_and_lineage(
-    tmp_path: Path,
-) -> None:
-    ctx = _config(tmp_path, target_count=1, generation_multiplier=1)
-    stage = PromptBasedGeneratorStage(
-        llm_client=SequentialFakeLLMClient([("New instruction", "New response")])
+    cached = CheckpointManager(tmp_path / "state.db").load_generator(
+        ctx.run_id, stage.name
     )
-    seed = _seed_record("seed-1", "Seed instruction", "Seed response")
-
-    records = stage.run([seed], ctx)
-
-    assert len(records) == 1
-    generated = records[0]
-    assert generated.source.type == "generated"
-    assert generated.source.seed_file_hash == "seed-file-hash"
-    assert generated.lineage.root_id == "root-seed-1"
-    assert generated.lineage.parent_ids == ["seed-1"]
-    assert generated.lineage.operator == "prompt_based"
-    assert generated.lineage.round == 1
-    assert generated.lineage.depth == 1
-    assert generated.payload.instruction == "New instruction"
-    assert generated.payload.response == "New response"
+    assert cached is not None
+    assert cached["response_count"] == 6
+    assert cached["status"] == "completed"
 
 
-def test_prompt_based_generator_ids_are_content_stable_per_parent(
+def test_prompt_based_generator_resumes_from_parquet_when_prompt_is_unchanged(
     tmp_path: Path,
 ) -> None:
-    ctx = _config(tmp_path, target_count=1, generation_multiplier=2)
-    stage = PromptBasedGeneratorStage(
+    ctx = _config(tmp_path)
+    seeds = [_seed_record("seed-1", "Seed instruction", "Seed response")]
+    first_stage = PromptBasedGeneratorStage(
         llm_client=SequentialFakeLLMClient(
             [
-                ("Same instruction", "Same response"),
-                ("Same instruction", "Same response"),
+                _generated_json("Generated instruction 1", "Generated response 1"),
+                _generated_json("Generated instruction 2", "Generated response 2"),
             ]
         )
     )
-    seed = _seed_record("seed-1", "Seed instruction", "Seed response")
 
-    records = stage.run([seed], ctx)
+    first_records = first_stage.run(seeds, ctx)
+    OutputWriter().write_parquet(first_records, ctx.work_dir / "data.parquet")
 
-    assert len(records) == 2
-    assert records[0].id == records[1].id
-    assert records[0].content_hash == records[1].content_hash
+    resumed_records = PromptBasedGeneratorStage(llm_client=FailingFakeLLMClient()).run(
+        seeds,
+        ctx,
+    )
+
+    assert [record.id for record in resumed_records] == [
+        record.id for record in first_records
+    ]
+    assert [record.payload.instruction for record in resumed_records] == [
+        "Generated instruction 1",
+        "Generated instruction 2",
+    ]
+
+
+def test_prompt_based_generator_regenerates_when_prompt_changes(
+    tmp_path: Path,
+) -> None:
+    seeds = [_seed_record("seed-1", "Seed instruction", "Seed response")]
+    ctx_v1 = _config(
+        tmp_path, prompt_template="Version A: {seed_instruction}\n{seed_response}"
+    )
+    stage_v1 = PromptBasedGeneratorStage(
+        llm_client=SequentialFakeLLMClient(
+            [
+                _generated_json("A1", "A1 response"),
+                _generated_json("A2", "A2 response"),
+            ]
+        )
+    )
+    first_records = stage_v1.run(seeds, ctx_v1)
+    OutputWriter().write_parquet(first_records, ctx_v1.work_dir / "data.parquet")
+
+    ctx_v2 = _config(
+        tmp_path, prompt_template="Version B: {seed_instruction}\n{seed_response}"
+    )
+    llm_v2 = SequentialFakeLLMClient(
+        [
+            _generated_json("B1", "B1 response"),
+            _generated_json("B2", "B2 response"),
+        ]
+    )
+    regenerated_records = PromptBasedGeneratorStage(llm_client=llm_v2).run(
+        seeds, ctx_v2
+    )
+
+    assert llm_v2.calls == 2
+    assert [record.payload.instruction for record in regenerated_records] == [
+        "B1",
+        "B2",
+    ]
+
+    raw_rows = _raw_rows(ctx_v2.work_dir / "raw_responses.jsonl")
+    expected_hash = compute_prompt_hash(ctx_v2.config.generator, ctx_v2.config.llm)
+    assert len(raw_rows) == 2
+    assert {row["prompt_hash"] for row in raw_rows} == {expected_hash}
+    assert [row["generated_text"] for row in raw_rows] == [
+        _generated_json("B1", "B1 response"),
+        _generated_json("B2", "B2 response"),
+    ]
+
+
+def test_prompt_based_generator_resumes_partial_raw_response_file(
+    tmp_path: Path,
+) -> None:
+    ctx = _config(tmp_path, target_count=3, generation_multiplier=2)
+    stage = PromptBasedGeneratorStage(
+        llm_client=SequentialFakeLLMClient(
+            [
+                _generated_json("gen-4", "resp-4"),
+                _generated_json("gen-5", "resp-5"),
+                _generated_json("gen-6", "resp-6"),
+            ]
+        )
+    )
+    seeds = [
+        _seed_record("seed-1", "Seed instruction 1", "Seed response 1"),
+        _seed_record("seed-2", "Seed instruction 2", "Seed response 2"),
+    ]
+    prompt_hash = compute_prompt_hash(ctx.config.generator, ctx.config.llm)
+    responses_path = ctx.work_dir / "raw_responses.jsonl"
+    partial_rows = [
+        {
+            "plan_index": 0,
+            "seed_id": "seed-1",
+            "generated_text": _generated_json("gen-1", "resp-1"),
+            "prompt_hash": prompt_hash,
+            "model": "gpt-4o-mini",
+            "latency_ms": 25,
+            "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
+        },
+        {
+            "plan_index": 1,
+            "seed_id": "seed-2",
+            "generated_text": _generated_json("gen-2", "resp-2"),
+            "prompt_hash": prompt_hash,
+            "model": "gpt-4o-mini",
+            "latency_ms": 25,
+            "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
+        },
+        {
+            "plan_index": 2,
+            "seed_id": "seed-1",
+            "generated_text": _generated_json("gen-3", "resp-3"),
+            "prompt_hash": prompt_hash,
+            "model": "gpt-4o-mini",
+            "latency_ms": 25,
+            "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
+        },
+    ]
+    responses_path.write_text("\n".join(json.dumps(row) for row in partial_rows) + "\n")
+    CheckpointManager(tmp_path / "state.db").save_generator(
+        run_id=ctx.run_id,
+        stage_name=stage.name,
+        prompt_hash=prompt_hash,
+        responses_path=responses_path,
+        response_count=3,
+        status="running",
+    )
+
+    records = stage.run(seeds, ctx)
+
+    assert len(records) == 6
+    assert stage._llm_client.calls == 3
+    assert [record.lineage.parent_ids for record in records] == [
+        ["seed-1"],
+        ["seed-2"],
+        ["seed-1"],
+        ["seed-2"],
+        ["seed-1"],
+        ["seed-2"],
+    ]
+
+    raw_rows = _raw_rows(responses_path)
+    assert [row["plan_index"] for row in raw_rows] == [0, 1, 2, 3, 4, 5]
+    assert [row["seed_id"] for row in raw_rows] == [
+        "seed-1",
+        "seed-2",
+        "seed-1",
+        "seed-2",
+        "seed-1",
+        "seed-2",
+    ]
 
 
 def test_prompt_based_generator_returns_empty_for_no_seed_records(

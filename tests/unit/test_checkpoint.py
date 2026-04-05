@@ -38,3 +38,34 @@ def test_checkpoint_manager_saves_and_loads_stage_artifact(tmp_path: Path) -> No
             "status": "completed",
         }
     ]
+
+
+def test_checkpoint_manager_saves_and_loads_generator_checkpoint(
+    tmp_path: Path,
+) -> None:
+    manager = CheckpointManager(tmp_path / "state.db")
+    responses_path = (
+        tmp_path / "runs" / "run-1" / "stages" / "02_generate" / "raw_responses.jsonl"
+    )
+    responses_path.parent.mkdir(parents=True, exist_ok=True)
+    responses_path.write_text('{"ok":true}\n')
+
+    manager.save_generator(
+        run_id="run-1",
+        stage_name="02_generate",
+        prompt_hash="prompt-123",
+        responses_path=responses_path,
+        response_count=7,
+        status="running",
+    )
+
+    loaded = manager.load_generator(run_id="run-1", stage_name="02_generate")
+
+    assert loaded == {
+        "run_id": "run-1",
+        "stage_name": "02_generate",
+        "prompt_hash": "prompt-123",
+        "responses_path": str(responses_path),
+        "response_count": 7,
+        "status": "running",
+    }

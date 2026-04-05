@@ -8,7 +8,7 @@ from arka.config.models import ResolvedConfig
 from arka.pipeline.cheap_filters import LanguageFilterStage, LengthFilterStage
 from arka.pipeline.dedup_stages import ExactDedupStage
 from arka.pipeline.filter_stages import LabelingQualityFilterStage
-from arka.pipeline.generation_stages import PromptBasedGeneratorStage
+from arka.pipeline.generator_stages import PromptBasedGeneratorStage
 from arka.pipeline.source_stages import SeedSourceStage
 from arka.pipeline.stage_builder import StageBuilder
 from arka.pipeline.transforms import NormalizeConversationStage

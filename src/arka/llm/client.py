@@ -261,7 +261,13 @@ class LLMClient:
             PromptParseFallbackStrategy(),
         )
 
-    def complete(self, messages: Sequence[Message]) -> LLMOutput:
+    def complete(
+        self,
+        messages: Sequence[Message],
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> LLMOutput:
         started_at = time.perf_counter()
 
         @retry(
@@ -279,10 +285,15 @@ class LLMClient:
             sleep=self._sleep,
         )
         def create_completion() -> Any:
-            return self._client.chat.completions.create(
-                model=self.config.model,
-                messages=list(messages),
-            )
+            request_kwargs: dict[str, Any] = {
+                "model": self.config.model,
+                "messages": list(messages),
+            }
+            if temperature is not None:
+                request_kwargs["temperature"] = temperature
+            if max_tokens is not None:
+                request_kwargs["max_tokens"] = max_tokens
+            return self._client.chat.completions.create(**request_kwargs)
 
         try:
             response = create_completion()
