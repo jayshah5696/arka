@@ -19,4 +19,3 @@ def build_openai_client(config: LLMConfig) -> OpenAI:
         max_retries=0,
         default_headers=default_headers or None,
     )
-

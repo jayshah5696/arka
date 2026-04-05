@@ -5,10 +5,8 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from arka.config.loader import ConfigLoader
-from arka.pipeline.filter_stages import LabelingQualityFilterStage
 from arka.pipeline.runner import PipelineRunner
-from arka.pipeline.source_stages import SeedSourceStage
-from arka.pipeline.transforms import NormalizeConversationStage
+from arka.pipeline.stage_builder import StageBuilder
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -25,14 +23,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     config_path = Path(args.config).expanduser().resolve()
     project_root = config_path.parent
     config = ConfigLoader().load(config_path)
-    stages = []
-    if config.data_source.type == "seeds":
-        stages = [
-            SeedSourceStage(project_root=project_root),
-            NormalizeConversationStage(),
-        ]
-        if config.filters.labeling_engine.enabled:
-            stages.append(LabelingQualityFilterStage(project_root=project_root))
+    stages = StageBuilder(config=config, project_root=project_root).build()
 
     PipelineRunner(project_root=project_root).run(
         config=config,
