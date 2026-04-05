@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+from arka.common.concurrency import bounded_worker_count
 from arka.labeling.judges import SingleLLMJudge
 from arka.labeling.models import LabelResult
 from arka.labeling.rubric import Rubric
@@ -27,7 +28,7 @@ class LabelingEngine:
         rubric: Rubric,
         max_workers: int,
     ) -> list[LabelResult]:
-        worker_count = max_workers or len(pairs) or 1
+        worker_count = bounded_worker_count(len(pairs), max_workers)
         with ThreadPoolExecutor(max_workers=worker_count) as executor:
             futures = [
                 executor.submit(self.label, instruction, response, rubric)

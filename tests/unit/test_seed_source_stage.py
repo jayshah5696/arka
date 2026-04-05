@@ -49,6 +49,11 @@ def test_seed_source_stage_reads_jsonl_into_conversation_records(
     assert records[0].payload.instruction == "Say hello"
     assert records[0].payload.response == "Hello"
     assert records[0].source.type == "seed"
+    assert records[0].id == records[0].lineage.root_id
+    assert len(records[0].id) == 64
+    assert len(records[0].content_hash) == 64
+    assert records[0].source.seed_file_hash is not None
+    assert len(records[0].source.seed_file_hash) == 64
 
 
 def test_seed_source_stage_reads_csv_into_conversation_records(tmp_path: Path) -> None:
@@ -69,3 +74,27 @@ def test_seed_source_stage_reads_csv_into_conversation_records(tmp_path: Path) -
     assert len(records) == 1
     assert records[0].payload.instruction == "Question"
     assert records[0].payload.response == "Answer"
+
+
+def test_seed_source_stage_ids_are_content_stable(tmp_path: Path) -> None:
+    seed_path = tmp_path / "seeds.jsonl"
+    seed_path.write_text(
+        '{"instruction":" Same question ","response":" Same answer "}\n'
+        '{"instruction":" Same question ","response":" Same answer "}\n'
+    )
+    config = ConfigLoader().load_dict(build_config("./seeds.jsonl"))
+    ctx = StageContext(
+        run_id="run-1",
+        stage_name="01_source",
+        work_dir=tmp_path / "work",
+        config=config,
+        executor_mode=config.executor.mode,
+        max_workers=config.executor.max_workers,
+    )
+
+    records = SeedSourceStage(project_root=tmp_path).run([], ctx)
+
+    assert len(records) == 2
+    assert records[0].id == records[1].id
+    assert records[0].content_hash == records[1].content_hash
+    assert records[0].lineage.root_id == records[1].lineage.root_id

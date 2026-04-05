@@ -11,7 +11,7 @@ printf '{"instruction":"Say hello","response":"Hello"}\n' > seeds.jsonl
 uv run arka --config config.smoke.yaml --run-id smoke-run
 ```
 
-Artifacts will be written under `runs/smoke-run/` and `output/smoke-dataset.jsonl`.
+Artifacts are written under `runs/<run_id>/` plus the configured final JSONL output path.
 
 ## Common Commands
 
@@ -22,19 +22,33 @@ Artifacts will be written under `runs/smoke-run/` and `output/smoke-dataset.json
 
 ## Current Implemented Slice
 
-- typed records and stage protocol
-- seed source stage (JSONL/CSV)
+- typed Pydantic boundary models and internal stage protocol
+- seed source stage for JSONL/CSV input
 - normalize transform stage
-- resumable pipeline runner
-- Parquet stage artifacts + JSONL output
-- manifest + `run_report.json`
-- LabelingEngine single-judge scaffold
+- resumable pipeline runner with SQLite checkpoint state
+- Parquet stage artifacts plus final JSONL dataset output
+- `manifest.json` and `run_report.json`
+- single-judge labeling quality filter with:
+  - rubric-based scoring
+  - dropped-record persistence (`dropped.parquet`)
+  - stage stats (`stats.json`)
+  - failure classification for label-path errors
+- OpenAI-compatible client path with:
+  - exponential retry backoff
+  - provider-native structured output preferred
+  - OpenRouter JSON-schema structured-output path
+  - prompt-parse fallback for degraded compatibility
+
+## Practical Provider Story
+
+The canonical config model is still `provider: openai`, but practical live verification already runs through OpenAI-compatible routing as well, including OpenRouter-backed paths. In other words: the client interface is OpenAI-shaped, while OpenRouter-compatible usage is a supported real path today.
 
 ## Key Files
 
 - `config.smoke.yaml` — simplest runnable config
-- `config.example.yaml` — basic OpenAI config
+- `config.example.yaml` — baseline OpenAI example
 - `config.openrouter.yaml` — OpenRouter-compatible example
-- `docs/config-examples.md` — catalog of commented example configs
+- `docs/config-examples.md` — commented config catalog
 - `rubrics/sft_quality.yaml` — starter labeling rubric
 - `docs/SPEC.md` — approved engineering spec
+- `docs/decisions/0001-boundary-modeling.md` — boundary-modeling ADR

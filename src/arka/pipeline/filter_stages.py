@@ -7,7 +7,7 @@ from typing import Any
 
 from arka.labeling.engine import LabelingEngine
 from arka.labeling.rubric import RubricLoader
-from arka.llm.client import LLMClient
+from arka.llm.client import LLMClient, LLMClientError
 from arka.pipeline.models import StageContext
 from arka.pipeline.output import OutputWriter
 from arka.pipeline.stages import Stage
@@ -46,21 +46,49 @@ class LabelingQualityFilterStage(Stage):
             (record.payload.instruction, record.payload.response)
             for record in conversation_records
         ]
-        results = engine.label_batch(
-            pairs=pairs,
-            rubric=rubric,
-            max_workers=ctx.max_workers,
-        )
-        result_by_id = {
-            record.id: result
-            for record, result in zip(conversation_records, results, strict=True)
-        }
-
         min_overall = filter_config.min_overall_score or 0.0
         kept_records: list[Record] = []
         dropped_records: list[Record] = []
         scored_overall: list[float] = []
         drop_reasons: dict[str, int] = {}
+
+        try:
+            results = engine.label_batch(
+                pairs=pairs,
+                rubric=rubric,
+                max_workers=ctx.max_workers,
+            )
+        except LLMClientError as exc:
+            reason_code = self._reason_code_for_label_error(exc)
+            kept_records = [
+                record
+                for record in records
+                if not isinstance(record, ConversationRecord)
+            ]
+            for record in conversation_records:
+                dropped_records.append(
+                    self._drop_record(
+                        record=record,
+                        reason_code=reason_code,
+                        details=exc.message,
+                    )
+                )
+            drop_reasons[reason_code] = len(conversation_records)
+            self._write_stage_artifacts(
+                ctx=ctx,
+                dropped_records=dropped_records,
+                scored_count=0,
+                kept_count=len(kept_records),
+                dropped_count=len(dropped_records),
+                drop_reasons=drop_reasons,
+                scored_overall=scored_overall,
+            )
+            return kept_records
+
+        result_by_id = {
+            record.id: result
+            for record, result in zip(conversation_records, results, strict=True)
+        }
 
         for record in records:
             if not isinstance(record, ConversationRecord):
@@ -86,22 +114,13 @@ class LabelingQualityFilterStage(Stage):
 
             reason_code = "low_quality_score"
             dropped_records.append(
-                updated_record.model_copy(
-                    update={
-                        "stage_events": [
-                            *updated_record.stage_events,
-                            StageEvent(
-                                stage=self.name,
-                                action="dropped",
-                                reason_code=reason_code,
-                                details=(
-                                    f"overall_score={result.overall} < "
-                                    f"min_overall_score={min_overall}"
-                                ),
-                                seq=len(updated_record.stage_events) + 1,
-                            ),
-                        ]
-                    }
+                self._drop_record(
+                    record=updated_record,
+                    reason_code=reason_code,
+                    details=(
+                        f"overall_score={result.overall} < "
+                        f"min_overall_score={min_overall}"
+                    ),
                 )
             )
             drop_reasons[reason_code] = drop_reasons.get(reason_code, 0) + 1
@@ -143,6 +162,36 @@ class LabelingQualityFilterStage(Stage):
 
     def _write_dropped_records(self, dropped_records: list[Record], path: Path) -> None:
         self._output_writer.write_dropped_parquet(records=dropped_records, path=path)
+
+    def _drop_record(
+        self,
+        record: Record,
+        reason_code: str,
+        details: str,
+    ) -> Record:
+        return record.model_copy(
+            update={
+                "stage_events": [
+                    *record.stage_events,
+                    StageEvent(
+                        stage=self.name,
+                        action="dropped",
+                        reason_code=reason_code,
+                        details=details,
+                        seq=len(record.stage_events) + 1,
+                    ),
+                ]
+            }
+        )
+
+    def _reason_code_for_label_error(self, error: LLMClientError) -> str:
+        if error.code == "auth_error":
+            return "label_auth_failure"
+        if error.code == "retryable_api_error":
+            return "label_retryable_api_failure"
+        if error.code == "invalid_structured_response":
+            return "invalid_structured_response"
+        return "label_parse_failure"
 
     def _quality_distribution(self, scores: list[float]) -> dict[str, float] | None:
         if not scores:

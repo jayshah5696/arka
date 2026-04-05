@@ -33,7 +33,7 @@ class Rubric(StrictModel):
 
     @property
     def hash(self) -> str:
-        return hashlib.sha256(self.model_dump_json().encode()).hexdigest()[:16]
+        return hashlib.sha256(self.model_dump_json().encode()).hexdigest()
 
 
 class RubricValidationError(ValueError):

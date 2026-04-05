@@ -20,9 +20,15 @@ class StageContext:
 class RunResult:
     run_id: str
     final_count: int
-    dataset_path: Path
+    dataset_path: Path | None
     manifest_path: Path
     output_path: Path
+
+
+@dataclass(frozen=True)
+class StageErrorInfo:
+    type: str
+    message: str
 
 
 @dataclass(frozen=True)
@@ -35,3 +41,4 @@ class StageStat:
     dropped_count: int = 0
     drop_reasons: dict[str, int] = field(default_factory=dict)
     quality_distribution: dict[str, float] | None = None
+    error: StageErrorInfo | None = None

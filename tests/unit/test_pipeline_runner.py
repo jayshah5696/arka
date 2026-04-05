@@ -6,6 +6,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 
+from arka.pipeline.checkpoint import CheckpointManager
 from arka.pipeline.output import OutputWriter
 from arka.pipeline.runner import PipelineRunner
 from arka.pipeline.stages import Stage
@@ -48,6 +49,13 @@ class TransformStage(Stage):
             )
             for record in records
         ]
+
+
+class FailingStage(Stage):
+    name = "02_transform"
+
+    def run(self, records: list[Record], ctx) -> list[Record]:
+        raise RuntimeError("boom")
 
 
 @pytest.fixture
@@ -170,4 +178,69 @@ def test_pipeline_runner_resume_skips_completed_stages(
             "resumed": True,
             "dropped_count": 0,
         },
+    ]
+
+
+def test_pipeline_runner_marks_failed_run_and_persists_failure_report(
+    tmp_path: Path, config_dict: dict
+) -> None:
+    runner = PipelineRunner(project_root=tmp_path)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        runner.run(
+            config=config_dict,
+            stages=[SourceStage(), FailingStage()],
+            run_id="run-fail",
+        )
+
+    run_dir = tmp_path / "runs" / "run-fail"
+    manifest = json.loads((run_dir / "manifest.json").read_text())
+    report = json.loads((run_dir / "report" / "run_report.json").read_text())
+    stage_one = run_dir / "stages" / "01_source" / "data.parquet"
+    stage_two = run_dir / "stages" / "02_transform" / "data.parquet"
+
+    assert stage_one.exists()
+    assert not stage_two.exists()
+    assert manifest["status"] == "failed"
+    assert manifest["error"] == {
+        "stage": "02_transform",
+        "type": "RuntimeError",
+        "message": "boom",
+    }
+    assert manifest["final_count"] == 1
+    assert report["status"] == "failed"
+    assert report["error"] == {
+        "stage": "02_transform",
+        "type": "RuntimeError",
+        "message": "boom",
+    }
+    assert report["final_count"] == 1
+    assert report["dataset_path"] is None
+    assert report["stage_yields"] == [
+        {
+            "stage": "01_source",
+            "count_in": 0,
+            "count_out": 1,
+            "status": "completed",
+            "resumed": False,
+            "dropped_count": 0,
+        },
+        {
+            "stage": "02_transform",
+            "count_in": 1,
+            "count_out": 1,
+            "status": "failed",
+            "resumed": False,
+            "dropped_count": 0,
+            "error": {"type": "RuntimeError", "message": "boom"},
+        },
+    ]
+
+    checkpoint_runs = CheckpointManager(tmp_path / "state.db").list_runs()
+    assert checkpoint_runs == [
+        {
+            "run_id": "run-fail",
+            "config_hash": manifest["config_hash"],
+            "status": "failed",
+        }
     ]

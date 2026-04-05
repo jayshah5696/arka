@@ -24,9 +24,7 @@ class SingleLLMJudge:
             response=response,
             rubric=rubric,
         )
-        prompt_hash = hashlib.sha256(
-            messages[0]["content"].encode("utf-8")
-        ).hexdigest()[:16]
+        prompt_hash = hashlib.sha256(messages[0]["content"].encode("utf-8")).hexdigest()
         llm_output = self.llm_client.complete_structured(
             messages=messages,
             schema=JudgeResponse,

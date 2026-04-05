@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from arka.config.loader import ConfigLoader
 from arka.labeling.judges import JudgeResponse
+from arka.llm.client import LLMClientError
 from arka.llm.models import LLMOutput, TokenUsage
 from arka.pipeline.filter_stages import LabelingQualityFilterStage
 from arka.pipeline.models import StageContext
@@ -21,13 +22,15 @@ from arka.records.models import (
 
 
 class SequentialFakeLLMClient:
-    def __init__(self, responses: list[JudgeResponse]) -> None:
+    def __init__(self, responses: list[JudgeResponse | Exception]) -> None:
         self.responses = responses
         self.calls = 0
 
     def complete_structured(self, messages, schema: type[BaseModel]) -> LLMOutput:
         response = self.responses[self.calls]
         self.calls += 1
+        if isinstance(response, Exception):
+            raise response
         return LLMOutput(
             text="{}",
             parsed=response,
@@ -163,3 +166,76 @@ def test_labeling_filter_stage_scores_records_and_filters_low_quality(
         "min": 1.0,
         "max": 5.0,
     }
+
+
+def test_labeling_filter_stage_classifies_parse_failures_as_dropped_records(
+    tmp_path: Path,
+) -> None:
+    config = ConfigLoader().load_dict(
+        {
+            "version": "1",
+            "llm": {
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "api_key": "test-key",
+                "base_url": "https://api.openai.com/v1",
+            },
+            "executor": {"mode": "threadpool", "max_workers": 1},
+            "data_source": {"type": "seeds", "path": "./seeds.jsonl"},
+            "generator": {
+                "type": "prompt_based",
+                "target_count": 2,
+                "generation_multiplier": 1,
+            },
+            "filters": {
+                "target_count": 2,
+                "labeling_engine": {
+                    "enabled": True,
+                    "rubric_path": str(Path("rubrics/sft_quality.yaml").resolve()),
+                    "min_overall_score": 3.5,
+                },
+            },
+            "labeling_engine": {
+                "rubric_path": str(Path("rubrics/sft_quality.yaml").resolve()),
+                "mode": "single",
+            },
+            "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
+        }
+    )
+    ctx = StageContext(
+        run_id="run-1",
+        stage_name="03_label_quality",
+        work_dir=tmp_path / "work",
+        config=config,
+        executor_mode=config.executor.mode,
+        max_workers=config.executor.max_workers,
+    )
+    fake_client = SequentialFakeLLMClient(
+        [
+            LLMClientError("parse_error", "bad json"),
+        ]
+    )
+    stage = LabelingQualityFilterStage(project_root=tmp_path, llm_client=fake_client)
+
+    records = stage.run(
+        [
+            build_record("1", "Explain gravity", "Gravity attracts masses."),
+            build_record("2", "Tell me stuff", "Stuff."),
+        ],
+        ctx,
+    )
+
+    assert records == []
+
+    dropped_frame = pl.read_parquet(ctx.work_dir / "dropped.parquet")
+    assert dropped_frame.height == 2
+    assert dropped_frame.select("drop_reason").to_series().to_list() == [
+        "label_parse_failure",
+        "label_parse_failure",
+    ]
+
+    stats = json.loads((ctx.work_dir / "stats.json").read_text())
+    assert stats["scored_count"] == 0
+    assert stats["dropped_count"] == 2
+    assert stats["drop_reasons"] == {"label_parse_failure": 2}
+    assert stats["quality_distribution"] is None
