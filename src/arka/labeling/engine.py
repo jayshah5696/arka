@@ -27,6 +27,7 @@ class LabelingEngine:
         pairs: Sequence[tuple[str, str]],
         rubric: Rubric,
         max_workers: int,
+        run_canary: bool = True,
     ) -> list[LabelResult]:
         worker_count = bounded_worker_count(len(pairs), max_workers)
         with ThreadPoolExecutor(max_workers=worker_count) as executor:
@@ -36,7 +37,8 @@ class LabelingEngine:
             ]
             pair_results = [future.result() for future in futures]
 
-        self._run_canary_checks(rubric=rubric)
+        if run_canary:
+            self._run_canary_checks(rubric=rubric)
         return pair_results
 
     def _run_canary_checks(self, rubric: Rubric) -> None:

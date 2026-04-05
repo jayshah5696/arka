@@ -133,3 +133,28 @@ def test_labeling_engine_warns_when_known_bad_canary_scores_too_high() -> None:
         )
 
     assert any("known-bad" in str(warning.message) for warning in captured)
+
+
+def test_labeling_engine_skips_canary_when_run_canary_false() -> None:
+    rubric = build_rubric()
+    # Only provide one response — for the actual input.
+    # If canary ran, it would try to get more responses and fail.
+    client = SequentialFakeLLMClient(
+        [
+            JudgeResponse(
+                scores={"instruction_clarity": 5, "response_quality": 4},
+                reasoning="strong",
+            ),
+        ]
+    )
+    engine = LabelingEngine(llm_client=client)
+
+    results = engine.label_batch(
+        pairs=[("Explain gravity", "Gravity attracts masses.")],
+        rubric=rubric,
+        max_workers=1,
+        run_canary=False,
+    )
+
+    assert len(results) == 1
+    assert client.calls == 1  # No canary calls
