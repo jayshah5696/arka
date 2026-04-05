@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from arka.config.models import ResolvedConfig
+
+if TYPE_CHECKING:
+    from arka.pipeline.checkpoint import CheckpointManager
 
 
 @dataclass(frozen=True)
@@ -14,6 +18,7 @@ class StageContext:
     config: ResolvedConfig
     executor_mode: str
     max_workers: int
+    checkpoint_manager: CheckpointManager | None = None
 
 
 @dataclass(frozen=True)

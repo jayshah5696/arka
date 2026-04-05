@@ -22,6 +22,7 @@ class RubricExample(StrictModel):
     response: str
     scores: dict[str, int]
     reasoning: str
+    expected_verdict: str | None = None
 
 
 class Rubric(StrictModel):
@@ -56,4 +57,19 @@ class RubricLoader:
         if weight_names != dimension_names:
             raise RubricValidationError(
                 "overall_weights must match rubric dimensions exactly"
+            )
+        self._validate_expected_verdicts(rubric)
+
+    def _validate_expected_verdicts(self, rubric: Rubric) -> None:
+        if not rubric.few_shot:
+            return
+        verdicts = [example.expected_verdict for example in rubric.few_shot]
+        if any(verdict is None for verdict in verdicts):
+            raise RubricValidationError(
+                "few_shot examples must declare expected_verdict: 'pass' or 'fail'"
+            )
+        normalized = {str(verdict) for verdict in verdicts if verdict is not None}
+        if not normalized.issubset({"pass", "fail"}):
+            raise RubricValidationError(
+                "few_shot.expected_verdict must be either 'pass' or 'fail'"
             )

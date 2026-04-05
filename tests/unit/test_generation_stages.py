@@ -516,6 +516,42 @@ def test_prompt_based_generator_uses_injected_checkpoint_manager_without_ctx_pat
     assert stage._checkpoint_manager(ctx) is checkpoint_manager
 
 
+def test_prompt_based_generator_updates_checkpoint_count_after_each_written_row(
+    tmp_path: Path,
+) -> None:
+    ctx = _config(tmp_path, target_count=3, generation_multiplier=1)
+    checkpoint_manager = CheckpointManager(tmp_path / "state.db")
+    stage = PromptBasedGeneratorStage(
+        llm_client=SequentialFakeLLMClient(
+            [
+                _generated_json("gen-1", "resp-1"),
+                _generated_json("gen-2", "resp-2"),
+                _generated_json("gen-3", "resp-3"),
+            ]
+        ),
+        checkpoint_manager=checkpoint_manager,
+    )
+    seeds = [
+        _seed_record("seed-1", "Seed instruction 1", "Seed response 1"),
+        _seed_record("seed-2", "Seed instruction 2", "Seed response 2"),
+    ]
+    observed_counts: list[int] = []
+    original_save_generator = checkpoint_manager.save_generator
+
+    def tracking_save_generator(*args, **kwargs) -> None:
+        original_save_generator(*args, **kwargs)
+        cached = checkpoint_manager.load_generator(ctx.run_id, stage.name)
+        assert cached is not None
+        observed_counts.append(int(cached["response_count"]))
+
+    checkpoint_manager.save_generator = tracking_save_generator  # type: ignore[method-assign]
+
+    records = stage.run(seeds, ctx)
+
+    assert len(records) == 3
+    assert observed_counts == [0, 1, 2, 3, 3]
+
+
 def test_generation_stages_shim_exports_only_public_symbols() -> None:
     assert hasattr(generation_stages, "PromptBasedGeneratorStage")
     assert hasattr(generation_stages, "compute_prompt_hash")

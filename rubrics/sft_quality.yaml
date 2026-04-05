@@ -27,9 +27,11 @@ few_shot:
       instruction_clarity: 5
       response_quality: 5
     reasoning: "Clear simple question, correct answer."
+    expected_verdict: pass
   - instruction: "Tell me stuff"
     response: "Here is some stuff."
     scores:
       instruction_clarity: 1
       response_quality: 1
     reasoning: "Vague instruction, non-answer response."
+    expected_verdict: fail

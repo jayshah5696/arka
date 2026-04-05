@@ -34,10 +34,12 @@ few_shot:
     response: "4"
     scores: {instruction_clarity: 5, response_quality: 5}
     reasoning: "Clear simple question, correct answer."
+    expected_verdict: pass
   - instruction: "Tell me stuff"
     response: "Here is some stuff."
     scores: {instruction_clarity: 1, response_quality: 1}
     reasoning: "Vague instruction, non-answer response."
+    expected_verdict: fail
 """
 
 
@@ -67,4 +69,14 @@ def test_rubric_loader_rejects_unknown_weight_dimension(tmp_path: Path) -> None:
     )
 
     with pytest.raises(RubricValidationError, match="overall_weights"):
+        RubricLoader().load(rubric_path)
+
+
+def test_rubric_loader_requires_expected_verdicts_for_few_shot_examples(
+    tmp_path: Path,
+) -> None:
+    rubric_path = tmp_path / "rubric.yaml"
+    rubric_path.write_text(RUBRIC_YAML.replace("    expected_verdict: pass\n", ""))
+
+    with pytest.raises(RubricValidationError, match="expected_verdict"):
         RubricLoader().load(rubric_path)

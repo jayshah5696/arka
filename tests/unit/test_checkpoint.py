@@ -21,11 +21,18 @@ def test_checkpoint_manager_saves_and_loads_stage_artifact(tmp_path: Path) -> No
         status="completed",
     )
 
-    loaded_path = manager.load_stage(run_id="run-1", stage_name="01_source")
+    loaded_stage = manager.load_stage(run_id="run-1", stage_name="01_source")
     runs = manager.list_runs()
     stage_runs = manager.list_stage_runs(run_id="run-1")
 
-    assert loaded_path == stage_path
+    assert loaded_stage == {
+        "run_id": "run-1",
+        "stage_name": "01_source",
+        "artifact_path": str(stage_path),
+        "count_in": 0,
+        "count_out": 1,
+        "status": "completed",
+    }
     assert runs[0]["run_id"] == "run-1"
     assert runs[0]["status"] == "running"
     assert stage_runs == [

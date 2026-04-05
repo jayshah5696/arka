@@ -170,6 +170,7 @@ class PromptBasedGeneratorStage(Stage):
         llm_client = self._llm_client or LLMClient(config=ctx.config.llm)
         responses_path.parent.mkdir(parents=True, exist_ok=True)
 
+        written_count = len(existing_rows)
         with responses_path.open("a", encoding="utf-8") as handle:
             for item in pending:
                 output = self._complete_raw(llm_client, item.seed_record, ctx)
@@ -187,6 +188,15 @@ class PromptBasedGeneratorStage(Stage):
                     + "\n"
                 )
                 handle.flush()
+                written_count += 1
+                checkpoint.save_generator(
+                    run_id=ctx.run_id,
+                    stage_name=self.name,
+                    prompt_hash=prompt_hash,
+                    responses_path=responses_path,
+                    response_count=written_count,
+                    status="running",
+                )
 
         raw = self._load_raw_responses(responses_path)
         records = self._parse_responses(raw, plan, ctx)
@@ -476,6 +486,9 @@ class PromptBasedGeneratorStage(Stage):
 
     def _checkpoint_manager(self, ctx: StageContext) -> CheckpointManager:
         if self._checkpoint is not None:
+            return self._checkpoint
+        if ctx.checkpoint_manager is not None:
+            self._checkpoint = ctx.checkpoint_manager
             return self._checkpoint
         project_root = self._project_root or self._project_root_from_work_dir(
             ctx.work_dir

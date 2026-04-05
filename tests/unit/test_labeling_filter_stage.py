@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import polars as pl
+import pytest
 from pydantic import BaseModel
 
 from arka.config.loader import ConfigLoader
@@ -211,3 +212,38 @@ def test_labeling_filter_stage_classifies_parse_failures_as_dropped_records(
     assert stats["dropped_count"] == 2
     assert stats["drop_reasons"] == {"label_parse_failure": 2}
     assert stats["quality_distribution"] is None
+
+
+def test_labeling_filter_stage_wraps_missing_rubric_path_with_config_context(
+    tmp_path: Path,
+) -> None:
+    config = ConfigLoader().load_dict(
+        {
+            **BASE_CONFIG,
+            "filters": {
+                "target_count": 2,
+                "labeling_engine": {
+                    "enabled": True,
+                    "rubric_path": "rubrics/missing.yaml",
+                    "min_overall_score": 3.5,
+                },
+            },
+        }
+    )
+    ctx = StageContext(
+        run_id="run-1",
+        stage_name="03_label_quality",
+        work_dir=tmp_path / "work",
+        config=config,
+        executor_mode=config.executor.mode,
+        max_workers=config.executor.max_workers,
+    )
+    stage = LabelingQualityFilterStage(project_root=tmp_path)
+
+    with pytest.raises(
+        ValueError,
+        match=r"filters\.labeling_engine\.rubric_path points to a missing file: ",
+    ):
+        stage.run(
+            [build_record("1", "Explain gravity", "Gravity attracts masses.")], ctx
+        )

@@ -144,7 +144,7 @@ def test_project_root_propagated_to_stages(tmp_path: Path) -> None:
     generator_stage = stages[2]
     assert isinstance(generator_stage, PromptBasedGeneratorStage)
     assert generator_stage._project_root == tmp_path
-    assert generator_stage._checkpoint is not None
+    assert generator_stage._checkpoint is None
 
     filter_stage = stages[3]
     assert isinstance(filter_stage, LabelingQualityFilterStage)

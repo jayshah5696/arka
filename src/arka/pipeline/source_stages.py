@@ -16,6 +16,7 @@ from arka.records.models import (
     ConversationRecord,
     GroundedChunkPayload,
     GroundedChunkRecord,
+    Record,
     RecordLineage,
     RecordScores,
     RecordSource,
@@ -29,16 +30,16 @@ class SeedSourceStage(Stage):
     def __init__(self, project_root: Path) -> None:
         self.project_root = project_root
 
-    def run(
-        self, records: list[ConversationRecord], ctx: StageContext
-    ) -> list[ConversationRecord]:
+    def run(self, records: list[Record], ctx: StageContext) -> list[ConversationRecord]:
         if records:
-            return records
-        source_path = (
-            self.project_root / ctx.config.data_source.path
-            if ctx.config.data_source.path is not None
-            else self.project_root
-        )
+            return [
+                record for record in records if isinstance(record, ConversationRecord)
+            ]
+        if ctx.config.data_source.path is None:
+            raise ValueError(
+                "data_source.path is required when data_source.type='seeds'"
+            )
+        source_path = self.project_root / ctx.config.data_source.path
         config_hash = self._config_hash(ctx)
         if source_path.suffix == ".jsonl":
             return self._read_jsonl(source_path=source_path, config_hash=config_hash)
@@ -150,11 +151,13 @@ class PDFSourceStage(Stage):
 
     def run(
         self,
-        records: list[GroundedChunkRecord],
+        records: list[Record],
         ctx: StageContext,
     ) -> list[GroundedChunkRecord]:
         if records:
-            return records
+            return [
+                record for record in records if isinstance(record, GroundedChunkRecord)
+            ]
         if ctx.config.data_source.path is None:
             raise ValueError("PDF source requires data_source.path")
         source_path = self.project_root / ctx.config.data_source.path

@@ -62,12 +62,14 @@ def build_rubric() -> Rubric:
                     "response": "4",
                     "scores": {"instruction_clarity": 5, "response_quality": 5},
                     "reasoning": "Clear and correct.",
+                    "expected_verdict": "pass",
                 },
                 {
                     "instruction": "Tell me stuff",
                     "response": "Here is some stuff.",
                     "scores": {"instruction_clarity": 1, "response_quality": 1},
                     "reasoning": "Vague and weak.",
+                    "expected_verdict": "fail",
                 },
             ],
         }

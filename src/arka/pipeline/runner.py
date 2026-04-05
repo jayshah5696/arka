@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import math
 import random
 from collections import Counter
@@ -11,7 +12,6 @@ from typing import Any
 
 import numpy as np
 import yaml
-from fastembed import TextEmbedding
 
 from arka.config.loader import ConfigLoader
 from arka.config.models import LLMConfig, ResolvedConfig
@@ -22,7 +22,9 @@ from arka.pipeline.checkpoint import CheckpointManager
 from arka.pipeline.models import RunResult, StageContext, StageErrorInfo, StageStat
 from arka.pipeline.output import OutputWriter
 from arka.pipeline.stages import Stage
-from arka.records.models import ConversationRecord, Record, StageEvent
+from arka.records.models import Record, StageEvent
+
+logger = logging.getLogger(__name__)
 
 
 class PipelineRunner:
@@ -59,12 +61,17 @@ class PipelineRunner:
         try:
             for stage in stages:
                 stage_path = run_paths.stage_data_path(stage.name)
-                if resume and stage_path.exists():
+                stage_checkpoint = checkpoint_manager.load_stage(run_id, stage.name)
+                if self._should_resume_stage(
+                    resume=resume,
+                    stage_path=stage_path,
+                    stage_checkpoint=stage_checkpoint,
+                ):
                     records = self.output_writer.read_parquet(stage_path)
                     stage_stats.append(
                         self._build_stage_stat(
                             stage_name=stage.name,
-                            count_in=len(records),
+                            count_in=int(stage_checkpoint["count_out"]),
                             count_out=len(records),
                             status="resumed",
                             resumed=True,
@@ -82,6 +89,7 @@ class PipelineRunner:
                     config=resolved_config,
                     executor_mode=resolved_config.executor.mode,
                     max_workers=resolved_config.executor.max_workers,
+                    checkpoint_manager=checkpoint_manager,
                 )
                 count_in = len(records)
                 try:
@@ -271,6 +279,25 @@ class PipelineRunner:
             return {}
         return json.loads(path.read_text())
 
+    def _should_resume_stage(
+        self,
+        *,
+        resume: bool,
+        stage_path: Path,
+        stage_checkpoint: dict[str, str | int] | None,
+    ) -> bool:
+        if not resume or not stage_path.exists() or stage_checkpoint is None:
+            return False
+        if str(stage_checkpoint["artifact_path"]) != str(stage_path):
+            logger.warning(
+                "Skipping resume for %s because checkpoint artifact path %s does not match %s",
+                stage_checkpoint["stage_name"],
+                stage_checkpoint["artifact_path"],
+                stage_path,
+            )
+            return False
+        return stage_checkpoint["status"] == "completed"
+
     def _serialize_stage_stat(self, stage_stat: StageStat) -> dict[str, Any]:
         payload = {
             "stage": stage_stat.stage,
@@ -447,17 +474,43 @@ class PipelineRunner:
             report_path.write_text(json.dumps(payload, indent=2))
             return payload
 
-        good = rubric.few_shot[0]
-        bad = rubric.few_shot[-1]
+        good = next(
+            (
+                example
+                for example in rubric.few_shot
+                if example.expected_verdict == "pass"
+            ),
+            None,
+        )
+        bad = next(
+            (
+                example
+                for example in rubric.few_shot
+                if example.expected_verdict == "fail"
+            ),
+            None,
+        )
+        if good is None or bad is None:
+            payload = {
+                "known_good": [],
+                "known_bad": [],
+                "status": None,
+            }
+            report_path.write_text(json.dumps(payload, indent=2))
+            return payload
         good_score = self._weighted_score(good.scores, rubric.overall_weights)
         bad_score = self._weighted_score(bad.scores, rubric.overall_weights)
         payload = {
             "known_good": [
-                {"id": "few_shot_0", "expected": "high", "actual_score": good_score}
+                {
+                    "id": f"few_shot_{rubric.few_shot.index(good)}",
+                    "expected": "high",
+                    "actual_score": good_score,
+                }
             ],
             "known_bad": [
                 {
-                    "id": f"few_shot_{len(rubric.few_shot) - 1}",
+                    "id": f"few_shot_{rubric.few_shot.index(bad)}",
                     "expected": "low",
                     "actual_score": bad_score,
                 }
@@ -480,9 +533,9 @@ class PipelineRunner:
         config: ResolvedConfig,
     ) -> float | None:
         instructions = [
-            record.payload.instruction
+            text
             for record in records
-            if isinstance(record, ConversationRecord)
+            if (text := record.text_for_diversity()) is not None
         ]
         if len(instructions) < 2:
             return None
@@ -519,6 +572,8 @@ class PipelineRunner:
     ) -> np.ndarray | None:
         model_name = self._resolved_huggingface_embedding_model(config.embeddings.model)
         try:
+            from fastembed import TextEmbedding
+
             embedding_model = TextEmbedding(model_name=model_name)
             vectors = list(embedding_model.embed(texts))
         except Exception:

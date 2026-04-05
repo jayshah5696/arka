@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from arka.pipeline.models import StageContext
 from arka.pipeline.output import OutputWriter
 from arka.pipeline.stages import Stage
 from arka.records.models import ConversationRecord, Record, StageEvent
+
+logger = logging.getLogger(__name__)
 
 
 def write_filter_artifacts(
@@ -116,6 +119,8 @@ class LanguageFilterStage(Stage):
         if not cfg.enabled:
             return records
 
+        self._warn_if_no_heuristic_available(cfg.allowed)
+
         kept: list[Record] = []
         dropped: list[Record] = []
         drop_reasons: dict[str, int] = {}
@@ -147,6 +152,15 @@ class LanguageFilterStage(Stage):
             return self._is_predominantly_latin(text)
         # For non-English allowed sets, accept everything (no heuristic yet).
         return True
+
+    def _warn_if_no_heuristic_available(self, allowed: list[str]) -> None:
+        if "en" in allowed:
+            return
+        logger.warning(
+            "Language filter heuristic only supports English ('en') today; "
+            "allowed=%s will currently pass all records",
+            allowed,
+        )
 
     def _is_predominantly_latin(self, text: str) -> bool:
         """Return True if >= 70% of alphabetic chars are Basic Latin / Latin-1."""

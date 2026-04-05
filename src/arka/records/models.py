@@ -64,6 +64,9 @@ class Record(StrictModel):
     def export_payload(self) -> dict[str, Any]:
         return self.payload
 
+    def text_for_diversity(self) -> str | None:
+        return None
+
 
 class ConversationPayload(StrictModel):
     instruction: str
@@ -77,6 +80,9 @@ class ConversationRecord(Record):
 
     def export_payload(self) -> dict[str, Any]:
         return self.payload.model_dump(mode="json")
+
+    def text_for_diversity(self) -> str | None:
+        return self.payload.instruction
 
 
 class GroundedChunkPayload(StrictModel):
@@ -96,6 +102,9 @@ class GroundedChunkRecord(Record):
 
     def export_payload(self) -> dict[str, Any]:
         return self.payload.model_dump(mode="json")
+
+    def text_for_diversity(self) -> str | None:
+        return self.payload.text
 
 
 RECORD_TYPE_REGISTRY: dict[str, type[Record]] = {

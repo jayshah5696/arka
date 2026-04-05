@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 from arka.config.models import (
@@ -222,14 +223,27 @@ def test_language_filter_drops_mostly_non_latin(tmp_path: Path) -> None:
     assert len(result) == 0
 
 
-def test_language_filter_non_en_allowed_passes_all(tmp_path: Path) -> None:
-    """When allowed contains non-'en' languages, all text passes (no heuristic)."""
+def test_language_filter_non_en_allowed_passes_all_and_warns_once(
+    tmp_path: Path, caplog
+) -> None:
+    """When allowed contains non-'en' languages, all text passes and a warning is emitted."""
     config = _base_config(language={"enabled": True, "allowed": ["ja"]})
     stage = LanguageFilterStage()
-    records = [_record("これは日本語のテキストです", "日本語の応答")]
+    records = [
+        _record("これは日本語のテキストです", "日本語の応答", "r1"),
+        _record("さらに日本語のテキストです", "別の応答", "r2"),
+    ]
     ctx = _ctx(config, tmp_path, stage.name)
-    result = stage.run(records, ctx)
-    assert len(result) == 1
+
+    with caplog.at_level(logging.WARNING, logger="arka.pipeline.cheap_filters"):
+        result = stage.run(records, ctx)
+
+    assert len(result) == 2
+    assert (
+        "Language filter heuristic only supports English ('en') today; "
+        "allowed=['ja'] will currently pass all records"
+    ) in caplog.text
+    assert caplog.text.count("will currently pass all records") == 1
 
 
 def test_language_filter_empty_text_passes(tmp_path: Path) -> None:

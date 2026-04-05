@@ -183,6 +183,40 @@ def test_pipeline_runner_resume_skips_completed_stages(
     ]
 
 
+def test_pipeline_runner_resume_does_not_skip_failed_stage_checkpoint(
+    tmp_path: Path, config_dict: dict
+) -> None:
+    runner = PipelineRunner(project_root=tmp_path)
+    run_id = "run-1"
+    run_dir = tmp_path / "runs" / run_id
+    stage_path = run_dir / "stages" / "01_source" / "data.parquet"
+    stage_path.parent.mkdir(parents=True, exist_ok=True)
+    OutputWriter().write_parquet([build_record("1", "alpha")], stage_path)
+
+    checkpoint = CheckpointManager(tmp_path / "state.db")
+    checkpoint.register_run(run_id=run_id, config_hash="abc123", status="failed")
+    checkpoint.save_stage(
+        run_id=run_id,
+        stage_name="01_source",
+        artifact_path=stage_path,
+        count_in=0,
+        count_out=1,
+        status="failed",
+    )
+
+    result = runner.run(
+        config=config_dict,
+        stages=[SourceStage(), TransformStage()],
+        run_id=run_id,
+        resume=True,
+    )
+
+    assert result.final_count == 1
+    manifest = json.loads((run_dir / "manifest.json").read_text())
+    assert manifest["stage_stats"][0]["status"] == "completed"
+    assert manifest["stage_stats"][0]["resumed"] is False
+
+
 def test_pipeline_runner_writes_report_samples_and_canaries_artifacts(
     tmp_path: Path, config_dict: dict
 ) -> None:

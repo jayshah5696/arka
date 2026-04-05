@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from arka.config.loader import ConfigLoader
 from arka.pipeline.models import StageContext
 from arka.pipeline.source_stages import SeedSourceStage
@@ -100,3 +102,24 @@ def test_seed_source_stage_ids_are_content_stable(tmp_path: Path) -> None:
     assert records[0].id == records[1].id
     assert records[0].content_hash == records[1].content_hash
     assert records[0].lineage.root_id == records[1].lineage.root_id
+
+
+def test_seed_source_stage_requires_explicit_path(tmp_path: Path) -> None:
+    config = ConfigLoader().load_dict(build_config("./seeds.jsonl"))
+    config = config.model_copy(
+        update={"data_source": config.data_source.model_copy(update={"path": None})}
+    )
+    ctx = StageContext(
+        run_id="run-1",
+        stage_name="01_source",
+        work_dir=tmp_path / "work",
+        config=config,
+        executor_mode=config.executor.mode,
+        max_workers=config.executor.max_workers,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="data_source.path is required when data_source.type='seeds'",
+    ):
+        SeedSourceStage(project_root=tmp_path).run([], ctx)

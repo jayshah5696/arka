@@ -107,15 +107,26 @@ class CheckpointManager:
                 (run_id, stage_name, artifact_path_str),
             )
 
-    def load_stage(self, run_id: str, stage_name: str) -> Path | None:
+    def load_stage(self, run_id: str, stage_name: str) -> dict[str, str | int] | None:
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT artifact_path FROM stage_runs WHERE run_id = ? AND stage_name = ?",
+                """
+                SELECT run_id, stage_name, artifact_path, count_in, count_out, status
+                FROM stage_runs
+                WHERE run_id = ? AND stage_name = ?
+                """,
                 (run_id, stage_name),
             ).fetchone()
         if row is None:
             return None
-        return Path(row["artifact_path"])
+        return {
+            "run_id": str(row["run_id"]),
+            "stage_name": str(row["stage_name"]),
+            "artifact_path": str(row["artifact_path"]),
+            "count_in": int(row["count_in"]),
+            "count_out": int(row["count_out"]),
+            "status": str(row["status"]),
+        }
 
     def save_generator(
         self,

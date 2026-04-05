@@ -42,10 +42,16 @@ class LabelingEngine:
         return pair_results
 
     def _run_canary_checks(self, rubric: Rubric) -> None:
-        if len(rubric.few_shot) < 2:
+        passing_examples = [
+            example for example in rubric.few_shot if example.expected_verdict == "pass"
+        ]
+        failing_examples = [
+            example for example in rubric.few_shot if example.expected_verdict == "fail"
+        ]
+        if not passing_examples or not failing_examples:
             return
-        known_good = rubric.few_shot[0]
-        known_bad = rubric.few_shot[-1]
+        known_good = passing_examples[0]
+        known_bad = failing_examples[0]
         good_result = self.label(
             instruction=known_good.instruction,
             response=known_good.response,

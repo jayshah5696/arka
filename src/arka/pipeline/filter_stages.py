@@ -37,7 +37,13 @@ class LabelingQualityFilterStage(Stage):
         if not filter_config.enabled or filter_config.rubric_path is None:
             return records
         rubric_path = self.project_root / filter_config.rubric_path
-        rubric = RubricLoader().load(rubric_path)
+        try:
+            rubric = RubricLoader().load(rubric_path)
+        except FileNotFoundError as exc:
+            raise ValueError(
+                "filters.labeling_engine.rubric_path points to a missing file: "
+                f"{rubric_path}"
+            ) from exc
         llm_client = self._llm_client or LLMClient(config=ctx.config.llm)
         engine = LabelingEngine(llm_client=llm_client)
 

@@ -104,6 +104,7 @@ def _write_rubric(path: Path) -> None:
                             "response_quality": 5,
                         },
                         "reasoning": "Clear and correct.",
+                        "expected_verdict": "pass",
                     },
                     {
                         "instruction": "Tell me stuff",
@@ -113,6 +114,7 @@ def _write_rubric(path: Path) -> None:
                             "response_quality": 1,
                         },
                         "reasoning": "Vague and weak.",
+                        "expected_verdict": "fail",
                     },
                 ],
             },
