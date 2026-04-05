@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from arka.config.models import ResolvedConfig
+from arka.pipeline.cheap_filters import LanguageFilterStage, LengthFilterStage
 from arka.pipeline.filter_stages import LabelingQualityFilterStage
 from arka.pipeline.source_stages import SeedSourceStage
 from arka.pipeline.stages import Stage
@@ -34,6 +35,10 @@ class StageBuilder:
 
     def _filter_stages(self) -> list[Stage]:
         stages: list[Stage] = []
+        if self.config.filters.length.enabled:
+            stages.append(LengthFilterStage())
+        if self.config.filters.language.enabled:
+            stages.append(LanguageFilterStage())
         if self.config.filters.labeling_engine.enabled:
             stages.append(LabelingQualityFilterStage(project_root=self.project_root))
         return stages

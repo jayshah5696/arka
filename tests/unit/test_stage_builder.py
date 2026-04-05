@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from arka.config.models import ResolvedConfig
+from arka.pipeline.cheap_filters import LanguageFilterStage, LengthFilterStage
 from arka.pipeline.filter_stages import LabelingQualityFilterStage
 from arka.pipeline.source_stages import SeedSourceStage
 from arka.pipeline.stage_builder import StageBuilder
@@ -101,3 +102,42 @@ def test_project_root_propagated_to_stages(tmp_path: Path) -> None:
     filter_stage = stages[2]
     assert isinstance(filter_stage, LabelingQualityFilterStage)
     assert filter_stage.project_root == tmp_path
+
+
+def test_length_filter_included_when_enabled(tmp_path: Path) -> None:
+    config = _base_config(filters={"target_count": 2, "length": {"enabled": True}})
+    stages = StageBuilder(config=config, project_root=tmp_path).build()
+
+    assert len(stages) == 3
+    assert isinstance(stages[2], LengthFilterStage)
+
+
+def test_language_filter_included_when_enabled(tmp_path: Path) -> None:
+    config = _base_config(filters={"target_count": 2, "language": {"enabled": True}})
+    stages = StageBuilder(config=config, project_root=tmp_path).build()
+
+    assert len(stages) == 3
+    assert isinstance(stages[2], LanguageFilterStage)
+
+
+def test_all_filters_ordering(tmp_path: Path) -> None:
+    """Length → Language → Labeling (cheapest first)."""
+    config = _base_config(
+        filters={
+            "target_count": 2,
+            "length": {"enabled": True},
+            "language": {"enabled": True},
+            "labeling_engine": {
+                "enabled": True,
+                "rubric_path": "rubric.yaml",
+            },
+        }
+    )
+    stages = StageBuilder(config=config, project_root=tmp_path).build()
+
+    assert len(stages) == 5
+    assert isinstance(stages[0], SeedSourceStage)
+    assert isinstance(stages[1], NormalizeConversationStage)
+    assert isinstance(stages[2], LengthFilterStage)
+    assert isinstance(stages[3], LanguageFilterStage)
+    assert isinstance(stages[4], LabelingQualityFilterStage)

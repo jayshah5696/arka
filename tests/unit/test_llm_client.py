@@ -579,7 +579,7 @@ def test_extract_json_text_no_braces_returns_stripped() -> None:
 def test_extract_json_text_unclosed_code_fence_raises() -> None:
     client = _make_client_for_extraction()
     with pytest.raises(ValueError, match="Could not extract JSON from code fence"):
-        client._extract_json_text("```json\n{\"a\": 1}")
+        client._extract_json_text('```json\n{"a": 1}')
 
 
 def test_extract_json_text_whitespace_padding() -> None:

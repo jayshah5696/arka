@@ -38,6 +38,19 @@ class GeneratorConfig(StrictModel):
     generation_multiplier: int
 
 
+class LengthFilterConfig(StrictModel):
+    enabled: bool = False
+    min_instruction_chars: int = 10
+    max_instruction_chars: int = 4096
+    min_response_chars: int = 10
+    max_response_chars: int = 16384
+
+
+class LanguageFilterConfig(StrictModel):
+    enabled: bool = False
+    allowed: list[str] = Field(default_factory=lambda: ["en"])
+
+
 class LabelingFilterConfig(StrictModel):
     enabled: bool = False
     rubric_path: str | None = None
@@ -46,6 +59,8 @@ class LabelingFilterConfig(StrictModel):
 
 class FiltersConfig(StrictModel):
     target_count: int
+    length: LengthFilterConfig = Field(default_factory=LengthFilterConfig)
+    language: LanguageFilterConfig = Field(default_factory=LanguageFilterConfig)
     labeling_engine: LabelingFilterConfig = Field(default_factory=LabelingFilterConfig)
 
 
