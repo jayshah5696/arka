@@ -4,11 +4,9 @@ import hashlib
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import Field, ValidationError
 
-
-class StrictModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+from arka.common.models import StrictModel
 
 
 class RubricDimension(StrictModel):

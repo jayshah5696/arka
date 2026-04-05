@@ -12,6 +12,21 @@ from arka.config.loader import ConfigLoader
     [
         ("config.example.yaml", "OPENAI_API_KEY", "openai-test-key"),
         ("config.openrouter.yaml", "OPENROUTER_API_KEY", "openrouter-test-key"),
+        (
+            "config.examples.verify-openrouter.yaml",
+            "OPENROUTER_API_KEY",
+            "openrouter-test-key",
+        ),
+        (
+            "config.examples.resume-openrouter.yaml",
+            "OPENROUTER_API_KEY",
+            "openrouter-test-key",
+        ),
+        (
+            "config.examples.csv-seeds.yaml",
+            "OPENAI_API_KEY",
+            "openai-test-key",
+        ),
     ],
 )
 def test_example_configs_load(

@@ -25,7 +25,9 @@ def build_single_judge_messages(
         f"Rubric version: {rubric.version}\n"
         f"Description: {rubric.description}\n"
         f"Dimensions:\n{dimensions}\n\n"
-        f"Few-shot examples:\n{few_shot}"
+        f"Few-shot examples:\n{few_shot}\n\n"
+        "Return valid JSON only with this shape:\n"
+        '{"scores":{"dimension_name":1},"reasoning":"short explanation"}'
     )
     user_prompt = f"Instruction: {instruction}\nResponse: {response}"
     return [

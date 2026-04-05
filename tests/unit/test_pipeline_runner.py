@@ -118,6 +118,7 @@ def test_pipeline_runner_writes_stage_parquet_and_jsonl(
             "count_out": 1,
             "status": "completed",
             "resumed": False,
+            "dropped_count": 0,
         },
         {
             "stage": "02_transform",
@@ -125,6 +126,7 @@ def test_pipeline_runner_writes_stage_parquet_and_jsonl(
             "count_out": 1,
             "status": "completed",
             "resumed": False,
+            "dropped_count": 0,
         },
     ]
 
@@ -138,7 +140,7 @@ def test_pipeline_runner_resume_skips_completed_stages(
     )
 
     class FailingSourceStage(SourceStage):
-        def run(self, records: list[dict], ctx) -> list[dict]:
+        def run(self, records: list[Record], ctx) -> list[Record]:
             raise AssertionError("source stage should have been skipped on resume")
 
     resumed = runner.run(
@@ -158,6 +160,7 @@ def test_pipeline_runner_resume_skips_completed_stages(
             "count_out": 1,
             "status": "resumed",
             "resumed": True,
+            "dropped_count": 0,
         },
         {
             "stage": "02_transform",
@@ -165,5 +168,6 @@ def test_pipeline_runner_resume_skips_completed_stages(
             "count_out": 1,
             "status": "resumed",
             "resumed": True,
+            "dropped_count": 0,
         },
     ]

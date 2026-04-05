@@ -6,7 +6,7 @@ from typing import Any
 
 import polars as pl
 
-from arka.records.models import Record, record_model_for_name
+from arka.records.models import Record, StageEvent, record_model_for_name
 
 
 class OutputWriter:
@@ -22,7 +22,17 @@ class OutputWriter:
     def write_parquet(self, records: list[Record], path: Path) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
         frame = pl.DataFrame(
-            [self._record_to_storage_row(record) for record in records]
+            [self.storage_row_for_record(record) for record in records],
+            schema=self._storage_schema(),
+        )
+        frame.write_parquet(path)
+        return path
+
+    def write_dropped_parquet(self, records: list[Record], path: Path) -> Path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        frame = pl.DataFrame(
+            [self._dropped_storage_row(record) for record in records],
+            schema=self._dropped_storage_schema(),
         )
         frame.write_parquet(path)
         return path
@@ -31,7 +41,7 @@ class OutputWriter:
         frame = pl.read_parquet(path)
         return [self._storage_row_to_record(record) for record in frame.to_dicts()]
 
-    def _record_to_storage_row(self, record: Record) -> dict[str, Any]:
+    def storage_row_for_record(self, record: Record) -> dict[str, Any]:
         return {
             "record_type": record.record_type,
             "id": record.id,
@@ -52,6 +62,42 @@ class OutputWriter:
             ),
             "config_hash": record.config_hash,
             "created_at": record.created_at,
+        }
+
+    def _dropped_storage_row(self, record: Record) -> dict[str, Any]:
+        last_event = self._last_stage_event(record)
+        return {
+            **self.storage_row_for_record(record),
+            "drop_stage": last_event.stage if last_event is not None else None,
+            "drop_reason": last_event.reason_code if last_event is not None else None,
+            "drop_detail": last_event.details if last_event is not None else None,
+        }
+
+    def _last_stage_event(self, record: Record) -> StageEvent | None:
+        if not record.stage_events:
+            return None
+        return record.stage_events[-1]
+
+    def _storage_schema(self) -> dict[str, pl.DataType]:
+        return {
+            "record_type": pl.String,
+            "id": pl.String,
+            "content_hash": pl.String,
+            "source_json": pl.String,
+            "lineage_json": pl.String,
+            "payload_json": pl.String,
+            "scores_json": pl.String,
+            "stage_events_json": pl.String,
+            "config_hash": pl.String,
+            "created_at": pl.String,
+        }
+
+    def _dropped_storage_schema(self) -> dict[str, pl.DataType]:
+        return {
+            **self._storage_schema(),
+            "drop_stage": pl.String,
+            "drop_reason": pl.String,
+            "drop_detail": pl.String,
         }
 
     def _storage_row_to_record(self, row: dict[str, Any]) -> Record:

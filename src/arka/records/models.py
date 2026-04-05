@@ -2,11 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import Field
 
-
-class StrictModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+from arka.common.models import StrictModel
 
 
 class RecordSource(StrictModel):

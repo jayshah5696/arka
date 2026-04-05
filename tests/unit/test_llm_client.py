@@ -183,6 +183,40 @@ def test_complete_structured_parses_pydantic_model() -> None:
     assert output.parsed == GreetingResponse(greeting="hello")
 
 
+def test_complete_structured_extracts_json_from_code_fence() -> None:
+    client = LLMClient(
+        config=build_config(),
+        client_factory=lambda _: FakeClient(
+            [FakeResponse('```json\n{"greeting":"hello"}\n```')]
+        ),
+        sleep=lambda _: None,
+    )
+
+    output = client.complete_structured(
+        messages=[{"role": "user", "content": "Return greeting JSON"}],
+        schema=GreetingResponse,
+    )
+
+    assert output.parsed == GreetingResponse(greeting="hello")
+
+
+def test_complete_structured_extracts_json_from_labeled_lines() -> None:
+    client = LLMClient(
+        config=build_config(),
+        client_factory=lambda _: FakeClient(
+            [FakeResponse('Scores: {"greeting":"hello"}\nReasoning: ignored')]
+        ),
+        sleep=lambda _: None,
+    )
+
+    output = client.complete_structured(
+        messages=[{"role": "user", "content": "Return greeting JSON"}],
+        schema=GreetingResponse,
+    )
+
+    assert output.parsed == GreetingResponse(greeting="hello")
+
+
 def test_complete_uses_custom_openai_compatible_base_url() -> None:
     captured_config: list[LLMConfig] = []
 

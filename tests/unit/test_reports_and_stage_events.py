@@ -5,7 +5,13 @@ from pathlib import Path
 
 from arka.pipeline.runner import PipelineRunner
 from arka.pipeline.stages import Stage
-from arka.records.models import Record, RecordLineage, RecordScores, RecordSource
+from arka.records.models import (
+    Record,
+    RecordLineage,
+    RecordScores,
+    RecordSource,
+    StageEvent,
+)
 
 
 class SourceStage(Stage):
@@ -36,6 +42,51 @@ class TransformStage(Stage):
             )
             for record in records
         ]
+
+
+class FilteringStage(Stage):
+    name = "03_filter"
+
+    def run(self, records: list[Record], ctx) -> list[Record]:
+        kept_records: list[Record] = []
+        dropped_records = []
+        for record in records:
+            if record.id == "rec-1":
+                kept_records.append(record)
+                continue
+            dropped_records.append(
+                record.model_copy(
+                    update={
+                        "stage_events": [
+                            *record.stage_events,
+                            StageEvent(
+                                stage=self.name,
+                                action="dropped",
+                                reason_code="too_short",
+                                seq=len(record.stage_events) + 1,
+                            ),
+                        ]
+                    }
+                )
+            )
+        ctx.work_dir.joinpath("stats.json").write_text(
+            json.dumps(
+                {
+                    "stage": self.name,
+                    "count_in": len(records),
+                    "count_out": len(kept_records),
+                    "dropped_count": len(dropped_records),
+                    "drop_reasons": {"too_short": len(dropped_records)},
+                    "quality_distribution": {
+                        "mean": 4.5,
+                        "std": 0.5,
+                        "min": 4.0,
+                        "max": 5.0,
+                    },
+                }
+            )
+        )
+        return kept_records
 
 
 CONFIG = {
@@ -88,6 +139,7 @@ def test_runner_appends_stage_events_and_writes_run_report(tmp_path: Path) -> No
             "count_out": 1,
             "status": "completed",
             "resumed": False,
+            "dropped_count": 0,
         },
         {
             "stage": "02_transform",
@@ -95,6 +147,67 @@ def test_runner_appends_stage_events_and_writes_run_report(tmp_path: Path) -> No
             "count_out": 1,
             "status": "completed",
             "resumed": False,
+            "dropped_count": 0,
         },
     ]
     assert report["dataset_path"].endswith("output/dataset.jsonl")
+
+
+def test_runner_includes_stage_stats_and_drop_reasons_from_stage_stats_file(
+    tmp_path: Path,
+) -> None:
+    runner = PipelineRunner(project_root=tmp_path)
+
+    runner.run(
+        config=CONFIG,
+        stages=[
+            SourceStage(),
+            TransformStage(),
+            FilteringStage(),
+        ],
+        run_id="run-with-filter",
+    )
+
+    report_path = tmp_path / "runs" / "run-with-filter" / "report" / "run_report.json"
+    report = json.loads(report_path.read_text())
+
+    assert report["stage_yields"] == [
+        {
+            "stage": "01_source",
+            "count_in": 0,
+            "count_out": 1,
+            "status": "completed",
+            "resumed": False,
+            "dropped_count": 0,
+        },
+        {
+            "stage": "02_transform",
+            "count_in": 1,
+            "count_out": 1,
+            "status": "completed",
+            "resumed": False,
+            "dropped_count": 0,
+        },
+        {
+            "stage": "03_filter",
+            "count_in": 1,
+            "count_out": 1,
+            "status": "completed",
+            "resumed": False,
+            "dropped_count": 0,
+            "drop_reasons": {"too_short": 0},
+            "quality_distribution": {
+                "mean": 4.5,
+                "std": 0.5,
+                "min": 4.0,
+                "max": 5.0,
+            },
+        },
+    ]
+    assert report["drop_reasons"] == {"too_short": 0}
+    assert report["quality_distribution"] == {
+        "mean": 4.5,
+        "std": 0.5,
+        "min": 4.0,
+        "max": 5.0,
+    }

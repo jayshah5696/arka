@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from arka.config.models import ResolvedConfig
@@ -32,3 +32,6 @@ class StageStat:
     count_out: int
     status: str
     resumed: bool
+    dropped_count: int = 0
+    drop_reasons: dict[str, int] = field(default_factory=dict)
+    quality_distribution: dict[str, float] | None = None

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -101,10 +102,26 @@ class LLMClient:
         if output.text is None:
             raise LLMClientError("structured output expected text but received none")
         try:
-            parsed = schema.model_validate(json.loads(output.text))
+            parsed = schema.model_validate(
+                json.loads(self._extract_json_text(output.text))
+            )
         except (json.JSONDecodeError, ValidationError) as exc:
             raise LLMClientError(f"parse error: {exc}") from exc
+        except ValueError as exc:
+            raise LLMClientError(f"parse error: {exc}") from exc
         return output.model_copy(update={"parsed": parsed})
+
+    def _extract_json_text(self, text: str) -> str:
+        stripped = text.strip()
+        if stripped.startswith("```"):
+            match = re.search(r"```(?:json)?\s*(.*?)\s*```", stripped, re.DOTALL)
+            if match is None:
+                raise ValueError("Could not extract JSON from code fence")
+            return match.group(1)
+        json_object_match = re.search(r"\{.*\}", stripped, re.DOTALL)
+        if json_object_match is not None:
+            return json_object_match.group(0)
+        return stripped
 
     def complete_batch(
         self,

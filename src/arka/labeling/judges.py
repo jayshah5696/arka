@@ -3,15 +3,10 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
-
+from arka.common.models import StrictModel
 from arka.labeling.models import LabelResult
 from arka.labeling.prompting import build_single_judge_messages
 from arka.labeling.rubric import Rubric
-
-
-class StrictModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
 
 
 class JudgeResponse(StrictModel):

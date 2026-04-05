@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import asdict
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -51,12 +51,13 @@ class PipelineRunner:
             if resume and stage_path.exists():
                 records = self.output_writer.read_parquet(stage_path)
                 stage_stats.append(
-                    StageStat(
-                        stage=stage.name,
+                    self._build_stage_stat(
+                        stage_name=stage.name,
                         count_in=len(records),
                         count_out=len(records),
                         status="resumed",
                         resumed=True,
+                        stats_path=run_paths.stage_stats_path(stage.name),
                     )
                 )
                 continue
@@ -87,12 +88,13 @@ class PipelineRunner:
                 status="completed",
             )
             stage_stats.append(
-                StageStat(
-                    stage=stage.name,
+                self._build_stage_stat(
+                    stage_name=stage.name,
                     count_in=count_in,
                     count_out=len(records),
                     status="completed",
                     resumed=False,
+                    stats_path=run_paths.stage_stats_path(stage.name),
                 )
             )
 
@@ -103,7 +105,9 @@ class PipelineRunner:
             "config_hash": config_hash,
             "timestamp": datetime.now(UTC).isoformat(),
             "stage_names": [stage.name for stage in stages],
-            "stage_stats": [asdict(stage_stat) for stage_stat in stage_stats],
+            "stage_stats": [
+                self._serialize_stage_stat(stage_stat) for stage_stat in stage_stats
+            ],
             "final_count": len(records),
             "dataset_path": str(dataset_path),
         }
@@ -114,6 +118,8 @@ class PipelineRunner:
             "stage_yields": manifest["stage_stats"],
             "final_count": len(records),
             "dataset_path": str(dataset_path),
+            "drop_reasons": self._aggregate_drop_reasons(stage_stats),
+            "quality_distribution": self._report_quality_distribution(stage_stats),
         }
         run_paths.manifest_path.write_text(json.dumps(manifest, indent=2))
         run_paths.run_report_path.write_text(json.dumps(run_report, indent=2))
@@ -160,3 +166,72 @@ class PipelineRunner:
                 record.model_copy(update={"stage_events": stage_events})
             )
         return updated_records
+
+    def _build_stage_stat(
+        self,
+        stage_name: str,
+        count_in: int,
+        count_out: int,
+        status: str,
+        resumed: bool,
+        stats_path: Path,
+    ) -> StageStat:
+        stats_payload = self._load_stage_stats(stats_path)
+        return StageStat(
+            stage=stage_name,
+            count_in=count_in,
+            count_out=count_out,
+            status=status,
+            resumed=resumed,
+            dropped_count=int(stats_payload.get("dropped_count", 0)),
+            drop_reasons={
+                str(key): int(value)
+                for key, value in dict(stats_payload.get("drop_reasons", {})).items()
+            },
+            quality_distribution=self._normalize_quality_distribution(
+                stats_payload.get("quality_distribution")
+            ),
+        )
+
+    def _load_stage_stats(self, path: Path) -> dict[str, Any]:
+        if not path.exists():
+            return {}
+        return json.loads(path.read_text())
+
+    def _serialize_stage_stat(self, stage_stat: StageStat) -> dict[str, Any]:
+        payload = {
+            "stage": stage_stat.stage,
+            "count_in": stage_stat.count_in,
+            "count_out": stage_stat.count_out,
+            "status": stage_stat.status,
+            "resumed": stage_stat.resumed,
+            "dropped_count": stage_stat.dropped_count,
+        }
+        if stage_stat.drop_reasons:
+            payload["drop_reasons"] = stage_stat.drop_reasons
+        if stage_stat.quality_distribution is not None:
+            payload["quality_distribution"] = stage_stat.quality_distribution
+        return payload
+
+    def _aggregate_drop_reasons(self, stage_stats: list[StageStat]) -> dict[str, int]:
+        totals: Counter[str] = Counter()
+        for stage_stat in stage_stats:
+            totals.update(stage_stat.drop_reasons)
+        return dict(totals)
+
+    def _report_quality_distribution(
+        self, stage_stats: list[StageStat]
+    ) -> dict[str, float] | None:
+        for stage_stat in reversed(stage_stats):
+            if stage_stat.quality_distribution is not None:
+                return stage_stat.quality_distribution
+        return None
+
+    def _normalize_quality_distribution(self, payload: Any) -> dict[str, float] | None:
+        if not isinstance(payload, dict):
+            return None
+        return {
+            str(key): float(value)
+            for key, value in payload.items()
+            if isinstance(value, int | float)
+        }

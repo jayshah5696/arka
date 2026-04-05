@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from arka.config.loader import ConfigLoader
+from arka.pipeline.filter_stages import LabelingQualityFilterStage
 from arka.pipeline.runner import PipelineRunner
 from arka.pipeline.source_stages import SeedSourceStage
 from arka.pipeline.transforms import NormalizeConversationStage
@@ -30,6 +31,8 @@ def main(argv: Sequence[str] | None = None) -> None:
             SeedSourceStage(project_root=project_root),
             NormalizeConversationStage(),
         ]
+        if config.filters.labeling_engine.enabled:
+            stages.append(LabelingQualityFilterStage(project_root=project_root))
 
     PipelineRunner(project_root=project_root).run(
         config=config,

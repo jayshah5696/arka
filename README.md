@@ -35,5 +35,6 @@ Artifacts will be written under `runs/smoke-run/` and `output/smoke-dataset.json
 - `config.smoke.yaml` — simplest runnable config
 - `config.example.yaml` — basic OpenAI config
 - `config.openrouter.yaml` — OpenRouter-compatible example
+- `docs/config-examples.md` — catalog of commented example configs
 - `rubrics/sft_quality.yaml` — starter labeling rubric
 - `docs/SPEC.md` — approved engineering spec

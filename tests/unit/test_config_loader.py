@@ -53,6 +53,13 @@ generator:
   generation_multiplier: 2
 filters:
   target_count: 5
+  labeling_engine:
+    enabled: true
+    rubric_path: ./rubrics/sft_quality.yaml
+    min_overall_score: 3.5
+labeling_engine:
+  rubric_path: ./rubrics/sft_quality.yaml
+  mode: single
 output:
   format: chatml
   path: ./output/dataset.jsonl
@@ -108,3 +115,5 @@ def test_load_config_supports_openrouter_style_openai_compatible_settings(
     assert resolved.llm.openai_compatible is not None
     assert str(resolved.llm.openai_compatible.referer) == "https://example.com/"
     assert resolved.llm.openai_compatible.title == "arka"
+    assert resolved.filters.labeling_engine.enabled is True
+    assert resolved.labeling_engine.rubric_path == "./rubrics/sft_quality.yaml"

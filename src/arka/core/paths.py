@@ -47,3 +47,9 @@ class RunPaths:
 
     def stage_data_path(self, stage_name: str) -> Path:
         return self.stage_dir(stage_name) / "data.parquet"
+
+    def stage_dropped_path(self, stage_name: str) -> Path:
+        return self.stage_dir(stage_name) / "dropped.parquet"
+
+    def stage_stats_path(self, stage_name: str) -> Path:
+        return self.stage_dir(stage_name) / "stats.json"
