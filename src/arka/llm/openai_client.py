@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from openai import OpenAI
 
 from arka.config.models import LLMConfig
@@ -22,10 +20,3 @@ def build_openai_client(config: LLMConfig) -> OpenAI:
         default_headers=default_headers or None,
     )
 
-
-@dataclass(frozen=True)
-class OpenAIClientFactory:
-    config: LLMConfig
-
-    def build(self) -> OpenAI:
-        return build_openai_client(self.config)
