@@ -510,3 +510,80 @@ def test_complete_batch_caps_default_worker_count(
 
     assert len(outputs) == 20
     assert captured_workers == [8]
+
+
+# --- _extract_json_text edge-case tests ---
+
+
+def _make_client_for_extraction() -> LLMClient:
+    config = LLMConfig(
+        provider="openai",
+        model="gpt-4o-mini",
+        api_key="test-key",
+        base_url="https://api.openai.com/v1",
+    )
+    return LLMClient(config=config)
+
+
+def test_extract_json_text_bare_json() -> None:
+    client = _make_client_for_extraction()
+    result = client._extract_json_text('{"greeting": "hello"}')
+    assert result == '{"greeting": "hello"}'
+
+
+def test_extract_json_text_with_surrounding_text() -> None:
+    client = _make_client_for_extraction()
+    text = 'Here is the result: {"greeting": "hello"} Hope that helps!'
+    result = client._extract_json_text(text)
+    assert result == '{"greeting": "hello"}'
+
+
+def test_extract_json_text_code_fence() -> None:
+    client = _make_client_for_extraction()
+    text = '```json\n{"greeting": "hello"}\n```'
+    result = client._extract_json_text(text)
+    assert result == '{"greeting": "hello"}'
+
+
+def test_extract_json_text_code_fence_no_lang() -> None:
+    client = _make_client_for_extraction()
+    text = '```\n{"greeting": "hello"}\n```'
+    result = client._extract_json_text(text)
+    assert result == '{"greeting": "hello"}'
+
+
+def test_extract_json_text_nested_braces() -> None:
+    """Nested braces in a single JSON object should be extracted correctly."""
+    client = _make_client_for_extraction()
+    text = '{"outer": {"inner": "value"}}'
+    result = client._extract_json_text(text)
+    assert result == '{"outer": {"inner": "value"}}'
+
+
+def test_extract_json_text_greedy_limitation_two_objects() -> None:
+    """Known limitation: greedy regex grabs from first { to last },
+    which produces invalid JSON when two objects are present."""
+    client = _make_client_for_extraction()
+    text = '{"a": 1} some text {"b": 2}'
+    result = client._extract_json_text(text)
+    # The greedy match spans both objects — this is the documented limitation.
+    assert result == '{"a": 1} some text {"b": 2}'
+
+
+def test_extract_json_text_no_braces_returns_stripped() -> None:
+    client = _make_client_for_extraction()
+    result = client._extract_json_text("  just plain text  ")
+    assert result == "just plain text"
+
+
+def test_extract_json_text_unclosed_code_fence_raises() -> None:
+    client = _make_client_for_extraction()
+    with pytest.raises(ValueError, match="Could not extract JSON from code fence"):
+        client._extract_json_text("```json\n{\"a\": 1}")
+
+
+def test_extract_json_text_whitespace_padding() -> None:
+    client = _make_client_for_extraction()
+    text = '\n  \n  {"greeting": "hello"}  \n  '
+    result = client._extract_json_text(text)
+    assert result == '{"greeting": "hello"}'
