@@ -19,6 +19,8 @@ This project should maintain a growing set of commented example configs.
   - OpenRouter-backed prompt generation + single-judge quality filter example
   - closer to the current live vertical slice
 
+See `docs/validation-matrix.md` for the exact config/runtime combinations currently exercised by automated tests.
+
 ### Commented examples
 
 - `config.examples.verify-openrouter.yaml`

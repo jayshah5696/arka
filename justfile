@@ -20,6 +20,9 @@ check:
     uv run ruff format --check .
     uv run pytest
 
+matrix:
+    uv run pytest -q tests/integration/test_supported_options_matrix.py
+
 run:
     uv run arka
 

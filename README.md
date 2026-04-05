@@ -12,6 +12,7 @@ Artifacts land in `runs/<run_id>/` plus the configured JSONL output path.
 
 ## Common Commands
 - `just test` — run tests
+- `just matrix` — run the supported config/runtime validation matrix
 - `just check` — lint, format-check, test
 - `just run` — run `arka` with default `config.yaml`
 - `uv run arka --config config.smoke.yaml --run-id smoke-run` — run smoke pipeline
@@ -31,5 +32,6 @@ Artifacts land in `runs/<run_id>/` plus the configured JSONL output path.
 - `config.openrouter.yaml` — OpenRouter-compatible example
 - `config.examples.dedup-quality.yaml` — generator + exact dedup + cheap filters + quality filter
 - `docs/config-examples.md` — config catalog
+- `docs/validation-matrix.md` — supported options, quality bar, and release checks
 
 OpenAI-compatible routing, including OpenRouter-backed paths, is supported in practice.
