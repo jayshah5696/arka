@@ -17,11 +17,12 @@ Artifacts land in `runs/<run_id>/` plus the configured JSONL output path.
 - `uv run arka --config config.smoke.yaml --run-id smoke-run` — run smoke pipeline
 
 ## Current Implemented Path
-- seed source (JSONL/CSV) → normalize → prompt-based generate → exact dedup
+- seed source (JSONL/CSV) → normalize → prompt-based generate → exact dedup → near dedup
 - cheap filters: length, language
 - single-judge labeling quality filter
 - resumable runner with SQLite checkpoints
-- artifacts: `data.parquet`, `dropped.parquet`, `clusters.parquet`, `stats.json`, `manifest.json`, `run_report.json`
+- artifacts: `data.parquet`, `dropped.parquet`, `clusters.parquet`, `stats.json`, `manifest.json`, `run_report.json`, `samples.jsonl`, `canaries.json`
+- diversity embeddings: local HuggingFace-style model by default (`all-MiniLM-L6-v2` via FastEmbed), configurable to provider/OpenAI-compatible APIs
 - OpenAI-compatible client with structured-output strategy chain
 
 ## Example Configs

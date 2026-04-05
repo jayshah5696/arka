@@ -57,7 +57,7 @@ dedup:
 filters:
   target_count: 1
 output:
-  format: jsonl
+  format: chatml
   path: ./output/dataset.jsonl
 """
 

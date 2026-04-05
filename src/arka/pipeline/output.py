@@ -6,16 +6,31 @@ from typing import Any
 
 import polars as pl
 
-from arka.records.models import Record, StageEvent, record_model_for_name
+from arka.records.models import (
+    ConversationRecord,
+    Record,
+    StageEvent,
+    record_model_for_name,
+)
 
 
 class OutputWriter:
-    def write_jsonl(self, records: list[Record], path: Path) -> Path:
+    def write_jsonl(
+        self,
+        records: list[Record],
+        path: Path,
+        *,
+        output_format: str = "jsonl",
+    ) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", encoding="utf-8") as handle:
             for record in records:
                 handle.write(
-                    json.dumps(record.export_payload(), separators=(",", ":")) + "\n"
+                    json.dumps(
+                        self._export_record(record, output_format=output_format),
+                        separators=(",", ":"),
+                    )
+                    + "\n"
                 )
         return path
 
@@ -62,6 +77,34 @@ class OutputWriter:
             ),
             "config_hash": record.config_hash,
             "created_at": record.created_at,
+        }
+
+    def _export_record(self, record: Record, *, output_format: str) -> dict[str, Any]:
+        if output_format == "jsonl":
+            return record.export_payload()
+        if output_format == "chatml":
+            return self._format_chatml(record)
+        if output_format == "alpaca":
+            return self._format_alpaca(record)
+        raise ValueError(f"Unsupported output format: {output_format!r}")
+
+    def _format_chatml(self, record: Record) -> dict[str, Any]:
+        if not isinstance(record, ConversationRecord):
+            return record.export_payload()
+        messages: list[dict[str, str]] = []
+        if record.payload.system is not None:
+            messages.append({"role": "system", "content": record.payload.system})
+        messages.append({"role": "user", "content": record.payload.instruction})
+        messages.append({"role": "assistant", "content": record.payload.response})
+        return {"messages": messages}
+
+    def _format_alpaca(self, record: Record) -> dict[str, Any]:
+        if not isinstance(record, ConversationRecord):
+            return record.export_payload()
+        return {
+            "instruction": record.payload.instruction,
+            "input": "",
+            "output": record.payload.response,
         }
 
     def _dropped_storage_row(self, record: Record) -> dict[str, Any]:

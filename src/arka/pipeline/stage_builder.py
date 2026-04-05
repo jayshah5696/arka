@@ -5,7 +5,7 @@ from pathlib import Path
 from arka.config.models import ResolvedConfig
 from arka.pipeline.cheap_filters import LanguageFilterStage, LengthFilterStage
 from arka.pipeline.checkpoint import CheckpointManager
-from arka.pipeline.dedup_stages import ExactDedupStage
+from arka.pipeline.dedup_stages import ExactDedupStage, NearDedupStage
 from arka.pipeline.filter_stages import LabelingQualityFilterStage
 from arka.pipeline.generator_stages import PromptBasedGeneratorStage
 from arka.pipeline.source_stages import SeedSourceStage
@@ -53,6 +53,8 @@ class StageBuilder:
         stages: list[Stage] = []
         if self.config.dedup.exact.enabled:
             stages.append(ExactDedupStage())
+        if self.config.dedup.near.enabled:
+            stages.append(NearDedupStage())
         return stages
 
     def _filter_stages(self) -> list[Stage]:

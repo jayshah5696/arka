@@ -75,8 +75,9 @@ def config_dict() -> dict:
             "target_count": 2,
             "generation_multiplier": 1,
         },
-        "dedup": {"exact": {"enabled": False}},
+        "dedup": {"exact": {"enabled": False}, "near": {"enabled": False}},
         "filters": {"target_count": 2},
+        "embeddings": {"provider": "huggingface", "model": "all-MiniLM-L6-v2"},
         "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
     }
 
@@ -180,6 +181,39 @@ def test_pipeline_runner_resume_skips_completed_stages(
             "dropped_count": 0,
         },
     ]
+
+
+def test_pipeline_runner_writes_report_samples_and_canaries_artifacts(
+    tmp_path: Path, config_dict: dict
+) -> None:
+    runner = PipelineRunner(project_root=tmp_path)
+
+    runner.run(
+        config=config_dict,
+        stages=[SourceStage(), TransformStage()],
+        run_id="run-artifacts",
+    )
+
+    samples_path = tmp_path / "runs" / "run-artifacts" / "report" / "samples.jsonl"
+    canaries_path = tmp_path / "runs" / "run-artifacts" / "report" / "canaries.json"
+
+    assert samples_path.exists()
+    assert canaries_path.exists()
+
+    samples = [
+        json.loads(line)
+        for line in samples_path.read_text().splitlines()
+        if line.strip()
+    ]
+    assert len(samples) == 1
+    assert samples[0] == {"value": "ALPHA"}
+
+    canaries = json.loads(canaries_path.read_text())
+    assert canaries == {
+        "known_good": [],
+        "known_bad": [],
+        "status": None,
+    }
 
 
 def test_pipeline_runner_marks_failed_run_and_persists_failure_report(

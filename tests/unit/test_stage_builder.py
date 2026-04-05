@@ -6,7 +6,7 @@ import pytest
 
 from arka.config.models import ResolvedConfig
 from arka.pipeline.cheap_filters import LanguageFilterStage, LengthFilterStage
-from arka.pipeline.dedup_stages import ExactDedupStage
+from arka.pipeline.dedup_stages import ExactDedupStage, NearDedupStage
 from arka.pipeline.filter_stages import LabelingQualityFilterStage
 from arka.pipeline.generator_stages import PromptBasedGeneratorStage
 from arka.pipeline.source_stages import SeedSourceStage
@@ -30,8 +30,9 @@ def _base_config(**overrides) -> ResolvedConfig:
             "target_count": 2,
             "generation_multiplier": 1,
         },
-        "dedup": {"exact": {"enabled": False}},
+        "dedup": {"exact": {"enabled": False}, "near": {"enabled": False}},
         "filters": {"target_count": 2},
+        "embeddings": {"provider": "huggingface", "model": "all-MiniLM-L6-v2"},
         "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
         **overrides,
     }
@@ -139,6 +140,17 @@ def test_exact_dedup_included_when_enabled(tmp_path: Path) -> None:
     assert isinstance(stages[3], ExactDedupStage)
 
 
+def test_near_dedup_included_when_enabled(tmp_path: Path) -> None:
+    config = _base_config(
+        dedup={"exact": {"enabled": False}, "near": {"enabled": True}}
+    )
+    stages = StageBuilder(config=config, project_root=tmp_path).build()
+
+    assert len(stages) == 4
+    assert isinstance(stages[2], PromptBasedGeneratorStage)
+    assert isinstance(stages[3], NearDedupStage)
+
+
 def test_length_filter_included_when_enabled(tmp_path: Path) -> None:
     config = _base_config(filters={"target_count": 2, "length": {"enabled": True}})
     stages = StageBuilder(config=config, project_root=tmp_path).build()
@@ -158,9 +170,9 @@ def test_language_filter_included_when_enabled(tmp_path: Path) -> None:
 
 
 def test_all_filters_ordering(tmp_path: Path) -> None:
-    """Source → normalize → generate → exact dedup → length → language → labeling."""
+    """Source → normalize → generate → exact dedup → near dedup → length → language → labeling."""
     config = _base_config(
-        dedup={"exact": {"enabled": True}},
+        dedup={"exact": {"enabled": True}, "near": {"enabled": True}},
         filters={
             "target_count": 2,
             "length": {"enabled": True},
@@ -173,11 +185,12 @@ def test_all_filters_ordering(tmp_path: Path) -> None:
     )
     stages = StageBuilder(config=config, project_root=tmp_path).build()
 
-    assert len(stages) == 7
+    assert len(stages) == 8
     assert isinstance(stages[0], SeedSourceStage)
     assert isinstance(stages[1], NormalizeConversationStage)
     assert isinstance(stages[2], PromptBasedGeneratorStage)
     assert isinstance(stages[3], ExactDedupStage)
-    assert isinstance(stages[4], LengthFilterStage)
-    assert isinstance(stages[5], LanguageFilterStage)
-    assert isinstance(stages[6], LabelingQualityFilterStage)
+    assert isinstance(stages[4], NearDedupStage)
+    assert isinstance(stages[5], LengthFilterStage)
+    assert isinstance(stages[6], LanguageFilterStage)
+    assert isinstance(stages[7], LabelingQualityFilterStage)

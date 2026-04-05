@@ -67,7 +67,7 @@ dedup:
 filters:
   target_count: 1
 output:
-  format: jsonl
+  format: chatml
   path: ./output/smoke-dataset.jsonl
 """
     )
@@ -85,5 +85,5 @@ output:
     assert stage_path.exists()
     assert (
         dataset_path.read_text().strip()
-        == '{"instruction":"Generated hello","response":"Generated hello response","system":null,"turns":null}'
+        == '{"messages":[{"role":"user","content":"Generated hello"},{"role":"assistant","content":"Generated hello response"}]}'
     )

@@ -31,6 +31,8 @@ generator:
 dedup:
   exact:
     enabled: false
+  near:
+    enabled: false
 filters:
   target_count: 5
   labeling_engine:
@@ -40,6 +42,9 @@ filters:
 labeling_engine:
   rubric_path: ./rubrics/sft_quality.yaml
   mode: single
+embeddings:
+  provider: huggingface
+  model: all-MiniLM-L6-v2
 output:
   format: chatml
   path: ./output/dataset.jsonl

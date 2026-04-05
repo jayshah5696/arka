@@ -2,21 +2,27 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
+import random
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import yaml
+from fastembed import TextEmbedding
 
 from arka.config.loader import ConfigLoader
-from arka.config.models import ResolvedConfig
+from arka.config.models import LLMConfig, ResolvedConfig
 from arka.core.paths import RunPaths
+from arka.labeling.rubric import RubricLoader
+from arka.llm.openai_client import build_openai_client
 from arka.pipeline.checkpoint import CheckpointManager
 from arka.pipeline.models import RunResult, StageContext, StageErrorInfo, StageStat
 from arka.pipeline.output import OutputWriter
 from arka.pipeline.stages import Stage
-from arka.records.models import Record, StageEvent
+from arka.records.models import ConversationRecord, Record, StageEvent
 
 
 class PipelineRunner:
@@ -149,6 +155,9 @@ class PipelineRunner:
                 dataset_path=None,
                 status="failed",
                 error=self._serialize_error(failed_stage_name, failed_error),
+                report_dir=run_paths.report_dir,
+                records=records,
+                config=resolved_config,
             )
             run_paths.manifest_path.write_text(json.dumps(manifest, indent=2))
             run_paths.run_report_path.write_text(json.dumps(run_report, indent=2))
@@ -156,7 +165,11 @@ class PipelineRunner:
             raise
 
         output_path = self.project_root / resolved_config.output.path
-        dataset_path = self.output_writer.write_jsonl(records=records, path=output_path)
+        dataset_path = self.output_writer.write_jsonl(
+            records=records,
+            path=output_path,
+            output_format=resolved_config.output.format,
+        )
         manifest = self._build_manifest(
             run_id=run_id,
             config_hash=config_hash,
@@ -174,6 +187,9 @@ class PipelineRunner:
             dataset_path=dataset_path,
             status="completed",
             error=None,
+            report_dir=run_paths.report_dir,
+            records=records,
+            config=resolved_config,
         )
         run_paths.manifest_path.write_text(json.dumps(manifest, indent=2))
         run_paths.run_report_path.write_text(json.dumps(run_report, indent=2))
@@ -344,7 +360,18 @@ class PipelineRunner:
         dataset_path: Path | None,
         status: str,
         error: dict[str, str] | None,
+        report_dir: Path,
+        records: list[Record],
+        config: ResolvedConfig,
     ) -> dict[str, Any]:
+        report_dir.mkdir(parents=True, exist_ok=True)
+        samples_path = self._write_samples(
+            records, report_dir / "samples.jsonl", config
+        )
+        canaries_path = report_dir / "canaries.json"
+        canaries = self._build_canaries(config=config, report_path=canaries_path)
+        diversity_score = self._compute_diversity_score(records=records, config=config)
+
         stage_costs = [
             stage_stat.cost_usd
             for stage_stat in stage_stats
@@ -358,14 +385,223 @@ class PipelineRunner:
             "stage_yields": manifest["stage_stats"],
             "final_count": manifest["final_count"],
             "dataset_path": str(dataset_path) if dataset_path is not None else None,
+            "samples_path": str(samples_path),
+            "canaries_path": str(canaries_path),
             "drop_reasons": self._aggregate_drop_reasons(stage_stats),
             "quality_distribution": self._report_quality_distribution(stage_stats),
+            "diversity_score": diversity_score,
+            "canaries": canaries,
             "cost_usd": total_cost,
             "status": status,
         }
         if error is not None:
             run_report["error"] = error
         return run_report
+
+    def _write_samples(
+        self,
+        records: list[Record],
+        path: Path,
+        config: ResolvedConfig,
+    ) -> Path:
+        rng = random.Random(0)
+        samples = list(records)
+        if len(samples) > 20:
+            samples = rng.sample(samples, 20)
+        return self.output_writer.write_jsonl(
+            records=samples,
+            path=path,
+            output_format=config.output.format,
+        )
+
+    def _build_canaries(
+        self,
+        *,
+        config: ResolvedConfig,
+        report_path: Path,
+    ) -> dict[str, Any]:
+        if report_path.exists():
+            return json.loads(report_path.read_text())
+
+        filter_cfg = config.filters.labeling_engine
+        rubric_path_value = filter_cfg.rubric_path or config.labeling_engine.rubric_path
+        if not filter_cfg.enabled or rubric_path_value is None:
+            payload = {
+                "known_good": [],
+                "known_bad": [],
+                "status": None,
+            }
+            report_path.write_text(json.dumps(payload, indent=2))
+            return payload
+
+        rubric_path = Path(rubric_path_value)
+        if not rubric_path.is_absolute():
+            rubric_path = self.project_root / rubric_path
+        rubric = RubricLoader().load(rubric_path)
+        if len(rubric.few_shot) < 2:
+            payload = {
+                "known_good": [],
+                "known_bad": [],
+                "status": None,
+            }
+            report_path.write_text(json.dumps(payload, indent=2))
+            return payload
+
+        good = rubric.few_shot[0]
+        bad = rubric.few_shot[-1]
+        good_score = self._weighted_score(good.scores, rubric.overall_weights)
+        bad_score = self._weighted_score(bad.scores, rubric.overall_weights)
+        payload = {
+            "known_good": [
+                {"id": "few_shot_0", "expected": "high", "actual_score": good_score}
+            ],
+            "known_bad": [
+                {
+                    "id": f"few_shot_{len(rubric.few_shot) - 1}",
+                    "expected": "low",
+                    "actual_score": bad_score,
+                }
+            ],
+            "status": "pass" if bad_score < good_score else "warn",
+        }
+        report_path.write_text(json.dumps(payload, indent=2))
+        return payload
+
+    def _weighted_score(
+        self, scores: dict[str, int], weights: dict[str, float]
+    ) -> float:
+        total = sum(scores[name] * weights[name] for name in weights)
+        return round(float(total), 4)
+
+    def _compute_diversity_score(
+        self,
+        *,
+        records: list[Record],
+        config: ResolvedConfig,
+    ) -> float | None:
+        instructions = [
+            record.payload.instruction
+            for record in records
+            if isinstance(record, ConversationRecord)
+        ]
+        if len(instructions) < 2:
+            return None
+
+        embeddings = self._embed_texts(config=config, texts=instructions)
+        if embeddings is None or len(embeddings) < 2:
+            return None
+
+        cluster_count = min(50, len(embeddings))
+        if cluster_count < 2:
+            return None
+        labels = self._kmeans_labels(embeddings, cluster_count=cluster_count)
+        counts = np.bincount(labels, minlength=cluster_count)
+        probabilities = counts / counts.sum()
+        entropy = -np.sum(probabilities * np.log(probabilities + 1e-10))
+        score = float(entropy / math.log(cluster_count))
+        return round(score, 4)
+
+    def _embed_texts(
+        self,
+        *,
+        config: ResolvedConfig,
+        texts: list[str],
+    ) -> np.ndarray | None:
+        if config.embeddings.provider == "huggingface":
+            return self._embed_texts_huggingface(config=config, texts=texts)
+        return self._embed_texts_openai(config=config, texts=texts)
+
+    def _embed_texts_huggingface(
+        self,
+        *,
+        config: ResolvedConfig,
+        texts: list[str],
+    ) -> np.ndarray | None:
+        model_name = self._resolved_huggingface_embedding_model(config.embeddings.model)
+        try:
+            embedding_model = TextEmbedding(model_name=model_name)
+            vectors = list(embedding_model.embed(texts))
+        except Exception:
+            return None
+        if not vectors:
+            return None
+        return np.array(vectors, dtype=float)
+
+    def _resolved_huggingface_embedding_model(self, model: str) -> str:
+        if "/" in model:
+            return model
+        return f"sentence-transformers/{model}"
+
+    def _embed_texts_openai(
+        self,
+        *,
+        config: ResolvedConfig,
+        texts: list[str],
+    ) -> np.ndarray | None:
+        llm_config = self._embedding_llm_config(config)
+        client = build_openai_client(llm_config)
+        try:
+            response = client.embeddings.create(
+                model=config.embeddings.model,
+                input=texts,
+            )
+        except Exception:
+            return None
+        vectors = [item.embedding for item in response.data]
+        if not vectors:
+            return None
+        return np.array(vectors, dtype=float)
+
+    def _embedding_llm_config(self, config: ResolvedConfig) -> LLMConfig:
+        embedding_cfg = config.embeddings
+        api_key = embedding_cfg.api_key or config.llm.api_key
+        base_url = embedding_cfg.base_url or config.llm.base_url
+        timeout_seconds = (
+            embedding_cfg.timeout_seconds
+            if embedding_cfg.timeout_seconds is not None
+            else config.llm.timeout_seconds
+        )
+        max_retries = (
+            embedding_cfg.max_retries
+            if embedding_cfg.max_retries is not None
+            else config.llm.max_retries
+        )
+        openai_compatible = (
+            embedding_cfg.openai_compatible or config.llm.openai_compatible
+        )
+        return LLMConfig(
+            provider="openai",
+            model=embedding_cfg.model,
+            api_key=api_key,
+            base_url=base_url,
+            timeout_seconds=timeout_seconds,
+            max_retries=max_retries,
+            openai_compatible=openai_compatible,
+        )
+
+    def _kmeans_labels(self, embeddings: np.ndarray, cluster_count: int) -> np.ndarray:
+        rng = np.random.default_rng(0)
+        indices = rng.choice(len(embeddings), size=cluster_count, replace=False)
+        centroids = embeddings[indices].copy()
+        labels = np.zeros(len(embeddings), dtype=int)
+
+        for _ in range(20):
+            distances = np.linalg.norm(
+                embeddings[:, np.newaxis, :] - centroids[np.newaxis, :, :], axis=2
+            )
+            new_labels = np.argmin(distances, axis=1)
+            if np.array_equal(labels, new_labels):
+                break
+            labels = new_labels
+            for cluster_index in range(cluster_count):
+                members = embeddings[labels == cluster_index]
+                if len(members) == 0:
+                    centroids[cluster_index] = embeddings[
+                        rng.integers(0, len(embeddings))
+                    ]
+                else:
+                    centroids[cluster_index] = members.mean(axis=0)
+        return labels
 
     def _serialize_error(
         self, stage_name: str | None, error: StageErrorInfo | None

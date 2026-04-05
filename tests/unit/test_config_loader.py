@@ -26,8 +26,13 @@ generator:
 dedup:
   exact:
     enabled: false
+  near:
+    enabled: false
 filters:
   target_count: 5
+embeddings:
+  provider: huggingface
+  model: all-MiniLM-L6-v2
 output:
   format: chatml
   path: ./output/dataset.jsonl
@@ -57,6 +62,8 @@ generator:
 dedup:
   exact:
     enabled: false
+  near:
+    enabled: false
 filters:
   target_count: 5
   labeling_engine:
@@ -66,6 +73,14 @@ filters:
 labeling_engine:
   rubric_path: ./rubrics/sft_quality.yaml
   mode: single
+embeddings:
+  provider: openai
+  model: text-embedding-3-small
+  api_key: ${OPENROUTER_API_KEY}
+  base_url: https://openrouter.ai/api/v1
+  openai_compatible:
+    referer: https://example.com
+    title: arka
 output:
   format: chatml
   path: ./output/dataset.jsonl
@@ -85,6 +100,8 @@ def test_load_config_resolves_env_vars(
     assert resolved.llm.api_key == "test-key"
     assert str(resolved.llm.base_url) == "https://api.openai.com/v1"
     assert resolved.executor.max_workers == 4
+    assert resolved.embeddings.provider == "huggingface"
+    assert resolved.embeddings.model == "all-MiniLM-L6-v2"
 
 
 def test_load_config_rejects_unknown_keys(
@@ -123,3 +140,6 @@ def test_load_config_supports_openrouter_style_openai_compatible_settings(
     assert resolved.llm.openai_compatible.title == "arka"
     assert resolved.filters.labeling_engine.enabled is True
     assert resolved.labeling_engine.rubric_path == "./rubrics/sft_quality.yaml"
+    assert resolved.embeddings.provider == "openai"
+    assert resolved.embeddings.model == "text-embedding-3-small"
+    assert resolved.embeddings.api_key == "openrouter-key"

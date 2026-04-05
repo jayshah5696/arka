@@ -53,8 +53,16 @@ class ExactDedupConfig(StrictModel):
     enabled: bool = False
 
 
+class NearDedupConfig(StrictModel):
+    enabled: bool = False
+    shingle_size: int = 5
+    num_hashes: int = 128
+    jaccard_threshold: float = 0.7
+
+
 class DedupConfig(StrictModel):
     exact: ExactDedupConfig = Field(default_factory=ExactDedupConfig)
+    near: NearDedupConfig = Field(default_factory=NearDedupConfig)
 
 
 class LengthFilterConfig(StrictModel):
@@ -84,8 +92,18 @@ class FiltersConfig(StrictModel):
 
 
 class OutputConfig(StrictModel):
-    format: str
+    format: Literal["jsonl", "chatml", "alpaca"]
     path: str
+
+
+class EmbeddingsConfig(StrictModel):
+    provider: Literal["huggingface", "openai"] = "huggingface"
+    model: str = "all-MiniLM-L6-v2"
+    api_key: str | None = None
+    base_url: HttpUrl | None = None
+    timeout_seconds: float | None = None
+    max_retries: int | None = None
+    openai_compatible: OpenAICompatibleConfig | None = None
 
 
 class LabelingEngineConfig(StrictModel):
@@ -102,5 +120,6 @@ class ResolvedConfig(StrictModel):
     generator: GeneratorConfig
     dedup: DedupConfig = Field(default_factory=DedupConfig)
     filters: FiltersConfig
+    embeddings: EmbeddingsConfig = Field(default_factory=EmbeddingsConfig)
     labeling_engine: LabelingEngineConfig = Field(default_factory=LabelingEngineConfig)
     output: OutputConfig

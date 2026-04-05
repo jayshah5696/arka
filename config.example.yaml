@@ -25,6 +25,8 @@ generator:
 dedup:
   exact:
     enabled: false
+  near:
+    enabled: false
 
 filters:
   target_count: 10
@@ -41,6 +43,10 @@ filters:
   #   enabled: true
   #   rubric_path: ./rubrics/sft_quality.yaml
   #   min_overall_score: 3.0
+
+embeddings:
+  provider: huggingface
+  model: all-MiniLM-L6-v2
 
 output:
   format: jsonl
