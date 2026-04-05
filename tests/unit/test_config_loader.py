@@ -23,6 +23,9 @@ generator:
   type: prompt_based
   target_count: 5
   generation_multiplier: 2
+dedup:
+  exact:
+    enabled: false
 filters:
   target_count: 5
 output:
@@ -51,6 +54,9 @@ generator:
   type: prompt_based
   target_count: 5
   generation_multiplier: 2
+dedup:
+  exact:
+    enabled: false
 filters:
   target_count: 5
   labeling_engine:

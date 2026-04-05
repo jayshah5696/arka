@@ -22,6 +22,10 @@ generator:
   target_count: 1
   generation_multiplier: 1
 
+dedup:
+  exact:
+    enabled: false
+
 filters:
   target_count: 1
 

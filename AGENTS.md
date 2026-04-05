@@ -3,8 +3,9 @@
 - Keep this file short and project-specific. Put longer rationale in `docs/`.
 - For Python projects, bootstrap with `uv init` (`--package` if this becomes a library/CLI).
 - Use `just` for common project tasks instead of a `Makefile`.
+- Prefer `just` targets for standard workflows (`just test`, `just lint`, `just format`, `just check`, `just run`); use raw `uv run ...` for ad-hoc commands not already covered by the `justfile`.
 - Manage dependencies with `uv add` / `uv add --dev`.
-- Run everything through `uv run`; use `uvx` for one-off tools.
+- `just` targets should themselves use `uv run`; use `uvx` for one-off tools.
 - Do not mix `pip`, manual `venv`, or `requirements.txt` with uv unless asked.
 - Prefer a `src/` + `tests/` layout once scaffolding starts.
 - Add `pytest` and `ruff` early for Python work.

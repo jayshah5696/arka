@@ -27,6 +27,11 @@ from arka.config.loader import ConfigLoader
             "OPENAI_API_KEY",
             "openai-test-key",
         ),
+        (
+            "config.examples.dedup-quality.yaml",
+            "OPENAI_API_KEY",
+            "openai-test-key",
+        ),
     ],
 )
 def test_example_configs_load(
@@ -45,3 +50,4 @@ def test_smoke_config_loads(monkeypatch: pytest.MonkeyPatch) -> None:
     resolved = ConfigLoader().load(Path("config.smoke.yaml"))
 
     assert resolved.data_source.type == "seeds"
+    assert resolved.dedup.exact.enabled is False

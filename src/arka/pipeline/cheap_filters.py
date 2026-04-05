@@ -10,6 +10,28 @@ from arka.pipeline.stages import Stage
 from arka.records.models import ConversationRecord, Record, StageEvent
 
 
+def write_filter_artifacts(
+    *,
+    stage_name: str,
+    ctx: StageContext,
+    dropped: list[Record],
+    count_in: int,
+    count_out: int,
+    drop_reasons: dict[str, int],
+) -> None:
+    ctx.work_dir.mkdir(parents=True, exist_ok=True)
+    writer = OutputWriter()
+    writer.write_dropped_parquet(records=dropped, path=ctx.work_dir / "dropped.parquet")
+    stats = {
+        "stage": stage_name,
+        "count_in": count_in,
+        "count_out": count_out,
+        "dropped_count": len(dropped),
+        "drop_reasons": drop_reasons,
+    }
+    (ctx.work_dir / "stats.json").write_text(json.dumps(stats, indent=2))
+
+
 class LengthFilterStage(Stage):
     """Drop records whose instruction or response length is outside bounds."""
 
@@ -37,7 +59,14 @@ class LengthFilterStage(Stage):
                 dropped.append(self._drop_record(record, reason_code=reason))
                 drop_reasons[reason] = drop_reasons.get(reason, 0) + 1
 
-        self._write_artifacts(ctx, dropped, len(records), len(kept), drop_reasons)
+        write_filter_artifacts(
+            stage_name=self.name,
+            ctx=ctx,
+            dropped=dropped,
+            count_in=len(records),
+            count_out=len(kept),
+            drop_reasons=drop_reasons,
+        )
         return kept
 
     def _check(self, record: ConversationRecord, cfg) -> str | None:
@@ -68,37 +97,15 @@ class LengthFilterStage(Stage):
             }
         )
 
-    def _write_artifacts(
-        self,
-        ctx: StageContext,
-        dropped: list[Record],
-        count_in: int,
-        count_out: int,
-        drop_reasons: dict[str, int],
-    ) -> None:
-        ctx.work_dir.mkdir(parents=True, exist_ok=True)
-        writer = OutputWriter()
-        writer.write_dropped_parquet(
-            records=dropped, path=ctx.work_dir / "dropped.parquet"
-        )
-        stats = {
-            "stage": self.name,
-            "count_in": count_in,
-            "count_out": count_out,
-            "dropped_count": len(dropped),
-            "drop_reasons": drop_reasons,
-        }
-        (ctx.work_dir / "stats.json").write_text(json.dumps(stats, indent=2))
-
 
 class LanguageFilterStage(Stage):
     """Drop records whose instruction is not in the allowed language set.
 
-    Uses a simple heuristic based on character-set analysis.  This avoids
-    adding an external dependency (like ``langdetect`` or ``fasttext``)
-    while still catching the most common mismatches.  When ``allowed``
-    contains only ``"en"``, records whose instruction is predominantly
-    non-Latin script are dropped.
+    Uses a simple heuristic based on character-set analysis. This avoids adding
+    an external dependency (like ``langdetect`` or ``fasttext``) while still
+    catching the most common mismatches. When ``allowed`` contains only
+    ``"en"``, records whose instruction is predominantly non-Latin script are
+    dropped.
     """
 
     name = "02b_language_filter"
@@ -125,7 +132,14 @@ class LanguageFilterStage(Stage):
                 dropped.append(self._drop_record(record, reason_code=reason))
                 drop_reasons[reason] = drop_reasons.get(reason, 0) + 1
 
-        self._write_artifacts(ctx, dropped, len(records), len(kept), drop_reasons)
+        write_filter_artifacts(
+            stage_name=self.name,
+            ctx=ctx,
+            dropped=dropped,
+            count_in=len(records),
+            count_out=len(kept),
+            drop_reasons=drop_reasons,
+        )
         return kept
 
     def _is_allowed(self, text: str, allowed: list[str]) -> bool:
@@ -156,25 +170,3 @@ class LanguageFilterStage(Stage):
                 ]
             }
         )
-
-    def _write_artifacts(
-        self,
-        ctx: StageContext,
-        dropped: list[Record],
-        count_in: int,
-        count_out: int,
-        drop_reasons: dict[str, int],
-    ) -> None:
-        ctx.work_dir.mkdir(parents=True, exist_ok=True)
-        writer = OutputWriter()
-        writer.write_dropped_parquet(
-            records=dropped, path=ctx.work_dir / "dropped.parquet"
-        )
-        stats = {
-            "stage": self.name,
-            "count_in": count_in,
-            "count_out": count_out,
-            "dropped_count": len(dropped),
-            "drop_reasons": drop_reasons,
-        }
-        (ctx.work_dir / "stats.json").write_text(json.dumps(stats, indent=2))

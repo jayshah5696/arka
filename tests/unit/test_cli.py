@@ -4,7 +4,35 @@ import json
 import re
 from pathlib import Path
 
+from pydantic import BaseModel
+
 from arka.cli import _resolve_run_id, main
+from arka.llm.models import LLMOutput, TokenUsage
+
+
+class FakeGeneratorLLMClient:
+    def __init__(self, config) -> None:
+        self.config = config
+
+    def complete_structured(self, messages, schema: type[BaseModel]) -> LLMOutput:
+        parsed = schema.model_validate(
+            {
+                "instruction": "Generated instruction",
+                "response": "Generated response",
+            }
+        )
+        return LLMOutput(
+            text=parsed.model_dump_json(),
+            parsed=parsed,
+            usage=TokenUsage(total_tokens=10),
+            finish_reason="stop",
+            model=self.config.model,
+            provider=self.config.provider,
+            request_id="req-cli",
+            latency_ms=1,
+            error=None,
+        )
+
 
 CONFIG_TEXT = """
 version: "1"
@@ -23,6 +51,9 @@ generator:
   type: prompt_based
   target_count: 1
   generation_multiplier: 1
+dedup:
+  exact:
+    enabled: false
 filters:
   target_count: 1
 output:
@@ -36,6 +67,9 @@ def test_cli_auto_generates_run_id_when_not_provided(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(
+        "arka.pipeline.generation_stages.LLMClient", FakeGeneratorLLMClient
+    )
     (tmp_path / "seeds.jsonl").write_text('{"instruction":"Hello?","response":"Hi."}\n')
     (tmp_path / "config.yaml").write_text(CONFIG_TEXT)
 
@@ -78,6 +112,9 @@ def test_cli_supports_explicit_config_run_id_and_resume(
     config_path.write_text(CONFIG_TEXT)
     (tmp_path / "seeds.jsonl").write_text('{"instruction":"Hello?","response":"Hi."}\n')
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(
+        "arka.pipeline.generation_stages.LLMClient", FakeGeneratorLLMClient
+    )
 
     main(["--config", str(config_path), "--run-id", "custom-run"])
     main(["--config", str(config_path), "--run-id", "custom-run", "--resume"])

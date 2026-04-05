@@ -1,6 +1,6 @@
 # Synth Data Playbook — Engineering Spec
 
-**Status:** Approved for implementation
+**Status:** Approved for implementation (partially implemented; see current implementation notes below)
 **Version:** 2.0 (post grill + rebuttal + final verdict)
 **Last updated:** April 2026
 **Author:** Jay Shah
@@ -81,7 +81,40 @@ dedup, quality filtering, dataset report, artifact storage.
 
 ## Data Flow
 
-How data moves through the system end to end:
+How data moves through the system end to end.
+
+### Current implementation
+
+```
+ Seeds (JSONL / CSV)
+         │
+         ▼
+ ┌───────────────┐
+ │  DataSource   │  normalized Records with source provenance
+ └───────┬───────┘
+         ▼
+ ┌───────────────┐
+ │   Generator   │  prompt-based generation
+ └───────┬───────┘
+         ▼
+ ┌───────────────┐
+ │ Exact Dedup   │  payload/content-hash based
+ └───────┬───────┘
+         ▼
+ ┌───────────────┐
+ │ Cheap Filters │  length, language
+ └───────┬───────┘
+         ▼
+ ┌───────────────┐
+ │ Label Quality │  single-judge LabelingEngine filter
+ └───────┬───────┘
+         ▼
+ ┌───────────────┐
+ │    Output     │  dataset.jsonl + run artifacts
+ └───────────────┘
+```
+
+### Planned target flow
 
 ```
  Seeds / PDF / Seedless
@@ -235,7 +268,8 @@ class Record(BaseModel):
     id: str                      # content-stable identity: SHA-256(payload + lineage context)
                                  # same content + same parent = same id (dedup-safe)
                                  # NOT an execution-instance id — use run_id+stage_event.seq for that
-    content_hash: str            # hash of payload content only (for dedup)
+    content_hash: str            # current implementation: hash of payload content only
+                                 # future exact-dedup target may use normalized instruction text
     source: RecordSource
     lineage: RecordLineage
     payload: dict                # subclassed per record type
@@ -359,24 +393,29 @@ runs/
     stages/
       01_source/
         data.parquet
-        stats.json
+      02_normalize/
+        data.parquet
       02_generate/
-        kept.parquet
+        data.parquet
+      02c_exact_dedup/
+        data.parquet
+        dropped.parquet
+        clusters.parquet
         stats.json
-      03_filter/
-        kept.parquet
-        dropped.parquet           # dropped examples WITH reason codes
+      02a_length_filter/
+        data.parquet
+        dropped.parquet
         stats.json
-      04_dedup/
-        kept.parquet
-        clusters.parquet          # duplicate clusters
+      02b_language_filter/
+        data.parquet
+        dropped.parquet
         stats.json
-      05_format/
-        dataset.parquet
+      03_label_quality/
+        data.parquet
+        dropped.parquet
+        stats.json
     report/
       run_report.json
-      samples.jsonl               # 20 random examples for human review
-      canaries.json               # canary results
       contamination.json
 state.db                          # SQLite: runs, stages, artifacts, lineage index
 dataset.jsonl                     # final export (symlink or copy from format stage)
@@ -413,57 +452,37 @@ data_source:
   # chunk_overlap_tokens: 64
 
 generator:
-  type: prompt_based              # prompt_based | evol_instruct | magpie (gated)
+  type: prompt_based              # current implementation: prompt_based only
   target_count: 10000
   generation_multiplier: 5        # generate 5x, filter down
-  persona_conditioning: true
-  persona_pool_path: ./personas.jsonl
-  topic_taxonomy_path: ./taxonomy.yaml
 
-  # evol_instruct options:
+  # planned later:
+  # persona_conditioning: true
+  # persona_pool_path: ./personas.jsonl
+  # topic_taxonomy_path: ./taxonomy.yaml
   # rounds: 4
   # branching_factor: 2
   # operators: [add_constraints, deepen, increase_reasoning_steps, breadth_mutation]
 
-  # magpie options (requires: raw_completion_api backend):
-  # backend: together_ai
-  # model_family: llama3 | qwen | chatml
+dedup:
+  exact:
+    enabled: false
 
 filters:
   length:
-    min_instruction_tokens: 10
-    max_instruction_tokens: 512
-    min_response_tokens: 20
-    max_response_tokens: 2048
+    enabled: false
+    min_instruction_chars: 10
+    max_instruction_chars: 4096
+    min_response_chars: 10
+    max_response_chars: 16384
   language:
+    enabled: false
     allowed: [en]
-  heuristics:
-    min_alpha_ratio: 0.6
-    max_4gram_repeat: 3
-  ifd:
-    enabled: false                # requires logprobs support — openai only
-    min_score: 1.0
   labeling_engine:
     enabled: true
     rubric_path: ./rubrics/sft_quality.yaml
     min_overall_score: 3.5
   target_count: 10000
-
-dedup:
-  exact: true
-  near:
-    enabled: true
-    method: minhash               # minhash | simhash
-    short_text_threshold_tokens: 50
-    # short text (<50 tokens): char ngrams + simhash
-    # long text (>=50 tokens): token 5-gram minhash
-    jaccard_threshold: 0.7
-    num_hashes: 128
-  semantic:
-    enabled: true
-    embedding_model: text-embedding-3-small
-    cosine_threshold: 0.85
-    method: brute_force           # brute_force (<50K) | ann (future)
 
 contamination:
   enabled: true
@@ -928,7 +947,10 @@ sanitize  →  cheap_filter  →  score  →  select
   - Special char density > 0.3: drop (reason: `high_special_chars`)
 
 **3. Score**
-- `ExactDeduplicator`: SHA-256 of normalized instruction text
+- Current implementation note: exact dedup exists as its own stage before filters,
+  and currently uses record `content_hash` (payload-based) rather than normalized
+  instruction-only hashing.
+- Target design: `ExactDeduplicator`: SHA-256 of normalized instruction text
   - Normalization: lowercase, strip whitespace and punctuation
   - Drop reason: `exact_duplicate`
 - `IFDScorer` (optional, capability-gated):
@@ -983,7 +1005,26 @@ each removing what the previous missed.
 
 **Three passes:**
 
-**1. Exact dedup** (already done in Slice 6 — carried forward, not repeated)
+**1. Exact dedup**
+
+Current implementation:
+- stage exists as `02c_exact_dedup`
+- enabled via:
+
+```yaml
+dedup:
+  exact:
+    enabled: true
+```
+
+- keeps the first record for a given `content_hash`
+- drops later duplicates with `reason_code = exact_duplicate`
+- writes `dropped.parquet`, `clusters.parquet`, and `stats.json`
+
+Planned refinement:
+- switch from current payload-based `content_hash` behavior to normalized
+  instruction-text hashing if/when the implementation is brought fully in line
+  with the original spec wording
 
 **2. Near-dedup (length-aware)**
 

@@ -39,6 +39,14 @@ class GeneratorConfig(StrictModel):
     generation_multiplier: int
 
 
+class ExactDedupConfig(StrictModel):
+    enabled: bool = False
+
+
+class DedupConfig(StrictModel):
+    exact: ExactDedupConfig = Field(default_factory=ExactDedupConfig)
+
+
 class LengthFilterConfig(StrictModel):
     enabled: bool = False
     min_instruction_chars: int = 10
@@ -82,6 +90,7 @@ class ResolvedConfig(StrictModel):
     executor: ExecutorConfig
     data_source: DataSourceConfig
     generator: GeneratorConfig
+    dedup: DedupConfig = Field(default_factory=DedupConfig)
     filters: FiltersConfig
     labeling_engine: LabelingEngineConfig = Field(default_factory=LabelingEngineConfig)
     output: OutputConfig

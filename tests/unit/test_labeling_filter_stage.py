@@ -57,40 +57,42 @@ def build_record(record_id: str, instruction: str, response: str) -> Conversatio
     )
 
 
+BASE_CONFIG = {
+    "version": "1",
+    "llm": {
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "api_key": "test-key",
+        "base_url": "https://api.openai.com/v1",
+    },
+    "executor": {"mode": "threadpool", "max_workers": 1},
+    "data_source": {"type": "seeds", "path": "./seeds.jsonl"},
+    "generator": {
+        "type": "prompt_based",
+        "target_count": 2,
+        "generation_multiplier": 1,
+    },
+    "dedup": {"exact": {"enabled": False}},
+    "filters": {
+        "target_count": 2,
+        "labeling_engine": {
+            "enabled": True,
+            "rubric_path": str(Path("rubrics/sft_quality.yaml").resolve()),
+            "min_overall_score": 3.5,
+        },
+    },
+    "labeling_engine": {
+        "rubric_path": str(Path("rubrics/sft_quality.yaml").resolve()),
+        "mode": "single",
+    },
+    "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
+}
+
+
 def test_labeling_filter_stage_scores_records_and_filters_low_quality(
     tmp_path: Path,
 ) -> None:
-    config = ConfigLoader().load_dict(
-        {
-            "version": "1",
-            "llm": {
-                "provider": "openai",
-                "model": "gpt-4o-mini",
-                "api_key": "test-key",
-                "base_url": "https://api.openai.com/v1",
-            },
-            "executor": {"mode": "threadpool", "max_workers": 1},
-            "data_source": {"type": "seeds", "path": "./seeds.jsonl"},
-            "generator": {
-                "type": "prompt_based",
-                "target_count": 2,
-                "generation_multiplier": 1,
-            },
-            "filters": {
-                "target_count": 2,
-                "labeling_engine": {
-                    "enabled": True,
-                    "rubric_path": str(Path("rubrics/sft_quality.yaml").resolve()),
-                    "min_overall_score": 3.5,
-                },
-            },
-            "labeling_engine": {
-                "rubric_path": str(Path("rubrics/sft_quality.yaml").resolve()),
-                "mode": "single",
-            },
-            "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
-        }
-    )
+    config = ConfigLoader().load_dict(BASE_CONFIG)
     ctx = StageContext(
         run_id="run-1",
         stage_name="03_label_quality",
@@ -171,37 +173,7 @@ def test_labeling_filter_stage_scores_records_and_filters_low_quality(
 def test_labeling_filter_stage_classifies_parse_failures_as_dropped_records(
     tmp_path: Path,
 ) -> None:
-    config = ConfigLoader().load_dict(
-        {
-            "version": "1",
-            "llm": {
-                "provider": "openai",
-                "model": "gpt-4o-mini",
-                "api_key": "test-key",
-                "base_url": "https://api.openai.com/v1",
-            },
-            "executor": {"mode": "threadpool", "max_workers": 1},
-            "data_source": {"type": "seeds", "path": "./seeds.jsonl"},
-            "generator": {
-                "type": "prompt_based",
-                "target_count": 2,
-                "generation_multiplier": 1,
-            },
-            "filters": {
-                "target_count": 2,
-                "labeling_engine": {
-                    "enabled": True,
-                    "rubric_path": str(Path("rubrics/sft_quality.yaml").resolve()),
-                    "min_overall_score": 3.5,
-                },
-            },
-            "labeling_engine": {
-                "rubric_path": str(Path("rubrics/sft_quality.yaml").resolve()),
-                "mode": "single",
-            },
-            "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
-        }
-    )
+    config = ConfigLoader().load_dict(BASE_CONFIG)
     ctx = StageContext(
         run_id="run-1",
         stage_name="03_label_quality",

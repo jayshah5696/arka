@@ -106,6 +106,7 @@ CONFIG = {
         "target_count": 1,
         "generation_multiplier": 1,
     },
+    "dedup": {"exact": {"enabled": False}},
     "filters": {"target_count": 1},
     "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
 }

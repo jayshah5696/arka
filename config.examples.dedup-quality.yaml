@@ -3,14 +3,11 @@ run_id: null
 
 llm:
   provider: openai
-  model: google/gemini-3.1-flash-lite-preview
-  api_key: ${OPENROUTER_API_KEY}
-  base_url: https://openrouter.ai/api/v1
+  model: gpt-4o-mini
+  api_key: ${OPENAI_API_KEY}
+  base_url: https://api.openai.com/v1
   timeout_seconds: 30
   max_retries: 3
-  openai_compatible:
-    referer: https://example.com
-    title: arka
 
 executor:
   mode: threadpool
@@ -22,15 +19,24 @@ data_source:
 
 generator:
   type: prompt_based
-  target_count: 10
+  target_count: 20
   generation_multiplier: 2
 
 dedup:
   exact:
-    enabled: false
+    enabled: true
 
 filters:
-  target_count: 10
+  target_count: 20
+  length:
+    enabled: true
+    min_instruction_chars: 10
+    max_instruction_chars: 4096
+    min_response_chars: 10
+    max_response_chars: 16384
+  language:
+    enabled: true
+    allowed: [en]
   labeling_engine:
     enabled: true
     rubric_path: ./rubrics/sft_quality.yaml
@@ -42,4 +48,4 @@ labeling_engine:
 
 output:
   format: jsonl
-  path: ./output/dataset.jsonl
+  path: ./output/dedup-quality-dataset.jsonl

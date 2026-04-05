@@ -34,6 +34,7 @@ def _base_config(**filter_overrides) -> ResolvedConfig:
                 "target_count": 2,
                 "generation_multiplier": 1,
             },
+            "dedup": {"exact": {"enabled": False}},
             "filters": {"target_count": 2, **filter_overrides},
             "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
         }

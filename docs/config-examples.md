@@ -8,14 +8,15 @@ This project should maintain a growing set of commented example configs.
 
 - `config.smoke.yaml`
   - smallest runnable JSONL seed smoke path
-  - source -> normalize
+  - source -> normalize -> prompt-based generate
 
 - `config.example.yaml`
   - baseline OpenAI-compatible example
+  - includes prompt-based generation and optional exact dedup toggle
   - good starting point for local edits
 
 - `config.openrouter.yaml`
-  - OpenRouter-backed single-judge label quality filter example
+  - OpenRouter-backed prompt generation + single-judge quality filter example
   - closer to the current live vertical slice
 
 ### Commented examples
@@ -33,12 +34,15 @@ This project should maintain a growing set of commented example configs.
   - CSV seed ingestion example
   - best for teams with spreadsheet-style starting data
 
+- `config.examples.dedup-quality.yaml`
+  - prompt generation + exact dedup + cheap filters + quality filter example
+  - best for exercising the current end-to-end synthetic-data path
+
 ## Recommended future examples
 
 Add these as slices land:
 
 - `config.examples.multi-judge.yaml`
-- `config.examples.dedup-quality.yaml`
 - `config.examples.preference-pairs.yaml`
 - `config.examples.pdf-grounded.yaml`
 - `config.examples.contamination-audit.yaml`
