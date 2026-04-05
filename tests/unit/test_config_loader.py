@@ -143,3 +143,121 @@ def test_load_config_supports_openrouter_style_openai_compatible_settings(
     assert resolved.embeddings.provider == "openai"
     assert resolved.embeddings.model == "text-embedding-3-small"
     assert resolved.embeddings.api_key == "openrouter-key"
+
+
+def test_load_config_accepts_valid_evol_instruct_config() -> None:
+    resolved = ConfigLoader().load_dict(
+        {
+            "version": "1",
+            "llm": {
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "api_key": "test-key",
+                "base_url": "https://api.openai.com/v1",
+            },
+            "executor": {"mode": "threadpool", "max_workers": 1},
+            "data_source": {"type": "seeds", "path": "./seeds.jsonl"},
+            "generator": {
+                "type": "evol_instruct",
+                "target_count": 2,
+                "generation_multiplier": 1,
+                "rounds": 2,
+                "branching_factor": 2,
+                "operators": [
+                    "add_constraints",
+                    "deepen",
+                    "increase_reasoning_steps",
+                    "breadth_mutation",
+                ],
+            },
+            "dedup": {"exact": {"enabled": False}, "near": {"enabled": False}},
+            "filters": {"target_count": 2},
+            "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
+        }
+    )
+
+    assert resolved.generator.type == "evol_instruct"
+    assert resolved.generator.rounds == 2
+    assert resolved.generator.branching_factor == 2
+
+
+def test_load_config_rejects_unknown_evol_operator() -> None:
+    with pytest.raises(ConfigValidationError, match="unsupported names"):
+        ConfigLoader().load_dict(
+            {
+                "version": "1",
+                "llm": {
+                    "provider": "openai",
+                    "model": "gpt-4o-mini",
+                    "api_key": "test-key",
+                    "base_url": "https://api.openai.com/v1",
+                },
+                "executor": {"mode": "threadpool", "max_workers": 1},
+                "data_source": {"type": "seeds", "path": "./seeds.jsonl"},
+                "generator": {
+                    "type": "evol_instruct",
+                    "target_count": 2,
+                    "generation_multiplier": 1,
+                    "rounds": 1,
+                    "branching_factor": 1,
+                    "operators": ["unknown_operator"],
+                },
+                "dedup": {"exact": {"enabled": False}, "near": {"enabled": False}},
+                "filters": {"target_count": 2},
+                "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
+            }
+        )
+
+
+def test_load_config_rejects_zero_evol_rounds_or_branching() -> None:
+    with pytest.raises(ConfigValidationError, match="generator.rounds"):
+        ConfigLoader().load_dict(
+            {
+                "version": "1",
+                "llm": {
+                    "provider": "openai",
+                    "model": "gpt-4o-mini",
+                    "api_key": "test-key",
+                    "base_url": "https://api.openai.com/v1",
+                },
+                "executor": {"mode": "threadpool", "max_workers": 1},
+                "data_source": {"type": "seeds", "path": "./seeds.jsonl"},
+                "generator": {
+                    "type": "evol_instruct",
+                    "target_count": 2,
+                    "generation_multiplier": 1,
+                    "rounds": 0,
+                    "branching_factor": 1,
+                    "operators": ["deepen"],
+                },
+                "dedup": {"exact": {"enabled": False}, "near": {"enabled": False}},
+                "filters": {"target_count": 2},
+                "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
+            }
+        )
+
+    with pytest.raises(ConfigValidationError, match="generator.branching_factor"):
+        ConfigLoader().load_dict(
+            {
+                "version": "1",
+                "llm": {
+                    "provider": "openai",
+                    "model": "gpt-4o-mini",
+                    "api_key": "test-key",
+                    "base_url": "https://api.openai.com/v1",
+                },
+                "executor": {"mode": "threadpool", "max_workers": 1},
+                "data_source": {"type": "seeds", "path": "./seeds.jsonl"},
+                "generator": {
+                    "type": "evol_instruct",
+                    "target_count": 2,
+                    "generation_multiplier": 1,
+                    "rounds": 1,
+                    "branching_factor": 0,
+                    "operators": ["deepen"],
+                },
+                "dedup": {"exact": {"enabled": False}, "near": {"enabled": False}},
+                "filters": {"target_count": 2},
+                "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
+            }
+        )

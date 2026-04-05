@@ -33,5 +33,7 @@ Artifacts land in `runs/<run_id>/` plus the configured JSONL output path.
 - `config.examples.dedup-quality.yaml` — generator + exact dedup + cheap filters + quality filter
 - `docs/config-examples.md` — config catalog
 - `docs/validation-matrix.md` — supported options, quality bar, and release checks
+- `config.examples.pdf-grounded.yaml` — PDF chunk to grounded generation example
+- `config.examples.evol-instruct.yaml` — multi-round Evol-Instruct example
 
 OpenAI-compatible routing, including OpenRouter-backed paths, is supported in practice.

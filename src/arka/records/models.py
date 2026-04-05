@@ -79,9 +79,29 @@ class ConversationRecord(Record):
         return self.payload.model_dump(mode="json")
 
 
+class GroundedChunkPayload(StrictModel):
+    text: str
+    doc_id: str
+    chunk_idx: int
+    page_start: int
+    page_end: int
+    char_start: int
+    char_end: int
+    word_count: int
+    chunk_strategy: str
+
+
+class GroundedChunkRecord(Record):
+    payload: GroundedChunkPayload
+
+    def export_payload(self) -> dict[str, Any]:
+        return self.payload.model_dump(mode="json")
+
+
 RECORD_TYPE_REGISTRY: dict[str, type[Record]] = {
     "Record": Record,
     "ConversationRecord": ConversationRecord,
+    "GroundedChunkRecord": GroundedChunkRecord,
 }
 
 

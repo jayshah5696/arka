@@ -26,7 +26,7 @@ from tenacity import (
 
 from arka.common.concurrency import bounded_worker_count
 from arka.config.models import LLMConfig
-from arka.llm.models import LLMOutput, TokenUsage
+from arka.llm.models import LLMOutput, SequenceScore, TokenUsage
 from arka.llm.openai_client import build_openai_client
 
 CAPABILITIES: dict[str, dict[str, bool | tuple[str, ...]]] = {
@@ -38,6 +38,7 @@ CAPABILITIES: dict[str, dict[str, bool | tuple[str, ...]]] = {
             "prompt_parse_fallback",
         ),
         "logprobs": True,
+        "response_scoring": False,
         "batch_api": True,
     }
 }
@@ -45,6 +46,11 @@ CAPABILITIES: dict[str, dict[str, bool | tuple[str, ...]]] = {
 Message = dict[str, str]
 ClientFactory = Callable[[LLMConfig], OpenAI | Any]
 SleepFn = Callable[[float], None]
+
+
+def provider_supports_sequence_scoring(config: LLMConfig) -> bool:
+    provider_capabilities = CAPABILITIES.get(config.provider, {})
+    return bool(provider_capabilities.get("response_scoring", False))
 
 
 class LLMClientError(RuntimeError):
@@ -393,6 +399,28 @@ class LLMClient:
                 executor.submit(self.complete, list(messages)) for messages in batch
             ]
             return [future.result() for future in futures]
+
+    def supports_sequence_scoring(self) -> bool:
+        return provider_supports_sequence_scoring(self.config)
+
+    def score_response(
+        self,
+        *,
+        messages: Sequence[Message],
+        target_text: str,
+    ) -> SequenceScore:
+        if not self.supports_sequence_scoring():
+            raise LLMClientError(
+                "unsupported_capability",
+                (
+                    f"provider {self.config.provider!r} / model {self.config.model!r} "
+                    "does not support response scoring"
+                ),
+            )
+        raise LLMClientError(
+            "unsupported_capability",
+            "response scoring is not yet implemented for live providers",
+        )
 
     def _to_output(self, response: Any, latency_ms: int) -> LLMOutput:
         usage = self._usage_from_response(response)

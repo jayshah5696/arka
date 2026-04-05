@@ -23,6 +23,7 @@ from arka.pipeline.stages import Stage
 from arka.records.models import (
     ConversationPayload,
     ConversationRecord,
+    GroundedChunkRecord,
     Record,
     RecordLineage,
     RecordScores,
@@ -68,7 +69,7 @@ class RawGeneratorResponse(StrictModel):
 @dataclass(frozen=True)
 class GenerationPlanItem:
     plan_index: int
-    seed_record: ConversationRecord
+    seed_record: ConversationRecord | GroundedChunkRecord
 
 
 def compute_prompt_hash(generator: GeneratorConfig, llm: LLMConfig) -> str:
@@ -102,7 +103,9 @@ class PromptBasedGeneratorStage(Stage):
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
         seed_records = [
-            record for record in records if isinstance(record, ConversationRecord)
+            record
+            for record in records
+            if isinstance(record, ConversationRecord | GroundedChunkRecord)
         ]
         if not seed_records:
             return []
@@ -128,7 +131,7 @@ class PromptBasedGeneratorStage(Stage):
 
     def _generation_plan(
         self,
-        seed_records: list[ConversationRecord],
+        seed_records: list[ConversationRecord | GroundedChunkRecord],
         config: GeneratorConfig,
     ) -> list[GenerationPlanItem]:
         requested_count = config.target_count * config.generation_multiplier
@@ -200,7 +203,7 @@ class PromptBasedGeneratorStage(Stage):
     def _complete_raw(
         self,
         llm_client: Any,
-        seed_record: ConversationRecord,
+        seed_record: ConversationRecord | GroundedChunkRecord,
         ctx: StageContext,
     ) -> LLMOutput:
         messages = self._messages_for_seed(seed_record, ctx.config.generator)
@@ -221,18 +224,23 @@ class PromptBasedGeneratorStage(Stage):
 
     def _messages_for_seed(
         self,
-        seed_record: ConversationRecord,
+        seed_record: ConversationRecord | GroundedChunkRecord,
         config: GeneratorConfig,
     ) -> list[dict[str, str]]:
-        return [
-            {
-                "role": "user",
-                "content": config.prompt_template.format(
-                    seed_instruction=seed_record.payload.instruction,
-                    seed_response=seed_record.payload.response,
-                ),
-            }
-        ]
+        if isinstance(seed_record, ConversationRecord):
+            content = config.prompt_template.format(
+                seed_instruction=seed_record.payload.instruction,
+                seed_response=seed_record.payload.response,
+            )
+        else:
+            content = (
+                "You generate grounded instruction-response pairs from a document chunk.\n"
+                "Create one self-contained instruction answerable from the chunk, and one grounded response.\n"
+                "Avoid referring to 'the passage above'.\n"
+                'Return only JSON with keys "instruction" and "response".\n\n'
+                f"Document chunk:\n{seed_record.payload.text}\n"
+            )
+        return [{"role": "user", "content": content}]
 
     def _existing_rows_for_prompt(
         self, responses_path: Path, prompt_hash: str
@@ -353,7 +361,7 @@ class PromptBasedGeneratorStage(Stage):
     def _build_generated_record(
         self,
         payload: GeneratedConversation,
-        parent: ConversationRecord,
+        parent: ConversationRecord | GroundedChunkRecord,
         config_hash: str,
     ) -> ConversationRecord:
         conversation_payload = ConversationPayload(
@@ -368,15 +376,24 @@ class PromptBasedGeneratorStage(Stage):
             round=1,
             depth=1,
         )
+        source = RecordSource(
+            type="generated",
+            seed_file_hash=parent.source.seed_file_hash,
+            source_hash=parent.content_hash,
+            doc_id=parent.source.doc_id,
+            chunk_id=parent.source.chunk_id,
+            page_start=parent.source.page_start,
+            page_end=parent.source.page_end,
+            char_start=parent.source.char_start,
+            char_end=parent.source.char_end,
+        )
+        if isinstance(parent, GroundedChunkRecord):
+            source.type = "generated"
         record_id = self._record_id(conversation_payload, lineage)
         return ConversationRecord(
             id=record_id,
             content_hash=content_hash,
-            source=RecordSource(
-                type="generated",
-                seed_file_hash=parent.source.seed_file_hash,
-                source_hash=parent.content_hash,
-            ),
+            source=source,
             lineage=lineage,
             payload=conversation_payload,
             scores=RecordScores(),

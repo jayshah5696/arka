@@ -10,6 +10,7 @@ import arka.pipeline.generation_stages as generation_stages
 from arka.config.loader import ConfigLoader
 from arka.llm.models import LLMOutput, TokenUsage
 from arka.pipeline.checkpoint import CheckpointManager
+from arka.pipeline.evol_generator_stage import EvolInstructRoundStage
 from arka.pipeline.generator_stages import (
     PromptBasedGeneratorStage,
     compute_prompt_hash,
@@ -19,6 +20,8 @@ from arka.pipeline.output import OutputWriter
 from arka.records.models import (
     ConversationPayload,
     ConversationRecord,
+    GroundedChunkPayload,
+    GroundedChunkRecord,
     RecordLineage,
     RecordScores,
     RecordSource,
@@ -90,6 +93,14 @@ def _generated_json(instruction: str, response: str) -> str:
     return json.dumps({"instruction": instruction, "response": response})
 
 
+def _instruction_json(instruction: str) -> str:
+    return json.dumps({"instruction": instruction})
+
+
+def _response_json(response: str) -> str:
+    return json.dumps({"response": response})
+
+
 def _config(tmp_path: Path, **generator_overrides) -> StageContext:
     config = ConfigLoader().load_dict(
         {
@@ -135,6 +146,38 @@ def _seed_record(record_id: str, instruction: str, response: str) -> Conversatio
         scores=RecordScores(),
         config_hash="cfg-1",
         created_at="2026-04-04T00:00:00Z",
+    )
+
+
+def _chunk_record(record_id: str, text: str) -> GroundedChunkRecord:
+    return GroundedChunkRecord(
+        id=record_id,
+        content_hash=f"hash-{record_id}",
+        source=RecordSource(
+            type="pdf_chunk",
+            doc_id="doc-1",
+            chunk_id="doc-1:0",
+            page_start=1,
+            page_end=1,
+            char_start=0,
+            char_end=len(text),
+            source_hash="source-hash",
+        ),
+        lineage=RecordLineage(root_id=record_id, parent_ids=[]),
+        payload=GroundedChunkPayload(
+            text=text,
+            doc_id="doc-1",
+            chunk_idx=0,
+            page_start=1,
+            page_end=1,
+            char_start=0,
+            char_end=len(text),
+            word_count=len(text.split()),
+            chunk_strategy="fixed",
+        ),
+        scores=RecordScores(),
+        config_hash="cfg-1",
+        created_at="2026-04-05T00:00:00Z",
     )
 
 
@@ -196,6 +239,22 @@ def test_prompt_based_generator_emits_target_count_times_multiplier_and_writes_r
     assert cached is not None
     assert cached["response_count"] == 6
     assert cached["status"] == "completed"
+
+
+def test_prompt_based_generator_accepts_grounded_chunk_records(tmp_path: Path) -> None:
+    ctx = _config(tmp_path, target_count=1, generation_multiplier=1)
+    stage = PromptBasedGeneratorStage(
+        llm_client=SequentialFakeLLMClient(
+            [_generated_json("Grounded question", "Grounded answer")]
+        )
+    )
+
+    records = stage.run([_chunk_record("chunk-1", "Facts about gravity.")], ctx)
+
+    assert len(records) == 1
+    assert records[0].source.doc_id == "doc-1"
+    assert records[0].source.chunk_id == "doc-1:0"
+    assert records[0].lineage.parent_ids == ["chunk-1"]
 
 
 def test_prompt_based_generator_writes_cost_usd_to_stats_when_available(
@@ -474,3 +533,151 @@ def test_prompt_based_generator_returns_empty_for_no_seed_records(
     records = stage.run([], ctx)
 
     assert records == []
+
+
+def test_evol_round_stage_generates_evolved_records_with_lineage(
+    tmp_path: Path,
+) -> None:
+    ctx = _config(
+        tmp_path,
+        type="evol_instruct",
+        rounds=1,
+        branching_factor=1,
+        operators=["deepen"],
+    )
+    ctx = StageContext(
+        run_id=ctx.run_id,
+        stage_name="03_evol_round_01",
+        work_dir=tmp_path / "runs" / "run-1" / "stages" / "03_evol_round_01",
+        config=ctx.config,
+        executor_mode=ctx.executor_mode,
+        max_workers=ctx.max_workers,
+    )
+    ctx.work_dir.mkdir(parents=True, exist_ok=True)
+    stage = EvolInstructRoundStage(
+        round_number=1,
+        llm_client=SequentialFakeLLMClient(
+            [
+                _instruction_json(
+                    "Explain gravity with Newtonian intuition and caveats."
+                ),
+                _response_json("Gravity describes attraction between masses."),
+            ]
+        ),
+    )
+
+    result = stage.run(
+        [_seed_record("seed-1", "Explain gravity", "Gravity attracts masses.")],
+        ctx,
+    )
+
+    assert len(result) == 2
+    evolved = result[-1]
+    assert evolved.source.type == "evolved"
+    assert evolved.lineage.parent_ids == ["seed-1"]
+    assert evolved.lineage.root_id == "root-seed-1"
+    assert evolved.lineage.operator == "deepen"
+    assert evolved.lineage.round == 1
+    assert evolved.lineage.depth == 1
+
+
+def test_evol_round_stage_drops_identical_or_refusal_candidates(tmp_path: Path) -> None:
+    ctx = _config(
+        tmp_path,
+        type="evol_instruct",
+        rounds=1,
+        branching_factor=2,
+        operators=["deepen", "add_constraints"],
+    )
+    ctx = StageContext(
+        run_id=ctx.run_id,
+        stage_name="03_evol_round_01",
+        work_dir=tmp_path / "runs" / "run-1" / "stages" / "03_evol_round_01",
+        config=ctx.config,
+        executor_mode=ctx.executor_mode,
+        max_workers=ctx.max_workers,
+    )
+    ctx.work_dir.mkdir(parents=True, exist_ok=True)
+    stage = EvolInstructRoundStage(
+        round_number=1,
+        llm_client=SequentialFakeLLMClient(
+            [
+                _instruction_json("Explain gravity"),
+                _instruction_json("As an AI, I cannot help with that."),
+            ]
+        ),
+    )
+
+    result = stage.run(
+        [_seed_record("seed-1", "Explain gravity", "Gravity attracts masses.")],
+        ctx,
+    )
+
+    assert len(result) == 1
+    stats = json.loads((ctx.work_dir / "stats.json").read_text())
+    assert stats["generated_count"] == 0
+    assert stats["dropped_count"] == 2
+    assert stats["drop_reasons"] == {
+        "evol_identical_to_parent": 1,
+        "evol_refusal": 1,
+    }
+
+
+def test_evol_round_stage_round_two_uses_frontier_only(tmp_path: Path) -> None:
+    ctx = _config(
+        tmp_path,
+        type="evol_instruct",
+        rounds=2,
+        branching_factor=1,
+        operators=["deepen"],
+    )
+    stage_one_ctx = StageContext(
+        run_id=ctx.run_id,
+        stage_name="03_evol_round_01",
+        work_dir=tmp_path / "runs" / "run-1" / "stages" / "03_evol_round_01",
+        config=ctx.config,
+        executor_mode=ctx.executor_mode,
+        max_workers=ctx.max_workers,
+    )
+    stage_two_ctx = StageContext(
+        run_id=ctx.run_id,
+        stage_name="04_evol_round_02",
+        work_dir=tmp_path / "runs" / "run-1" / "stages" / "04_evol_round_02",
+        config=ctx.config,
+        executor_mode=ctx.executor_mode,
+        max_workers=ctx.max_workers,
+    )
+    stage_one_ctx.work_dir.mkdir(parents=True, exist_ok=True)
+    stage_two_ctx.work_dir.mkdir(parents=True, exist_ok=True)
+
+    round_one = EvolInstructRoundStage(
+        round_number=1,
+        llm_client=SequentialFakeLLMClient(
+            [
+                _instruction_json("Explain gravity with formulas and intuition."),
+                _response_json("Gravity can be modeled with Newton's law."),
+            ]
+        ),
+    )
+    after_round_one = round_one.run(
+        [_seed_record("seed-1", "Explain gravity", "Gravity attracts masses.")],
+        stage_one_ctx,
+    )
+
+    round_two_client = SequentialFakeLLMClient(
+        [
+            _instruction_json("Compare Newtonian and relativistic gravity."),
+            _response_json(
+                "Newtonian gravity works well classically; relativity handles spacetime."
+            ),
+        ]
+    )
+    after_round_two = EvolInstructRoundStage(
+        round_number=2,
+        llm_client=round_two_client,
+    ).run(after_round_one, stage_two_ctx)
+
+    assert len(after_round_two) == 3
+    assert round_two_client.calls == 2
+    assert after_round_two[-1].lineage.parent_ids == [after_round_one[-1].id]
+    assert after_round_two[-1].lineage.round == 2

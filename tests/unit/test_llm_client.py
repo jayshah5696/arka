@@ -6,7 +6,12 @@ from openai import APITimeoutError, AuthenticationError, BadRequestError, RateLi
 from pydantic import BaseModel
 
 from arka.config.models import LLMConfig
-from arka.llm.client import LLMClient, LLMClientError, LLMOutput
+from arka.llm.client import (
+    LLMClient,
+    LLMClientError,
+    LLMOutput,
+    provider_supports_sequence_scoring,
+)
 
 
 class GreetingResponse(BaseModel):
@@ -713,3 +718,17 @@ def test_usage_from_response_leaves_cost_none_when_absent() -> None:
     response = FakeResponse("hello")
     usage = client._usage_from_response(response)
     assert usage.cost_usd is None
+
+
+def test_provider_supports_sequence_scoring_is_currently_false() -> None:
+    config = build_config()
+    assert provider_supports_sequence_scoring(config) is False
+
+
+def test_score_response_raises_until_live_provider_support_exists() -> None:
+    client = _make_client_for_extraction()
+    with pytest.raises(LLMClientError, match="does not support response scoring"):
+        client.score_response(
+            messages=[{"role": "user", "content": "Explain gravity"}],
+            target_text="Gravity attracts masses.",
+        )

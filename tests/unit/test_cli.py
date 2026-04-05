@@ -54,8 +54,13 @@ generator:
 dedup:
   exact:
     enabled: false
+  near:
+    enabled: false
 filters:
   target_count: 1
+embeddings:
+  provider: huggingface
+  model: all-MiniLM-L6-v2
 output:
   format: chatml
   path: ./output/dataset.jsonl

@@ -32,6 +32,16 @@ from arka.config.loader import ConfigLoader
             "OPENAI_API_KEY",
             "openai-test-key",
         ),
+        (
+            "config.examples.pdf-grounded.yaml",
+            "OPENAI_API_KEY",
+            "openai-test-key",
+        ),
+        (
+            "config.examples.evol-instruct.yaml",
+            "OPENAI_API_KEY",
+            "openai-test-key",
+        ),
     ],
 )
 def test_example_configs_load(

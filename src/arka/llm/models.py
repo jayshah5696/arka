@@ -26,3 +26,11 @@ class LLMOutput(BaseModel):
     request_id: str | None = None
     latency_ms: int
     error: LLMError | None = None
+
+
+class SequenceScore(BaseModel):
+    token_count: int
+    mean_logprob: float
+    total_logprob: float
+    provider: str
+    model: str

@@ -1,0 +1,52 @@
+version: "1"
+run_id: null
+
+llm:
+  provider: openai
+  model: gpt-4o-mini
+  api_key: ${OPENAI_API_KEY}
+  base_url: https://api.openai.com/v1
+  timeout_seconds: 30
+  max_retries: 3
+
+executor:
+  mode: threadpool
+  max_workers: 4
+
+data_source:
+  type: pdf
+  path: ./docs/source.pdf
+  chunk_strategy: fixed
+  chunk_size_chars: 3000
+  chunk_overlap_chars: 300
+
+generator:
+  type: prompt_based
+  target_count: 20
+  generation_multiplier: 1
+
+dedup:
+  exact:
+    enabled: true
+  near:
+    enabled: false
+
+filters:
+  target_count: 20
+  length:
+    enabled: true
+    min_instruction_chars: 10
+    max_instruction_chars: 4096
+    min_response_chars: 10
+    max_response_chars: 16384
+  language:
+    enabled: true
+    allowed: [en]
+
+embeddings:
+  provider: huggingface
+  model: all-MiniLM-L6-v2
+
+output:
+  format: chatml
+  path: ./output/pdf-grounded-dataset.jsonl

@@ -40,13 +40,20 @@ See `docs/validation-matrix.md` for the exact config/runtime combinations curren
   - prompt generation + exact dedup + cheap filters + quality filter example
   - best for exercising the current end-to-end synthetic-data path
 
+- `config.examples.pdf-grounded.yaml`
+  - PDF chunk ingestion + prompt-based grounded generation example
+  - best for text-native PDF-to-SFT runs
+
+- `config.examples.evol-instruct.yaml`
+  - seed-driven Evol-Instruct example with multiple rounds/operators
+  - best for exercising the current evolution path
+
 ## Recommended future examples
 
 Add these as slices land:
 
 - `config.examples.multi-judge.yaml`
 - `config.examples.preference-pairs.yaml`
-- `config.examples.pdf-grounded.yaml`
 - `config.examples.contamination-audit.yaml`
 
 ## Design rules for every example config

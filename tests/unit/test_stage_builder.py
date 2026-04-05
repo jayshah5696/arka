@@ -7,9 +7,11 @@ import pytest
 from arka.config.models import ResolvedConfig
 from arka.pipeline.cheap_filters import LanguageFilterStage, LengthFilterStage
 from arka.pipeline.dedup_stages import ExactDedupStage, NearDedupStage
+from arka.pipeline.evol_generator_stage import EvolInstructRoundStage
 from arka.pipeline.filter_stages import LabelingQualityFilterStage
 from arka.pipeline.generator_stages import PromptBasedGeneratorStage
-from arka.pipeline.source_stages import SeedSourceStage
+from arka.pipeline.ifd_stage import IFDFilterStage
+from arka.pipeline.source_stages import PDFSourceStage, SeedSourceStage
 from arka.pipeline.stage_builder import StageBuilder
 from arka.pipeline.transforms import NormalizeConversationStage
 
@@ -86,6 +88,24 @@ def test_labeling_disabled_skips_quality_filter(tmp_path: Path) -> None:
     assert len(stages) == 3
     assert any(isinstance(s, PromptBasedGeneratorStage) for s in stages)
     assert not any(isinstance(s, LabelingQualityFilterStage) for s in stages)
+
+
+def test_pdf_source_skips_normalize_and_uses_pdf_source_stage(tmp_path: Path) -> None:
+    config = _base_config(
+        data_source={
+            "type": "pdf",
+            "path": "./source.pdf",
+            "chunk_strategy": "fixed",
+            "chunk_size_chars": 3000,
+            "chunk_overlap_chars": 300,
+        }
+    )
+    stages = StageBuilder(config=config, project_root=tmp_path).build()
+
+    assert len(stages) == 2
+    assert isinstance(stages[0], PDFSourceStage)
+    assert isinstance(stages[1], PromptBasedGeneratorStage)
+    assert not any(isinstance(stage, NormalizeConversationStage) for stage in stages)
 
 
 def test_unsupported_data_source_type_raises(tmp_path: Path) -> None:
@@ -169,8 +189,60 @@ def test_language_filter_included_when_enabled(tmp_path: Path) -> None:
     assert isinstance(stages[3], LanguageFilterStage)
 
 
-def test_all_filters_ordering(tmp_path: Path) -> None:
-    """Source → normalize → generate → exact dedup → near dedup → length → language → labeling."""
+def test_evol_instruct_builds_one_stage_per_round_and_preserves_order(
+    tmp_path: Path,
+) -> None:
+    config = _base_config(
+        generator={
+            "type": "evol_instruct",
+            "target_count": 2,
+            "generation_multiplier": 1,
+            "rounds": 3,
+            "branching_factor": 1,
+            "operators": ["deepen"],
+        },
+        dedup={"exact": {"enabled": True}, "near": {"enabled": True}},
+        filters={
+            "target_count": 2,
+            "length": {"enabled": True},
+            "language": {"enabled": True},
+            "labeling_engine": {"enabled": True, "rubric_path": "rubric.yaml"},
+        },
+    )
+    stages = StageBuilder(config=config, project_root=tmp_path).build()
+
+    assert len(stages) == 10
+    assert isinstance(stages[0], SeedSourceStage)
+    assert isinstance(stages[1], NormalizeConversationStage)
+    assert all(isinstance(stages[index], EvolInstructRoundStage) for index in [2, 3, 4])
+    assert stages[2].name == "03_evol_round_01"
+    assert stages[3].name == "04_evol_round_02"
+    assert stages[4].name == "05_evol_round_03"
+    assert isinstance(stages[5], ExactDedupStage)
+    assert isinstance(stages[6], NearDedupStage)
+    assert isinstance(stages[7], LengthFilterStage)
+    assert isinstance(stages[8], LanguageFilterStage)
+    assert isinstance(stages[9], LabelingQualityFilterStage)
+
+
+def test_ifd_enabled_inserts_stage_before_label_quality(tmp_path: Path) -> None:
+    config = _base_config(
+        filters={
+            "target_count": 2,
+            "length": {"enabled": True},
+            "language": {"enabled": True},
+            "ifd": {"enabled": True, "min_score": 0.2},
+            "labeling_engine": {"enabled": True, "rubric_path": "rubric.yaml"},
+        }
+    )
+
+    with pytest.raises(
+        ValueError, match="IFD requires provider/model response-scoring capability"
+    ):
+        StageBuilder(config=config, project_root=tmp_path).build()
+
+
+def test_all_filters_ordering_without_ifd(tmp_path: Path) -> None:
     config = _base_config(
         dedup={"exact": {"enabled": True}, "near": {"enabled": True}},
         filters={
@@ -194,3 +266,33 @@ def test_all_filters_ordering(tmp_path: Path) -> None:
     assert isinstance(stages[5], LengthFilterStage)
     assert isinstance(stages[6], LanguageFilterStage)
     assert isinstance(stages[7], LabelingQualityFilterStage)
+
+
+def test_ifd_stage_position_when_capability_check_is_stubbed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "arka.pipeline.stage_builder.validate_ifd_capability", lambda ctx: None
+    )
+    config = _base_config(
+        filters={
+            "target_count": 2,
+            "length": {"enabled": True},
+            "language": {"enabled": True},
+            "ifd": {"enabled": True, "min_score": 0.2},
+            "labeling_engine": {
+                "enabled": True,
+                "rubric_path": "rubric.yaml",
+            },
+        },
+    )
+    stages = StageBuilder(config=config, project_root=tmp_path).build()
+
+    assert len(stages) == 7
+    assert isinstance(stages[0], SeedSourceStage)
+    assert isinstance(stages[1], NormalizeConversationStage)
+    assert isinstance(stages[2], PromptBasedGeneratorStage)
+    assert isinstance(stages[3], LengthFilterStage)
+    assert isinstance(stages[4], LanguageFilterStage)
+    assert isinstance(stages[5], IFDFilterStage)
+    assert isinstance(stages[6], LabelingQualityFilterStage)

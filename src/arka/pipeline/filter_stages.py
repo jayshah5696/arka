@@ -7,7 +7,11 @@ from typing import Any
 
 from arka.labeling.engine import LabelingEngine
 from arka.labeling.rubric import RubricLoader
-from arka.llm.client import LLMClient, LLMClientError
+from arka.llm.client import (
+    LLMClient,
+    LLMClientError,
+    provider_supports_sequence_scoring,
+)
 from arka.pipeline.models import StageContext
 from arka.pipeline.output import OutputWriter
 from arka.pipeline.stages import Stage
@@ -205,3 +209,15 @@ class LabelingQualityFilterStage(Stage):
             "min": round(min(scores), 4),
             "max": round(max(scores), 4),
         }
+
+
+def validate_ifd_capability(ctx: StageContext) -> None:
+    filter_config = ctx.config.filters.ifd
+    if not filter_config.enabled:
+        return
+    if not provider_supports_sequence_scoring(ctx.config.llm):
+        raise ValueError(
+            "IFD requires provider/model response-scoring capability; "
+            f"unsupported for provider={ctx.config.llm.provider!r} "
+            f"model={ctx.config.llm.model!r}"
+        )

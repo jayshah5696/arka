@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import Field, HttpUrl
+from pydantic import Field, HttpUrl, model_validator
 
 from arka.common.models import StrictModel
 
@@ -31,6 +31,39 @@ class ExecutorConfig(StrictModel):
 class DataSourceConfig(StrictModel):
     type: str
     path: str | None = None
+    chunk_strategy: Literal["fixed"] | None = None
+    chunk_size_chars: int | None = None
+    chunk_overlap_chars: int | None = None
+
+    @model_validator(mode="after")
+    def validate_pdf_options(self) -> DataSourceConfig:
+        if self.type != "pdf":
+            return self
+        if not self.path:
+            raise ValueError("data_source.path is required when data_source.type='pdf'")
+        if self.chunk_strategy is None:
+            self.chunk_strategy = "fixed"
+        if self.chunk_size_chars is None:
+            self.chunk_size_chars = 3000
+        if self.chunk_overlap_chars is None:
+            self.chunk_overlap_chars = 300
+        if self.chunk_size_chars <= 0:
+            raise ValueError("data_source.chunk_size_chars must be > 0")
+        if self.chunk_overlap_chars < 0:
+            raise ValueError("data_source.chunk_overlap_chars must be >= 0")
+        if self.chunk_overlap_chars >= self.chunk_size_chars:
+            raise ValueError(
+                "data_source.chunk_overlap_chars must be smaller than chunk_size_chars"
+            )
+        return self
+
+
+class EvolFilterConfig(StrictModel):
+    min_edit_distance_chars: int = 20
+    min_instruction_chars: int = 20
+    refusal_keywords: list[str] = Field(
+        default_factory=lambda: ["I cannot", "I'm unable", "As an AI"]
+    )
 
 
 class GeneratorConfig(StrictModel):
@@ -47,6 +80,31 @@ class GeneratorConfig(StrictModel):
     )
     temperature: float = 0.7
     max_tokens: int = 512
+    rounds: int | None = None
+    branching_factor: int | None = None
+    operators: list[str] = Field(default_factory=list)
+    filter: EvolFilterConfig = Field(default_factory=EvolFilterConfig)
+
+    @model_validator(mode="after")
+    def validate_generator_options(self) -> GeneratorConfig:
+        if self.type != "evol_instruct":
+            return self
+        if self.rounds is None or self.rounds < 1:
+            raise ValueError("generator.rounds must be >= 1 for evol_instruct")
+        if self.branching_factor is None or self.branching_factor < 1:
+            raise ValueError(
+                "generator.branching_factor must be >= 1 for evol_instruct"
+            )
+        if not self.operators:
+            raise ValueError("generator.operators must be non-empty for evol_instruct")
+        from arka.pipeline.evol_instruct import SUPPORTED_EVOL_OPERATORS
+
+        unknown = sorted(set(self.operators) - set(SUPPORTED_EVOL_OPERATORS))
+        if unknown:
+            raise ValueError(
+                f"generator.operators contains unsupported names: {unknown}"
+            )
+        return self
 
 
 class ExactDedupConfig(StrictModel):
@@ -84,10 +142,16 @@ class LabelingFilterConfig(StrictModel):
     min_overall_score: float | None = None
 
 
+class IFDFilterConfig(StrictModel):
+    enabled: bool = False
+    min_score: float = 0.2
+
+
 class FiltersConfig(StrictModel):
     target_count: int
     length: LengthFilterConfig = Field(default_factory=LengthFilterConfig)
     language: LanguageFilterConfig = Field(default_factory=LanguageFilterConfig)
+    ifd: IFDFilterConfig = Field(default_factory=IFDFilterConfig)
     labeling_engine: LabelingFilterConfig = Field(default_factory=LabelingFilterConfig)
 
 
