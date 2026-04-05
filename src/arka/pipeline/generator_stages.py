@@ -310,6 +310,7 @@ class PromptBasedGeneratorStage(Stage):
 
         self._write_parse_artifacts(
             ctx=ctx,
+            raw_rows=raw_rows,
             attempted_count=len(plan),
             generated_records=generated_records,
             dropped_records=dropped_records,
@@ -408,6 +409,7 @@ class PromptBasedGeneratorStage(Stage):
         self,
         *,
         ctx: StageContext,
+        raw_rows: list[RawGeneratorResponse],
         attempted_count: int,
         generated_records: list[Record],
         dropped_records: list[Record],
@@ -418,12 +420,17 @@ class PromptBasedGeneratorStage(Stage):
             records=dropped_records,
             path=ctx.work_dir / "dropped.parquet",
         )
+        costs = [
+            row.usage.cost_usd for row in raw_rows if row.usage.cost_usd is not None
+        ]
+        total_cost = round(sum(costs), 6) if costs else None
         stats = {
             "stage": self.name,
             "count_in": attempted_count,
             "count_out": len(generated_records),
             "dropped_count": len(dropped_records),
             "drop_reasons": drop_reasons,
+            "cost_usd": total_cost,
         }
         (ctx.work_dir / "stats.json").write_text(json.dumps(stats, indent=2))
 

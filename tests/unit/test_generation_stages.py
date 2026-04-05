@@ -27,10 +27,15 @@ from arka.records.models import (
 
 class SequentialFakeLLMClient:
     def __init__(
-        self, responses: list[str], *, return_parsed_only: bool = False
+        self,
+        responses: list[str],
+        *,
+        return_parsed_only: bool = False,
+        cost_usd: float | None = None,
     ) -> None:
         self.responses = responses
         self.return_parsed_only = return_parsed_only
+        self.cost_usd = cost_usd
         self.calls = 0
         self.call_args: list[dict[str, object | None]] = []
 
@@ -58,7 +63,12 @@ class SequentialFakeLLMClient:
         return LLMOutput(
             text=None if self.return_parsed_only else text,
             parsed=parsed,
-            usage=TokenUsage(prompt_tokens=10, completion_tokens=20, total_tokens=30),
+            usage=TokenUsage(
+                prompt_tokens=10,
+                completion_tokens=20,
+                total_tokens=30,
+                cost_usd=self.cost_usd,
+            ),
             finish_reason="stop",
             model="gpt-4o-mini",
             provider="openai",
@@ -186,6 +196,30 @@ def test_prompt_based_generator_emits_target_count_times_multiplier_and_writes_r
     assert cached is not None
     assert cached["response_count"] == 6
     assert cached["status"] == "completed"
+
+
+def test_prompt_based_generator_writes_cost_usd_to_stats_when_available(
+    tmp_path: Path,
+) -> None:
+    ctx = _config(tmp_path)
+    stage = PromptBasedGeneratorStage(
+        llm_client=SequentialFakeLLMClient(
+            [
+                _generated_json("gen-1", "resp-1"),
+                _generated_json("gen-2", "resp-2"),
+            ],
+            cost_usd=0.001,
+        )
+    )
+
+    records = stage.run(
+        [_seed_record("seed-1", "Seed instruction", "Seed response")],
+        ctx,
+    )
+
+    assert len(records) == 2
+    stats = json.loads((ctx.work_dir / "stats.json").read_text())
+    assert stats["cost_usd"] == 0.002
 
 
 def test_prompt_based_generator_resumes_from_parquet_when_prompt_is_unchanged(

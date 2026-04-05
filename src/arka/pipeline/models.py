@@ -42,3 +42,4 @@ class StageStat:
     drop_reasons: dict[str, int] = field(default_factory=dict)
     quality_distribution: dict[str, float] | None = None
     error: StageErrorInfo | None = None
+    cost_usd: float | None = None

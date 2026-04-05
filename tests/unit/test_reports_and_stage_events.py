@@ -49,6 +49,9 @@ class FilteringStage(Stage):
     name = "03_filter"
     stage_action = "filtered"
 
+    def __init__(self, *, cost_usd: float | None = None) -> None:
+        self.cost_usd = cost_usd
+
     def run(self, records: list[Record], ctx) -> list[Record]:
         kept_records: list[Record] = []
         dropped_records = []
@@ -85,6 +88,7 @@ class FilteringStage(Stage):
                         "min": 4.0,
                         "max": 5.0,
                     },
+                    "cost_usd": self.cost_usd,
                 }
             )
         )
@@ -155,6 +159,7 @@ def test_runner_appends_stage_events_and_writes_run_report(tmp_path: Path) -> No
             "dropped_count": 0,
         },
     ]
+    assert report["cost_usd"] is None
     assert report["dataset_path"].endswith("output/dataset.jsonl")
 
 
@@ -216,3 +221,22 @@ def test_runner_includes_stage_stats_and_drop_reasons_from_stage_stats_file(
         "min": 4.0,
         "max": 5.0,
     }
+    assert report["cost_usd"] is None
+
+
+def test_run_report_includes_cost_usd_when_stage_stats_provide_it(
+    tmp_path: Path,
+) -> None:
+    runner = PipelineRunner(project_root=tmp_path)
+
+    runner.run(
+        config=CONFIG,
+        stages=[SourceStage(), TransformStage(), FilteringStage(cost_usd=0.001)],
+        run_id="run-with-cost",
+    )
+
+    report_path = tmp_path / "runs" / "run-with-cost" / "report" / "run_report.json"
+    report = json.loads(report_path.read_text())
+
+    assert report["cost_usd"] == 0.001
+    assert report["stage_yields"][2]["cost_usd"] == 0.001

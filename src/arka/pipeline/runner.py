@@ -247,6 +247,7 @@ class PipelineRunner:
                 stats_payload.get("quality_distribution")
             ),
             error=error,
+            cost_usd=self._normalize_cost_usd(stats_payload.get("cost_usd")),
         )
 
     def _load_stage_stats(self, path: Path) -> dict[str, Any]:
@@ -272,6 +273,8 @@ class PipelineRunner:
                 "type": stage_stat.error.type,
                 "message": stage_stat.error.message,
             }
+        if stage_stat.cost_usd is not None:
+            payload["cost_usd"] = stage_stat.cost_usd
         return payload
 
     def _aggregate_drop_reasons(self, stage_stats: list[StageStat]) -> dict[str, int]:
@@ -296,6 +299,13 @@ class PipelineRunner:
             for key, value in payload.items()
             if isinstance(value, int | float)
         }
+
+    def _normalize_cost_usd(self, payload: Any) -> float | None:
+        if payload is None:
+            return None
+        if not isinstance(payload, int | float):
+            return None
+        return float(payload)
 
     def _build_manifest(
         self,
@@ -335,6 +345,12 @@ class PipelineRunner:
         status: str,
         error: dict[str, str] | None,
     ) -> dict[str, Any]:
+        stage_costs = [
+            stage_stat.cost_usd
+            for stage_stat in stage_stats
+            if stage_stat.cost_usd is not None
+        ]
+        total_cost = round(sum(stage_costs), 6) if stage_costs else None
         run_report = {
             "run_id": manifest["run_id"],
             "config_hash": manifest["config_hash"],
@@ -344,6 +360,7 @@ class PipelineRunner:
             "dataset_path": str(dataset_path) if dataset_path is not None else None,
             "drop_reasons": self._aggregate_drop_reasons(stage_stats),
             "quality_distribution": self._report_quality_distribution(stage_stats),
+            "cost_usd": total_cost,
             "status": status,
         }
         if error is not None:

@@ -236,6 +236,7 @@ def test_pipeline_runner_marks_failed_run_and_persists_failure_report(
             "error": {"type": "RuntimeError", "message": "boom"},
         },
     ]
+    assert report["cost_usd"] is None
 
     checkpoint_runs = CheckpointManager(tmp_path / "state.db").list_runs()
     assert checkpoint_runs == [
