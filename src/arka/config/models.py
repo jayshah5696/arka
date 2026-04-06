@@ -175,6 +175,14 @@ class LabelingEngineConfig(StrictModel):
     mode: Literal["single", "multi"] = "single"
 
 
+class DensityControllerConfig(StrictModel):
+    enabled: bool = False
+    reference_run_id: str | None = None
+    k_neighbors: int = 10
+    sparse_threshold_percentile: int = 20
+    strategy: Literal["seed_prioritization"] = "seed_prioritization"
+
+
 class ResolvedConfig(StrictModel):
     version: str
     run_id: str | None = None
@@ -186,4 +194,7 @@ class ResolvedConfig(StrictModel):
     filters: FiltersConfig
     embeddings: EmbeddingsConfig = Field(default_factory=EmbeddingsConfig)
     labeling_engine: LabelingEngineConfig = Field(default_factory=LabelingEngineConfig)
+    density_controller: DensityControllerConfig = Field(
+        default_factory=DensityControllerConfig
+    )
     output: OutputConfig

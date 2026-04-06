@@ -87,6 +87,33 @@ class EvolInstructRoundStage(Stage):
             )
             return records
 
+        # Latent Density Sampling: priorize seeds based on sparse embeddings from reference run
+        if ctx.config.density_controller.enabled and ctx.config.density_controller.strategy == "seed_prioritization":
+            from arka.pipeline.density import DensityAnalyzer
+            from arka.pipeline.runner import PipelineRunner
+            import numpy as np
+
+            project_root = self._project_root or self._project_root_from_work_dir(ctx.work_dir)
+            analyzer = DensityAnalyzer(project_root)
+            sparse_embeddings = analyzer.get_sparse_embeddings(ctx.config)
+
+            if sparse_embeddings is not None and len(sparse_embeddings) > 0:
+                instructions = [
+                    seed.text_for_diversity() if seed.text_for_diversity() is not None else ""
+                    for seed in frontier
+                ]
+                runner = PipelineRunner(project_root)
+                seed_embeddings = runner._embed_texts(config=ctx.config, texts=instructions)
+
+                if seed_embeddings is not None and len(seed_embeddings) == len(frontier):
+                    distances = np.zeros(len(seed_embeddings))
+                    for i, emb in enumerate(seed_embeddings):
+                        dist_to_sparse = np.linalg.norm(sparse_embeddings - emb, axis=1)
+                        distances[i] = np.min(dist_to_sparse)
+
+                    sorted_indices = np.argsort(distances)
+                    frontier = [frontier[i] for i in sorted_indices]
+
         llm_client = self._llm_client or LLMClient(config=ctx.config.llm)
         operators = ctx.config.generator.operators
         branching_factor = ctx.config.generator.branching_factor or 1
@@ -395,6 +422,12 @@ class EvolInstructRoundStage(Stage):
                 "utf-8"
             )
         ).hexdigest()
+
+    def _project_root_from_work_dir(self, work_dir: Path) -> Path:
+        for parent in work_dir.parents:
+            if parent.name == "runs":
+                return parent.parent
+        raise ValueError(f"Could not determine project_root from work_dir: {work_dir}")
 
     def _config_hash(self, ctx: StageContext) -> str:
         return hashlib.sha256(

@@ -110,7 +110,7 @@ class PromptBasedGeneratorStage(Stage):
         if not seed_records:
             return []
 
-        generation_plan = self._generation_plan(seed_records, ctx.config.generator)
+        generation_plan = self._generation_plan(seed_records, ctx)
         if not generation_plan:
             return []
 
@@ -132,11 +132,45 @@ class PromptBasedGeneratorStage(Stage):
     def _generation_plan(
         self,
         seed_records: list[ConversationRecord | GroundedChunkRecord],
-        config: GeneratorConfig,
+        ctx: StageContext,
     ) -> list[GenerationPlanItem]:
+        config = ctx.config.generator
         requested_count = config.target_count * config.generation_multiplier
         if requested_count <= 0:
             return []
+
+        # Latent Density Sampling: priorize seeds based on sparse embeddings from reference run
+        if ctx.config.density_controller.enabled and ctx.config.density_controller.strategy == "seed_prioritization":
+            from arka.pipeline.density import DensityAnalyzer
+            from arka.pipeline.runner import PipelineRunner
+            import numpy as np
+
+            project_root = self._project_root or self._project_root_from_work_dir(ctx.work_dir)
+            analyzer = DensityAnalyzer(project_root)
+            sparse_embeddings = analyzer.get_sparse_embeddings(ctx.config)
+
+            if sparse_embeddings is not None and len(sparse_embeddings) > 0:
+                instructions = [
+                    seed.text_for_diversity() if seed.text_for_diversity() is not None else ""
+                    for seed in seed_records
+                ]
+                runner = PipelineRunner(project_root)
+                seed_embeddings = runner._embed_texts(config=ctx.config, texts=instructions)
+
+                if seed_embeddings is not None and len(seed_embeddings) == len(seed_records):
+                    # Compute min distance to any sparse region centroid for each seed
+                    # seeds with larger minimum distances are NOT what we want; we want seeds CLOSE to sparse regions.
+                    # Wait, the issue says: "reorder seeds by proximity to sparse region centroids"
+                    # So we want seeds with the *smallest* minimum distance to the sparse regions
+                    distances = np.zeros(len(seed_embeddings))
+                    for i, emb in enumerate(seed_embeddings):
+                        dist_to_sparse = np.linalg.norm(sparse_embeddings - emb, axis=1)
+                        distances[i] = np.min(dist_to_sparse)
+
+                    # Sort indices by distance (ascending)
+                    sorted_indices = np.argsort(distances)
+                    seed_records = [seed_records[i] for i in sorted_indices]
+
         planned_seeds = islice(cycle(seed_records), requested_count)
         return [
             GenerationPlanItem(plan_index=index, seed_record=seed_record)
@@ -483,6 +517,12 @@ class PromptBasedGeneratorStage(Stage):
                 "utf-8"
             )
         ).hexdigest()
+
+    def _project_root_from_work_dir(self, work_dir: Path) -> Path:
+        for parent in work_dir.parents:
+            if parent.name == "runs":
+                return parent.parent
+        raise ValueError(f"Could not determine project_root from work_dir: {work_dir}")
 
     def _checkpoint_manager(self, ctx: StageContext) -> CheckpointManager:
         if self._checkpoint is not None:

@@ -487,7 +487,7 @@ def test_prompt_based_generator_skips_malformed_rows_and_records_drop_stats(
     with caplog.at_level(logging.WARNING, logger="arka.pipeline.generator_stages"):
         records = stage._parse_responses(
             stage._load_raw_responses(responses_path),
-            stage._generation_plan(seeds, ctx.config.generator),
+            stage._generation_plan(seeds, ctx),
             ctx,
         )
 
