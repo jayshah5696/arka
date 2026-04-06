@@ -78,6 +78,13 @@ labeling_engine:
   rubric_path: ../rubrics/sft_quality.yaml
   mode: single
 
+density_controller:
+  enabled: true
+  reference_run_id: test-01
+  k_neighbors: 5
+  sparse_threshold_percentile: 30
+  strategy: seed_prioritization
+
 embeddings:
   provider: huggingface
   model: all-MiniLM-L6-v2
