@@ -1,62 +1,64 @@
-# Arka Features
+# Arka Features & Architecture
 
-Arka (अर्क) is a config-driven synthetic data generation framework. It transforms seed data through multiple pipeline stages to output high-quality datasets suitable for supervised fine-tuning (SFT).
+Arka (अर्क) is a configuration-driven framework designed from first principles to generate high-quality synthetic data for supervised fine-tuning (SFT). Instead of writing imperative, one-off scripts for every new synthetic dataset, Arka allows you to declaratively define the entire generation pipeline—from raw seed ingestion to final deduplicated, filtered outputs.
 
-This document provides a high-level overview of the main features and pipeline stages implemented in Arka.
+This document dives deep into the core capabilities and the architectural stages that data passes through during a run.
 
-## 1. Data Ingestion & Normalization
+---
 
-Arka can ingest seed data from various source formats and normalize them into a uniform structure.
+## 1. Data Source & Ingestion
 
-- **Supported Formats:**
-  - **JSONL Seeds:** Pre-formatted instruction/response pairs in JSON lines format.
-  - **CSV Seeds:** Tabular data ingestion.
-  - **PDF Sources:** Supports extracting and chunking text from PDF files using configurable chunk sizes and overlaps.
+The first step in any synthetic generation pipeline is acquiring high-quality seed examples. Arka supports multiple ingestion mechanisms designed to normalize inputs into a standard internal record format.
 
-## 2. Generation Strategies
+* **JSONL Seeds**: Ingest pre-formatted pairs (e.g., instructions and responses) directly from `.jsonl` files. This is the fastest way to bootstrap generation if you already have curated seeds.
+* **CSV Seeds**: Support for tabular data where columns represent the required instruction and response fields.
+* **PDF Document Parsing**: For grounded generation tasks, Arka can parse raw PDF files. It automatically extracts text and applies a configurable chunking strategy (e.g., fixed-size chunks with overlapping windows) to create seed examples representing document context.
 
-The generation phase creates new synthetic examples based on the ingested seeds.
+## 2. Generative Engines
 
-- **Prompt-Based Generation:** Uses a customizable prompt template to ask a Large Language Model (LLM) to generate a new, self-contained instruction-response pair inspired by the seed example.
-- **Evol-Instruct:** A multi-round generation strategy that incrementally makes instructions more complex or specific. Supports setting branching factors, rounds, and specific evolution operators.
-- **LLM Support:** Compatible with OpenAI and other OpenAI-compatible APIs (e.g., OpenRouter). Ensures structured output using JSON schemas.
+Once seeds are normalized, they pass into the generation stage. Arka delegates the actual synthesis to Large Language Models (LLMs) configured via the `llm` block.
 
-## 3. Deduplication
+* **Prompt-Based Generation**: The most flexible approach. Arka takes a user-defined prompt template (which can inject the seed instruction and response) and uses it to instruct the LLM to generate a *new*, distinct example.
+* **Evol-Instruct Pipeline**: An advanced, multi-round generative strategy. Based on the Evol-Instruct methodology, this engine takes a base instruction and iteratively applies "mutations" (operators) to increase its complexity, depth, or specificity over several rounds. You can configure branching factors (how many variations to create per seed) and specific operators to use.
+* **LLM & Structured Output**: Arka natively integrates with OpenAI-compatible APIs (including OpenRouter). It strictly enforces JSON schema adherence on the provider side, guaranteeing that the generated artifacts are always parseable and immediately usable.
 
-Prevents the dataset from being flooded with near-identical generations.
+## 3. Deduplication Strategies
 
-- **Exact Deduplication:** Filters out generations that match an existing record character for character.
-- **Near Deduplication:** Employs MinHash and Locality Sensitive Hashing (LSH) (or similar techniques via shingles and Jaccard similarity) to identify and remove generations that are structurally or semantically very similar to existing ones.
+LLMs are prone to mode collapse—generating very similar responses for slightly different prompts. To maintain diversity, Arka implements robust deduplication.
 
-## 4. Quality Filtering
+* **Exact Deduplication**: A fast, hash-based check to instantly drop any generated instruction or response that is a byte-for-byte exact match of an existing record in the dataset.
+* **Near Deduplication (Fuzzy Matching)**: Employs MinHash algorithms and Locality Sensitive Hashing (LSH) via shingles and Jaccard similarity. This catches generations that are structurally identical or only differ by a few words, ensuring high dataset variance.
 
-Applies multiple checks to ensure the generated data meets quality standards.
+## 4. Multi-Stage Quality Filtering
 
-- **Length Filters:** Enforces minimum and maximum character lengths for both instructions and responses.
-- **Language Filters:** Ensures the output strictly conforms to a specified list of languages (e.g., english only).
-- **IFD (Instruction Following Difficulty):** Filters out records that fall below a configured minimum IFD score.
-- **Labeling/Rubric Filters:** Integrates with an LLM-as-a-judge (single or multi-judge) scoring mechanism based on a customizable YAML rubric. Filters out items failing to meet a minimum overall score.
-- **Evol Filters:** Specifically for Evol-Instruct, discards generations that trigger refusal keywords or fall below minimum edit distances compared to previous rounds.
+Quantity does not equal quality in SFT. Arka passes generated candidates through a gauntlet of configurable filters.
 
-## 5. Embeddings & Diversity
+* **Heuristic Filters**:
+    * **Length Limits**: Enforce strict minimum and maximum character counts for both instructions and responses to prevent abnormally short or truncated outputs.
+    * **Language Enforcement**: Uses fast, local models to identify the language of the output and strictly discard anything outside the configured target (e.g., ensuring 100% English outputs).
+* **Advanced Metrics**:
+    * **IFD (Instruction Following Difficulty)**: Arka can calculate an IFD score to estimate how difficult an instruction is for a model to follow, filtering out trivial or overwhelmingly complex examples based on a threshold.
+* **LLM-as-a-Judge (Labeling Engine)**: The ultimate quality gate. Arka can send the generated pairs to an evaluator LLM alongside a strict YAML rubric. The judge scores the example across various dimensions (e.g., clarity, helpfulness, safety), and Arka drops any record falling below the `min_overall_score`. Supports both single-judge and multi-judge consensus modes.
+* **Evol-Specific Filters**: When using Evol-Instruct, Arka enforces minimum edit distances between the original and evolved instruction, and scans for "refusal keywords" (e.g., "As an AI, I cannot...") to automatically drop alignment-refusal responses.
 
-To calculate similarity beyond text matching, Arka calculates diversity embeddings.
+## 5. Diversity Embeddings
 
-- **Embedding Models:** Supports computing embeddings via HuggingFace (e.g., `all-MiniLM-L6-v2` via FastEmbed) or external providers like OpenAI.
+To provide deeper insight into the semantic coverage of your dataset, Arka can compute dense vector embeddings for all surviving records.
 
-## 6. Execution & Checkpointing
+* Integrates with FastEmbed for fast, local HuggingFace models (like `all-MiniLM-L6-v2`), avoiding expensive API calls.
+* Alternatively, supports remote embedding models via OpenAI-compatible endpoints.
+* Embeddings are exported as artifacts, allowing researchers to plot, cluster, and visualize the dataset's topical distribution.
 
-Designed to handle robust generation runs.
+## 6. Resilient Execution & Checkpointing
 
-- **Execution Modes:** Supports configurable concurrency via thread pools.
-- **Resumable Runner:** Uses SQLite checkpoints, allowing runs to be resumed if interrupted.
-- **Rich Artifacts:** Outputs `data.parquet`, `dropped.parquet`, `clusters.parquet`, `stats.json`, `manifest.json`, `run_report.json`, `samples.jsonl`, and `canaries.json` inside the `runs/<run_id>/` directory for deep inspection.
+Synthetic generation runs can take hours and cost money. Arka is built to be resilient.
 
-## 7. Output Export
+* **Checkpoints**: At every stage of the pipeline, Arka commits state to a local SQLite database. If a run crashes, is interrupted, or hits an API rate limit, it can be resumed exactly where it left off using the `--run-id`.
+* **Concurrency**: Optimized thread-pool execution ensures high throughput when making API calls, controlled via `max_workers`.
+* **Rich Artifacts**: Arka writes outputs using Polars into structured Parquet files (`data.parquet`, `dropped.parquet`, `clusters.parquet`). It also produces a detailed `run_report.json` detailing exactly how many items were dropped at each specific filter stage.
 
-Final datasets can be formatted specifically for popular training paradigms.
+## 7. Export Formatting
 
-- **Formats Supported:**
-  - `jsonl`
-  - `chatml`
-  - `alpaca`
+Finally, Arka converts the surviving, high-quality records into formats ready for immediate fine-tuning frameworks (like Axolotl or LLaMA-Factory).
+
+* Supported native exports: `jsonl`, `chatml`, and `alpaca`.
