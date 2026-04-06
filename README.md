@@ -4,9 +4,8 @@ Config-driven synthetic data generation framework built from first principles.
 ## Quick Start
 ```bash
 just setup
-export OPENAI_API_KEY=your_key_here
-printf '{"instruction":"Say hello","response":"Hello"}\n' > seeds.jsonl
-uv run arka --config config.smoke.yaml --run-id smoke-run
+export OPENROUTER_API_KEY=your_key_here
+uv run arka --config examples/01-minimal.yaml --run-id quickstart
 ```
 Artifacts land in `runs/<run_id>/` plus the configured JSONL output path.
 
@@ -15,7 +14,7 @@ Artifacts land in `runs/<run_id>/` plus the configured JSONL output path.
 - `just matrix` — run the supported config/runtime validation matrix
 - `just check` — lint, format-check, test
 - `just run` — run `arka` with default `config.yaml`
-- `uv run arka --config config.smoke.yaml --run-id smoke-run` — run smoke pipeline
+- `uv run arka --config examples/01-minimal.yaml --run-id quickstart` — run minimal example
 
 ## Current Implemented Path
 - seed source (JSONL/CSV) → normalize → prompt-based generate → exact dedup → near dedup
@@ -27,13 +26,14 @@ Artifacts land in `runs/<run_id>/` plus the configured JSONL output path.
 - OpenAI-compatible client with structured-output strategy chain
 
 ## Example Configs
-- `config.smoke.yaml` — smallest runnable path
-- `config.example.yaml` — baseline OpenAI example
-- `config.openrouter.yaml` — OpenRouter-compatible example
-- `config.examples.dedup-quality.yaml` — generator + exact dedup + cheap filters + quality filter
-- `docs/config-examples.md` — config catalog
+- `examples/README.md` — example catalog
+- `examples/01-minimal.yaml` — smallest runnable path
+- `examples/02-openrouter-quickstart.yaml` — OpenRouter quickstart
+- `examples/03-csv-seeds.yaml` — CSV seed ingestion
+- `examples/04-evol-instruct.yaml` — multi-round Evol-Instruct example
+- `examples/05-pdf-grounded.yaml` — PDF chunk to grounded generation example
+- `examples/06-dedup-quality-filter.yaml` — dedup + quality filter example
+- `examples/07-resume-debug.yaml` — resume/debug example
 - `docs/validation-matrix.md` — supported options, quality bar, and release checks
-- `config.examples.pdf-grounded.yaml` — PDF chunk to grounded generation example
-- `config.examples.evol-instruct.yaml` — multi-round Evol-Instruct example
 
 OpenAI-compatible routing, including OpenRouter-backed paths, is supported in practice.

@@ -1,0 +1,62 @@
+# WHAT:      PDF-grounded generation example using a local text-native PDF.
+# WHEN:      Use this when you want grounded instruction/response generation from a document.
+# REQUIRES:  OPENROUTER_API_KEY and examples/pdfs/sample.pdf.
+# RUN:       uv run arka --config examples/05-pdf-grounded.yaml --run-id test-05
+# ARTIFACTS: runs/<run-id>/... plus ./output/05-pdf-grounded-dataset.jsonl.
+# TEACHES:   PDF chunk source -> grounded prompt generation.
+# COST:      medium
+version: "1"
+run_id: null
+
+llm:
+  provider: openai
+  model: google/gemini-3.1-flash-lite-preview
+  api_key: ${OPENROUTER_API_KEY}
+  base_url: https://openrouter.ai/api/v1
+  timeout_seconds: 30
+  max_retries: 3
+  openai_compatible:
+    referer: https://example.com
+    title: arka
+
+executor:
+  mode: threadpool
+  max_workers: 4
+
+data_source:
+  type: pdf
+  path: ./pdfs/sample.pdf
+  chunk_strategy: fixed
+  chunk_size_chars: 3000
+  chunk_overlap_chars: 300
+
+generator:
+  type: prompt_based
+  target_count: 10
+  generation_multiplier: 1
+
+dedup:
+  exact:
+    enabled: true
+  near:
+    enabled: false
+
+filters:
+  target_count: 10
+  length:
+    enabled: true
+    min_instruction_chars: 10
+    max_instruction_chars: 4096
+    min_response_chars: 10
+    max_response_chars: 16384
+  language:
+    enabled: true
+    allowed: [en]
+
+embeddings:
+  provider: huggingface
+  model: all-MiniLM-L6-v2
+
+output:
+  format: chatml
+  path: ./output/05-pdf-grounded-dataset.jsonl

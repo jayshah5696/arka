@@ -92,23 +92,23 @@ This runs lint, format-check, and the full test suite.
 
 ### Live verification against a real hosted model
 
-Single-judge quality filter smoke:
+Minimal example:
 
 ```bash
-uv run arka --config config.examples.verify-openrouter.yaml --run-id verify-openrouter
+uv run arka --config examples/01-minimal.yaml --run-id verify-minimal
 ```
 
 Resume/debug workflow:
 
 ```bash
-uv run arka --config config.examples.resume-openrouter.yaml --run-id openrouter-debug-v1
-uv run arka --config config.examples.resume-openrouter.yaml --run-id openrouter-debug-v1 --resume
+uv run arka --config examples/07-resume-debug.yaml --run-id openrouter-debug-v1
+uv run arka --config examples/07-resume-debug.yaml --run-id openrouter-debug-v1 --resume
 ```
 
 Dedup + quality example:
 
 ```bash
-uv run arka --config config.examples.dedup-quality.yaml --run-id dedup-quality-check
+uv run arka --config examples/06-dedup-quality-filter.yaml --run-id dedup-quality-check
 ```
 
 ## Recommended release checklist for this slice

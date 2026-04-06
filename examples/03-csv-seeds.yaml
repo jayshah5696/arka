@@ -1,0 +1,50 @@
+# WHAT:      CSV seed ingestion example for simple SFT generation.
+# WHEN:      Use this when your starting data is in CSV format.
+# REQUIRES:  OPENROUTER_API_KEY and examples/seeds/03-python-qa.csv.
+# RUN:       uv run arka --config examples/03-csv-seeds.yaml --run-id test-03
+# ARTIFACTS: runs/<run-id>/... plus ./output/03-csv-seeds-dataset.jsonl.
+# TEACHES:   CSV seed source -> normalize -> prompt-based generate.
+# COST:      low
+version: "1"
+run_id: null
+
+llm:
+  provider: openai
+  model: google/gemini-3.1-flash-lite-preview
+  api_key: ${OPENROUTER_API_KEY}
+  base_url: https://openrouter.ai/api/v1
+  timeout_seconds: 30
+  max_retries: 3
+  openai_compatible:
+    referer: https://example.com
+    title: arka
+
+executor:
+  mode: threadpool
+  max_workers: 2
+
+data_source:
+  type: seeds
+  path: ./seeds/03-python-qa.csv
+
+generator:
+  type: prompt_based
+  target_count: 5
+  generation_multiplier: 1
+
+dedup:
+  exact:
+    enabled: false
+  near:
+    enabled: false
+
+filters:
+  target_count: 5
+
+embeddings:
+  provider: huggingface
+  model: all-MiniLM-L6-v2
+
+output:
+  format: jsonl
+  path: ./output/03-csv-seeds-dataset.jsonl

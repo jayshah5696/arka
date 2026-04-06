@@ -1,0 +1,74 @@
+# WHAT:      Minimal OpenRouter-backed seed-to-SFT generation example.
+# WHEN:      Use this when you want the smallest real end-to-end run.
+# REQUIRES:  OPENROUTER_API_KEY and examples/seeds/07-humanizer-rewrite.jsonl.
+# RUN:       uv run arka --config examples/01-minimal.yaml --run-id test-01
+# ARTIFACTS: runs/<run-id>/... plus ./output/01-minimal-dataset.jsonl.
+# TEACHES:   Basic seed source -> normalize -> prompt-based generate path.
+# COST:      low
+version: "1"
+run_id: null
+
+llm:
+  provider: openai
+  model: google/gemini-3.1-flash-lite-preview
+  api_key: ${OPENROUTER_API_KEY}
+  base_url: https://openrouter.ai/api/v1
+  timeout_seconds: 30
+  max_retries: 3
+  openai_compatible:
+    referer: https://example.com
+    title: arka
+
+executor:
+  mode: threadpool
+  max_workers: 2
+
+data_source:
+  type: seeds
+  path: ./seeds/07-humanizer-rewrite.jsonl
+
+generator:
+  type: prompt_based
+  target_count: 10
+  generation_multiplier: 1
+  prompt_template: |
+    You are generating high-quality supervised fine-tuning examples for a writing assistant.
+    The assistant helps with proofreading, rewriting, shortening, formalizing, summarizing, and humanizing text.
+
+    Produce one new example in the same spirit as the seed, but not a copy.
+    The output response must be valid JSON with exactly these keys:
+    - brief_rationale
+    - final_text
+
+    Requirements for the generated task:
+    - The instruction must clearly state the rewrite task.
+    - The instruction must include the source text to rewrite.
+    - The instruction must explicitly ask to avoid AI-sounding phrasing and em dashes when appropriate.
+    - The response must include a short rationale followed by the rewritten text.
+    - Keep the rationale brief, concrete, and useful.
+    - The final_text should sound human, natural, and not overpolished.
+
+    Return only JSON with keys "instruction" and "response".
+
+    Seed instruction:
+    {seed_instruction}
+
+    Seed response:
+    {seed_response}
+
+dedup:
+  exact:
+    enabled: false
+  near:
+    enabled: false
+
+filters:
+  target_count: 10
+
+embeddings:
+  provider: huggingface
+  model: all-MiniLM-L6-v2
+
+output:
+  format: jsonl
+  path: ./output/01-minimal-dataset.jsonl

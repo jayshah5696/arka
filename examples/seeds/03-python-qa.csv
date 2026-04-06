@@ -1,0 +1,3 @@
+instruction,response
+"Explain Python list comprehensions simply.","A list comprehension is a compact way to build a new list by writing the loop and transformation in one expression."
+"Write a Python function that returns the larger of two integers.","def larger(a: int, b: int) -> int:\n    return a if a >= b else b"

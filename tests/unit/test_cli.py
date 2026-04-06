@@ -38,9 +38,12 @@ CONFIG_TEXT = """
 version: "1"
 llm:
   provider: openai
-  model: gpt-4o-mini
-  api_key: ${OPENAI_API_KEY}
-  base_url: https://api.openai.com/v1
+  model: google/gemini-3.1-flash-lite-preview
+  api_key: ${OPENROUTER_API_KEY}
+  base_url: https://openrouter.ai/api/v1
+  openai_compatible:
+    referer: https://example.com
+    title: arka
 executor:
   mode: threadpool
   max_workers: 2
@@ -71,7 +74,7 @@ def test_cli_auto_generates_run_id_when_not_provided(
     tmp_path: Path, monkeypatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     monkeypatch.setattr(
         "arka.pipeline.generator_stages.LLMClient", FakeGeneratorLLMClient
     )
@@ -116,7 +119,7 @@ def test_cli_supports_explicit_config_run_id_and_resume(
     config_path = tmp_path / "custom-config.yaml"
     config_path.write_text(CONFIG_TEXT)
     (tmp_path / "seeds.jsonl").write_text('{"instruction":"Hello?","response":"Hi."}\n')
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     monkeypatch.setattr(
         "arka.pipeline.generator_stages.LLMClient", FakeGeneratorLLMClient
     )

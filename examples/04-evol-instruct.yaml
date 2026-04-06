@@ -1,13 +1,23 @@
+# WHAT:      OpenRouter-backed Evol-Instruct example with local embeddings.
+# WHEN:      Use this when you want multi-round instruction evolution from seed examples.
+# REQUIRES:  OPENROUTER_API_KEY and examples/seeds/04-coding-seeds.csv.
+# RUN:       uv run arka --config examples/04-evol-instruct.yaml --run-id test-04
+# ARTIFACTS: runs/<run-id>/... plus ./output/04-evol-instruct-dataset.jsonl.
+# TEACHES:   Multi-round Evol-Instruct lineage and evolution operators.
+# COST:      medium
 version: "1"
 run_id: null
 
 llm:
   provider: openai
-  model: gpt-4o-mini
-  api_key: ${OPENAI_API_KEY}
-  base_url: https://api.openai.com/v1
+  model: google/gemini-3.1-flash-lite-preview
+  api_key: ${OPENROUTER_API_KEY}
+  base_url: https://openrouter.ai/api/v1
   timeout_seconds: 30
   max_retries: 3
+  openai_compatible:
+    referer: https://example.com
+    title: arka
 
 executor:
   mode: threadpool
@@ -15,7 +25,7 @@ executor:
 
 data_source:
   type: seeds
-  path: ./seeds.jsonl
+  path: ./seeds/04-coding-seeds.csv
 
 generator:
   type: evol_instruct
@@ -60,4 +70,4 @@ embeddings:
 
 output:
   format: jsonl
-  path: ./output/evol-instruct-dataset.jsonl
+  path: ./output/04-evol-instruct-dataset.jsonl

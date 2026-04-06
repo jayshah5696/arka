@@ -34,7 +34,7 @@ class FakeGeneratorLLMClient:
 
 def test_smoke_pipeline_runs_end_to_end(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     monkeypatch.setattr(
         "arka.pipeline.generator_stages.LLMClient", FakeGeneratorLLMClient
     )
@@ -42,42 +42,10 @@ def test_smoke_pipeline_runs_end_to_end(tmp_path: Path, monkeypatch) -> None:
     (tmp_path / "seeds.jsonl").write_text(
         '{"instruction":"  Say hello  ","response":"  Hello there  "}\n'
     )
-    (tmp_path / "config.smoke.yaml").write_text(
-        """
-version: "1"
-run_id: null
-llm:
-  provider: openai
-  model: gpt-4o-mini
-  api_key: ${OPENAI_API_KEY}
-  base_url: https://api.openai.com/v1
-executor:
-  mode: threadpool
-  max_workers: 2
-data_source:
-  type: seeds
-  path: ./seeds.jsonl
-generator:
-  type: prompt_based
-  target_count: 1
-  generation_multiplier: 1
-dedup:
-  exact:
-    enabled: false
-  near:
-    enabled: false
-filters:
-  target_count: 1
-embeddings:
-  provider: huggingface
-  model: all-MiniLM-L6-v2
-output:
-  format: chatml
-  path: ./output/smoke-dataset.jsonl
-"""
-    )
+    fixture_path = Path(__file__).resolve().parents[1] / "fixtures" / "smoke.yaml"
+    (tmp_path / "smoke.yaml").write_text(fixture_path.read_text())
 
-    main(["--config", "config.smoke.yaml", "--run-id", "smoke-run"])
+    main(["--config", "smoke.yaml", "--run-id", "smoke-run"])
 
     dataset_path = tmp_path / "output" / "smoke-dataset.jsonl"
     report_path = tmp_path / "runs" / "smoke-run" / "report" / "run_report.json"

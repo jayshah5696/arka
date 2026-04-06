@@ -1,0 +1,87 @@
+# WHAT:      OpenRouter quickstart with local embeddings and humanizer-style rewriting prompts.
+# WHEN:      Use this when you want a practical real-provider baseline for rewriting tasks.
+# REQUIRES:  OPENROUTER_API_KEY and examples/seeds/07-humanizer-rewrite.jsonl.
+# RUN:       uv run arka --config examples/02-openrouter-quickstart.yaml --run-id test-02
+# ARTIFACTS: runs/<run-id>/... plus ./output/02-openrouter-quickstart-dataset.jsonl.
+# TEACHES:   OpenRouter generation with local diversity embeddings.
+# COST:      low
+version: "1"
+run_id: null
+
+llm:
+  provider: openai
+  model: google/gemini-3.1-flash-lite-preview
+  api_key: ${OPENROUTER_API_KEY}
+  base_url: https://openrouter.ai/api/v1
+  timeout_seconds: 30
+  max_retries: 3
+  openai_compatible:
+    referer: https://example.com
+    title: arka
+
+executor:
+  mode: threadpool
+  max_workers: 4
+
+data_source:
+  type: seeds
+  path: ./seeds/07-humanizer-rewrite.jsonl
+
+generator:
+  type: prompt_based
+  target_count: 10
+  generation_multiplier: 2
+  prompt_template: |
+    You are generating SFT examples for a rewrite assistant used for proofreading, rewriting, shortening, formalizing, summarizing, and humanizing text.
+
+    Create one new instruction/response pair.
+
+    The instruction should:
+    - describe a realistic rewrite task
+    - include the raw source text to transform
+    - ask for a human-sounding result
+    - forbid em dashes
+
+    The response should be valid JSON with keys:
+    - brief_rationale
+    - final_text
+
+    Style rules for final_text:
+    - natural rhythm
+    - no corporate fluff
+    - no AI-signature vocabulary
+    - no em dashes
+
+    Return only JSON with keys "instruction" and "response".
+
+    Seed instruction:
+    {seed_instruction}
+
+    Seed response:
+    {seed_response}
+
+dedup:
+  exact:
+    enabled: false
+  near:
+    enabled: false
+
+filters:
+  target_count: 10
+  length:
+    enabled: true
+    min_instruction_chars: 40
+    max_instruction_chars: 4096
+    min_response_chars: 40
+    max_response_chars: 16384
+  language:
+    enabled: true
+    allowed: [en]
+
+embeddings:
+  provider: huggingface
+  model: all-MiniLM-L6-v2
+
+output:
+  format: jsonl
+  path: ./output/02-openrouter-quickstart-dataset.jsonl

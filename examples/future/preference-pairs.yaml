@@ -1,0 +1,43 @@
+# WHAT:      Placeholder for a future preference-pairs example.
+# WHEN:      Use this when pairwise preference data generation lands.
+# REQUIRES:  OPENROUTER_API_KEY and future preference-pair stages.
+# RUN:       uv run arka --config examples/future/preference-pairs.yaml --run-id future-preference-pairs
+# ARTIFACTS: runs/<run-id>/... plus ./output/future-preference-pairs-dataset.jsonl.
+# TEACHES:   Planned preference-data config shape and validation rules.
+# COST:      medium
+# TODO: target slice/milestone = preference pairs + ranking outputs.
+version: "1"
+run_id: null
+
+llm:
+  provider: openai
+  model: google/gemini-3.1-flash-lite-preview
+  api_key: ${OPENROUTER_API_KEY}
+  base_url: https://openrouter.ai/api/v1
+  openai_compatible:
+    referer: https://example.com
+    title: arka
+
+executor:
+  mode: threadpool
+  max_workers: 4
+
+data_source:
+  type: seeds
+  path: ../seeds/07-humanizer-rewrite.jsonl
+
+generator:
+  type: prompt_based
+  target_count: 10
+  generation_multiplier: 1
+
+filters:
+  target_count: 10
+
+embeddings:
+  provider: huggingface
+  model: all-MiniLM-L6-v2
+
+output:
+  format: jsonl
+  path: ./output/future-preference-pairs-dataset.jsonl

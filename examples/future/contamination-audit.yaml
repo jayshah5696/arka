@@ -1,0 +1,43 @@
+# WHAT:      Placeholder for a future contamination-audit example.
+# WHEN:      Use this when contamination checking lands as a supported slice.
+# REQUIRES:  OPENROUTER_API_KEY and future contamination-audit stages.
+# RUN:       uv run arka --config examples/future/contamination-audit.yaml --run-id future-contamination-audit
+# ARTIFACTS: runs/<run-id>/... plus ./output/future-contamination-audit-dataset.jsonl.
+# TEACHES:   Planned contamination-audit config shape and validation rules.
+# COST:      low
+# TODO: target slice/milestone = contamination audit implementation.
+version: "1"
+run_id: null
+
+llm:
+  provider: openai
+  model: google/gemini-3.1-flash-lite-preview
+  api_key: ${OPENROUTER_API_KEY}
+  base_url: https://openrouter.ai/api/v1
+  openai_compatible:
+    referer: https://example.com
+    title: arka
+
+executor:
+  mode: threadpool
+  max_workers: 4
+
+data_source:
+  type: seeds
+  path: ../seeds/07-humanizer-rewrite.jsonl
+
+generator:
+  type: prompt_based
+  target_count: 10
+  generation_multiplier: 1
+
+filters:
+  target_count: 10
+
+embeddings:
+  provider: huggingface
+  model: all-MiniLM-L6-v2
+
+output:
+  format: jsonl
+  path: ./output/future-contamination-audit-dataset.jsonl
