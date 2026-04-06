@@ -4,6 +4,46 @@ Arka (अर्क) is a configuration-driven framework designed from first prin
 
 This document dives deep into the core capabilities and the architectural stages that data passes through during a run.
 
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#ffffff', 'edgeLabelBackground':'#ffffff', 'tertiaryColor': '#f4f4f4'}}}%%
+flowchart LR
+    subgraph Input Phase
+        A1(JSONL)
+        A2(CSV)
+        A3(PDF)
+    end
+
+    subgraph Transformation Pipeline
+        B[Normalization]
+        C[LLM Generator]
+        D[Deduplication]
+        E[Quality Filters]
+        F[LLM Judge]
+    end
+
+    subgraph Output Phase
+        G[Embeddings]
+        H(SFT Dataset)
+        I(Rich Artifacts)
+    end
+
+    A1 --> B
+    A2 --> B
+    A3 --> B
+    B --> C
+    C --> D
+    D --> E
+    E --> F
+    F --> G
+    G --> H
+    G --> I
+
+    classDef phase fill:#fcfcfc,stroke:#ccc,stroke-width:1px,stroke-dasharray: 5 5;
+    class Input Phase phase;
+    class Transformation Pipeline phase;
+    class Output Phase phase;
+```
+
 ---
 
 ## 1. Data Source & Ingestion
@@ -25,6 +65,20 @@ Once seeds are normalized, they pass into the generation stage. Arka delegates t
 ## 3. Deduplication Strategies
 
 LLMs are prone to mode collapse—generating very similar responses for slightly different prompts. To maintain diversity, Arka implements robust deduplication.
+
+```mermaid
+flowchart TD
+    A[Incoming Generation] --> B{Exact Match Enabled?}
+    B -- Yes --> C{Is Byte-for-Byte Match?}
+    B -- No --> D
+    C -- Yes --> Drop1(Drop Record)
+    C -- No --> D{Near Match Enabled?}
+    D -- Yes --> E[Compute MinHash & Shingles]
+    D -- No --> Pass(Pass to Filters)
+    E --> F{Jaccard Similarity > Threshold?}
+    F -- Yes --> Drop2(Drop Record)
+    F -- No --> Pass
+```
 
 * **Exact Deduplication**: A fast, hash-based check to instantly drop any generated instruction or response that is a byte-for-byte exact match of an existing record in the dataset.
 * **Near Deduplication (Fuzzy Matching)**: Employs MinHash algorithms and Locality Sensitive Hashing (LSH) via shingles and Jaccard similarity. This catches generations that are structurally identical or only differ by a few words, ensuring high dataset variance.

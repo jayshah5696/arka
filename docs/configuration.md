@@ -6,7 +6,27 @@ Arka is completely configuration-driven. The entirety of a generation run—from
 
 ## High-Level Anatomy
 
-A complete configuration file is composed of several logical blocks. Here is an outline of the top-level keys:
+A complete configuration file is composed of several logical blocks mapping to pipeline dependencies.
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#ffffff', 'edgeLabelBackground':'#ffffff', 'tertiaryColor': '#f4f4f4'}}}%%
+classDiagram
+    class ResolvedConfig {
+        version: str
+        run_id: str
+    }
+    ResolvedConfig *-- LLMConfig : llm
+    ResolvedConfig *-- ExecutorConfig : executor
+    ResolvedConfig *-- DataSourceConfig : data_source
+    ResolvedConfig *-- GeneratorConfig : generator
+    ResolvedConfig *-- DedupConfig : dedup
+    ResolvedConfig *-- FiltersConfig : filters
+    ResolvedConfig *-- EmbeddingsConfig : embeddings
+    ResolvedConfig *-- LabelingEngineConfig : labeling_engine
+    ResolvedConfig *-- OutputConfig : output
+```
+
+Here is an outline of the top-level keys in YAML:
 
 ```yaml
 version: "1"
