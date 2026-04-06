@@ -26,6 +26,9 @@ matrix:
 validate-examples:
     uv run python scripts/validate_examples.py
 
+analyze run_id="":
+    uv run python -m arka.analyze --run-id {{run_id}}
+
 run:
     uv run arka
 
