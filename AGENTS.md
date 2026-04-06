@@ -13,6 +13,7 @@
 - Prefer typed Pydantic record/stage models over raw `dict[str, Any]` data flowing through the pipeline.
 - Keep edits minimal, clear, and reversible.
 - Ask before adding major frameworks, cloud services, or heavy dependencies.
+- use ask user tool if you want any clarification dont assume
 - Avoid destructive commands or force operations unless explicitly requested.
 - Preserve user changes; do not rewrite unrelated files.
 - Every assistant response must also be saved as Markdown under:
