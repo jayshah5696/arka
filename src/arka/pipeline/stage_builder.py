@@ -7,7 +7,9 @@ from arka.pipeline.cheap_filters import LanguageFilterStage, LengthFilterStage
 from arka.pipeline.dedup_stages import ExactDedupStage, NearDedupStage
 from arka.pipeline.evol_generator_stage import EvolInstructRoundStage
 from arka.pipeline.filter_stages import (
+    CanaryFilterStage,
     LabelingQualityFilterStage,
+    SemanticSimilarityFilterStage,
     validate_ifd_capability,
 )
 from arka.pipeline.generator_stages import PromptBasedGeneratorStage
@@ -77,6 +79,10 @@ class StageBuilder:
             stages.append(LengthFilterStage())
         if self.config.filters.language.enabled:
             stages.append(LanguageFilterStage())
+        if getattr(self.config.filters, "canary", False) and self.config.filters.canary.enabled:
+            stages.append(CanaryFilterStage())
+        if getattr(self.config.filters, "semantic_similarity", False) and self.config.filters.semantic_similarity.enabled:
+            stages.append(SemanticSimilarityFilterStage())
         if self.config.filters.ifd.enabled:
             validate_ifd_capability(
                 StageContext(

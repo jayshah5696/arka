@@ -147,12 +147,26 @@ class IFDFilterConfig(StrictModel):
     min_score: float = 0.2
 
 
+class SemanticSimilarityFilterConfig(StrictModel):
+    enabled: bool = False
+    threshold: float = 0.9
+
+
+class CanaryFilterConfig(StrictModel):
+    enabled: bool = False
+    phrases: list[str] = Field(default_factory=list)
+
+
 class FiltersConfig(StrictModel):
     target_count: int
     length: LengthFilterConfig = Field(default_factory=LengthFilterConfig)
     language: LanguageFilterConfig = Field(default_factory=LanguageFilterConfig)
     ifd: IFDFilterConfig = Field(default_factory=IFDFilterConfig)
     labeling_engine: LabelingFilterConfig = Field(default_factory=LabelingFilterConfig)
+    semantic_similarity: SemanticSimilarityFilterConfig = Field(
+        default_factory=SemanticSimilarityFilterConfig
+    )
+    canary: CanaryFilterConfig = Field(default_factory=CanaryFilterConfig)
 
 
 class OutputConfig(StrictModel):

@@ -1,0 +1,99 @@
+version: '1'
+run_id: null
+llm:
+  provider: openai
+  model: gpt-4o-mini
+  api_key: mock_key
+  base_url: https://api.openai.com/v1
+  timeout_seconds: 30.0
+  max_retries: 3
+  supports_json_schema: null
+  openai_compatible: null
+executor:
+  mode: threadpool
+  max_workers: 1
+data_source:
+  type: seeds
+  path: ./seeds/08-privacy-seeds.jsonl
+  chunk_strategy: null
+  chunk_size_chars: null
+  chunk_overlap_chars: null
+generator:
+  type: prompt_based
+  target_count: 5
+  generation_multiplier: 1
+  prompt_template: 'Rewrite this instruction and response to be more concise.
+
+    Return only JSON with keys "instruction" and "response".
+
+
+    Seed instruction:
+
+    {seed_instruction}
+
+
+    Seed response:
+
+    {seed_response}
+
+    '
+  temperature: 0.7
+  max_tokens: 512
+  rounds: null
+  branching_factor: null
+  operators: []
+  filter:
+    min_edit_distance_chars: 20
+    min_instruction_chars: 20
+    refusal_keywords:
+    - I cannot
+    - I'm unable
+    - As an AI
+dedup:
+  exact:
+    enabled: false
+  near:
+    enabled: false
+    shingle_size: 5
+    num_hashes: 128
+    jaccard_threshold: 0.7
+filters:
+  target_count: 5
+  length:
+    enabled: false
+    min_instruction_chars: 10
+    max_instruction_chars: 4096
+    min_response_chars: 10
+    max_response_chars: 16384
+  language:
+    enabled: false
+    allowed:
+    - en
+  ifd:
+    enabled: false
+    min_score: 0.2
+  labeling_engine:
+    enabled: false
+    rubric_path: null
+    min_overall_score: null
+  semantic_similarity:
+    enabled: true
+    threshold: 0.95
+  canary:
+    enabled: true
+    phrases:
+    - SUPER_SECRET_PROJECT_X
+embeddings:
+  provider: huggingface
+  model: all-MiniLM-L6-v2
+  api_key: null
+  base_url: null
+  timeout_seconds: null
+  max_retries: null
+  openai_compatible: null
+labeling_engine:
+  rubric_path: null
+  mode: single
+output:
+  format: jsonl
+  path: ./output/08-privacy-guardrails-dataset.jsonl

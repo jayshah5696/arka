@@ -1,0 +1,9 @@
+{
+  "stage": "02g_canary_filter",
+  "count_in": 5,
+  "count_out": 0,
+  "dropped_count": 5,
+  "drop_reasons": {
+    "canary_leak": 5
+  }
+}

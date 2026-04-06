@@ -1,0 +1,8 @@
+{
+  "stage": "02_generate",
+  "count_in": 5,
+  "count_out": 5,
+  "dropped_count": 0,
+  "drop_reasons": {},
+  "cost_usd": null
+}

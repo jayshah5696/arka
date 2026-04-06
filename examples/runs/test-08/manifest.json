@@ -1,0 +1,60 @@
+{
+  "run_id": "test-08",
+  "config_hash": "cea1960374dd7c428ce7c7968c3d829e262f5e1323ee5e99713e06796cca50a5",
+  "timestamp": "2026-04-06T05:35:00.915891+00:00",
+  "stage_names": [
+    "01_source",
+    "02_normalize",
+    "02_generate",
+    "02g_canary_filter",
+    "02h_semantic_similarity_filter"
+  ],
+  "stage_stats": [
+    {
+      "stage": "01_source",
+      "count_in": 0,
+      "count_out": 2,
+      "status": "completed",
+      "resumed": false,
+      "dropped_count": 0
+    },
+    {
+      "stage": "02_normalize",
+      "count_in": 2,
+      "count_out": 2,
+      "status": "completed",
+      "resumed": false,
+      "dropped_count": 0
+    },
+    {
+      "stage": "02_generate",
+      "count_in": 2,
+      "count_out": 5,
+      "status": "completed",
+      "resumed": false,
+      "dropped_count": 0
+    },
+    {
+      "stage": "02g_canary_filter",
+      "count_in": 5,
+      "count_out": 0,
+      "status": "completed",
+      "resumed": false,
+      "dropped_count": 5,
+      "drop_reasons": {
+        "canary_leak": 5
+      }
+    },
+    {
+      "stage": "02h_semantic_similarity_filter",
+      "count_in": 0,
+      "count_out": 0,
+      "status": "completed",
+      "resumed": false,
+      "dropped_count": 0
+    }
+  ],
+  "final_count": 0,
+  "dataset_path": "/app/examples/output/08-privacy-guardrails-dataset.jsonl",
+  "status": "completed"
+}
