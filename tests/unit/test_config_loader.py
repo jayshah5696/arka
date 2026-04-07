@@ -111,8 +111,12 @@ def test_load_config_rejects_unknown_keys(
     config_path = tmp_path / "config.yaml"
     config_path.write_text(CONFIG_YAML + "unexpected_key: true\n")
 
-    with pytest.raises(ConfigValidationError):
+    with pytest.raises(ConfigValidationError) as exc:
         ConfigLoader().load(config_path)
+
+    assert "Configuration validation failed:" in str(exc.value)
+    assert "- unexpected_key" in str(exc.value)
+    assert "Extra inputs are not permitted" in str(exc.value)
 
 
 def test_load_config_requires_declared_env_vars(tmp_path: Path) -> None:

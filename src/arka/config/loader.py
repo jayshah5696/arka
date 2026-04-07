@@ -26,7 +26,7 @@ class ConfigLoader:
             data = yaml.safe_load(resolved_text) or {}
             return ResolvedConfig.model_validate(data)
         except ValidationError as exc:
-            raise ConfigValidationError(str(exc)) from exc
+            raise ConfigValidationError(self._format_validation_error(exc)) from exc
         except yaml.YAMLError as exc:
             raise ConfigValidationError(str(exc)) from exc
 
@@ -34,7 +34,15 @@ class ConfigLoader:
         try:
             return ResolvedConfig.model_validate(data)
         except ValidationError as exc:
-            raise ConfigValidationError(str(exc)) from exc
+            raise ConfigValidationError(self._format_validation_error(exc)) from exc
+
+    def _format_validation_error(self, exc: ValidationError) -> str:
+        # DX: format pydantic errors to be more readable
+        msgs = ["Configuration validation failed:"]
+        for err in exc.errors():
+            loc = ".".join(str(l) for l in err["loc"])
+            msgs.append(f"  - {loc}: {err['msg']}")
+        return "\n".join(msgs)
 
     def _resolve_env_vars(self, text: str) -> str:
         def replace(match: re.Match[str]) -> str:
