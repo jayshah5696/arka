@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import Field, HttpUrl, model_validator
+from pydantic import Field, HttpUrl, SecretStr, model_validator
 
 from arka.common.models import StrictModel
 
@@ -15,7 +15,8 @@ class OpenAICompatibleConfig(StrictModel):
 class LLMConfig(StrictModel):
     provider: Literal["openai"]
     model: str
-    api_key: str
+    # SECURITY: Using SecretStr to prevent plaintext API keys from leaking into serialized configs on disk (e.g., config.resolved.yaml)
+    api_key: SecretStr
     base_url: HttpUrl
     timeout_seconds: float = 30.0
     max_retries: int = 3
@@ -163,7 +164,8 @@ class OutputConfig(StrictModel):
 class EmbeddingsConfig(StrictModel):
     provider: Literal["huggingface", "openai"] = "huggingface"
     model: str = "all-MiniLM-L6-v2"
-    api_key: str | None = None
+    # SECURITY: Using SecretStr to prevent plaintext API keys from leaking into serialized configs on disk (e.g., config.resolved.yaml)
+    api_key: SecretStr | None = None
     base_url: HttpUrl | None = None
     timeout_seconds: float | None = None
     max_retries: int | None = None
