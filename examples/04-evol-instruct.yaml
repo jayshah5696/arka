@@ -51,6 +51,7 @@ dedup:
     enabled: true
   near:
     enabled: true
+    lsh_num_bands: 16
 
 filters:
   target_count: 20

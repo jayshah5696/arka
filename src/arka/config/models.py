@@ -116,7 +116,16 @@ class NearDedupConfig(StrictModel):
     enabled: bool = False
     shingle_size: int = 5
     num_hashes: int = 128
+    lsh_num_bands: int = 16
     jaccard_threshold: float = 0.7
+
+    @model_validator(mode="after")
+    def validate_lsh_bands(self) -> NearDedupConfig:
+        if self.num_hashes % self.lsh_num_bands != 0:
+            raise ValueError(
+                "dedup.near.num_hashes must be cleanly divisible by lsh_num_bands"
+            )
+        return self
 
 
 class DedupConfig(StrictModel):
