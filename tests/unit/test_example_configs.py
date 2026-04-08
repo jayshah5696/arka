@@ -35,7 +35,7 @@ def test_all_example_yaml_files_parse_without_schema_errors(config_path: Path) -
 
     resolved = load_example_config(config_path)
 
-    assert resolved.llm.api_key
+    assert resolved.llm.api_key.get_secret_value()
 
 
 @pytest.mark.parametrize("config_path", example_yaml_paths(Path(".")))

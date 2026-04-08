@@ -97,7 +97,7 @@ def test_load_config_resolves_env_vars(
     resolved = ConfigLoader().load(config_path)
 
     assert resolved.llm.provider == "openai"
-    assert resolved.llm.api_key == "test-key"
+    assert resolved.llm.api_key.get_secret_value() == "test-key"
     assert str(resolved.llm.base_url) == "https://api.openai.com/v1"
     assert resolved.executor.max_workers == 4
     assert resolved.embeddings.provider == "huggingface"
@@ -133,7 +133,7 @@ def test_load_config_supports_openrouter_style_openai_compatible_settings(
     resolved = ConfigLoader().load(config_path)
 
     assert resolved.llm.model == "google/gemini-3.1-flash-lite-preview"
-    assert resolved.llm.api_key == "openrouter-key"
+    assert resolved.llm.api_key.get_secret_value() == "openrouter-key"
     assert str(resolved.llm.base_url) == "https://openrouter.ai/api/v1"
     assert resolved.llm.openai_compatible is not None
     assert str(resolved.llm.openai_compatible.referer) == "https://example.com/"
@@ -142,7 +142,7 @@ def test_load_config_supports_openrouter_style_openai_compatible_settings(
     assert resolved.labeling_engine.rubric_path == "./rubrics/sft_quality.yaml"
     assert resolved.embeddings.provider == "openai"
     assert resolved.embeddings.model == "text-embedding-3-small"
-    assert resolved.embeddings.api_key == "openrouter-key"
+    assert resolved.embeddings.api_key.get_secret_value() == "openrouter-key"
 
 
 def test_load_config_accepts_valid_evol_instruct_config() -> None:

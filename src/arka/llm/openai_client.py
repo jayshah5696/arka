@@ -13,7 +13,7 @@ def build_openai_client(config: LLMConfig) -> OpenAI:
         if config.openai_compatible.title is not None:
             default_headers["X-Title"] = config.openai_compatible.title
     return OpenAI(
-        api_key=config.api_key,
+        api_key=config.api_key.get_secret_value(),
         base_url=str(config.base_url),
         timeout=config.timeout_seconds,
         max_retries=0,
