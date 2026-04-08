@@ -219,12 +219,21 @@ class PipelineRunner:
         return self.config_loader.load_dict(config)
 
     def _config_hash(self, config: ResolvedConfig) -> str:
-        payload = json.dumps(config.model_dump(mode="json"), sort_keys=True)
+        dumped_config = config.model_dump(
+            mode="json",
+            exclude={"llm": {"api_key": True}, "embeddings": {"api_key": True}},
+        )
+        payload = json.dumps(dumped_config, sort_keys=True)
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
     def _write_resolved_config(self, config: ResolvedConfig, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(yaml.safe_dump(config.model_dump(mode="json"), sort_keys=False))
+        # SECURITY: Exclude API keys from the serialized resolved config to prevent leakage on disk
+        dumped_config = config.model_dump(
+            mode="json",
+            exclude={"llm": {"api_key": True}, "embeddings": {"api_key": True}},
+        )
+        path.write_text(yaml.safe_dump(dumped_config, sort_keys=False))
 
     def _append_stage_events(
         self, records: list[Record], stage_name: str, action: str = "transformed"

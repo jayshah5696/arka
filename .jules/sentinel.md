@@ -1,0 +1,1 @@
+## 2024-04-08 - Plaintext API Key Leak in Artifacts / Vulnerability: API keys serialized to config.resolved.yaml / Learning: Pydantic SecretStr requires special exclusion logic during `model_dump(mode="json")` / Prevention: Use `.model_dump(..., exclude={...})` for keys that should remain purely in memory.

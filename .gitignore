@@ -14,3 +14,6 @@ scratch/
 .vscode/
 *.pi/
 *.rtk/
+
+# Data artifacts
+runs/
