@@ -261,3 +261,16 @@ def test_load_config_rejects_zero_evol_rounds_or_branching() -> None:
                 "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
             }
         )
+
+def test_load_config_formats_validation_errors() -> None:
+    loader = ConfigLoader()
+    with pytest.raises(ConfigValidationError) as exc_info:
+        loader.load_dict({
+            "version": "1",
+            "llm": {"provider": "openai"}
+        })
+
+    error_msg = str(exc_info.value)
+    assert "Configuration validation failed:" in error_msg
+    assert "  - llm.model: Field required" in error_msg
+    assert "  - executor: Field required" in error_msg
