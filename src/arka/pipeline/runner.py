@@ -209,6 +209,7 @@ class PipelineRunner:
             dataset_path=dataset_path,
             manifest_path=run_paths.manifest_path,
             output_path=output_path,
+            run_report_path=run_paths.run_report_path,
         )
 
     def _resolve_config(

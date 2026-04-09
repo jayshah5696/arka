@@ -28,6 +28,7 @@ class RunResult:
     dataset_path: Path | None
     manifest_path: Path
     output_path: Path
+    run_report_path: Path
 
 
 @dataclass(frozen=True)
