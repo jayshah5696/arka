@@ -1,0 +1,1 @@
+## 2024-05-15 - Fixed state.db file permissions / Vulnerability: state.db world readable / Learning: CheckpointManager didn't harden db file permissions on creation / Prevention: Added chmod 600 after connection.

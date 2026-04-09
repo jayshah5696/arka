@@ -63,6 +63,10 @@ class CheckpointManager:
                 """
             )
 
+        if self.sqlite_path.exists():
+            # SECURITY: Harden file permissions on state.db to prevent unauthorized access
+            self.sqlite_path.chmod(0o600)
+
     def register_run(self, run_id: str, config_hash: str, status: str) -> None:
         with self._connect() as connection:
             connection.execute(
