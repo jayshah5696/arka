@@ -36,6 +36,8 @@ dedup:
   exact:
     enabled: false
   near:
+    num_bands: 16
+    rows_per_band: 8
     enabled: false
 
 filters:

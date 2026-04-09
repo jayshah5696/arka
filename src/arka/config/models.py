@@ -117,6 +117,16 @@ class NearDedupConfig(StrictModel):
     shingle_size: int = 5
     num_hashes: int = 128
     jaccard_threshold: float = 0.7
+    num_bands: int = 16
+    rows_per_band: int = 8
+
+    @model_validator(mode="after")
+    def validate_lsh_bands(self) -> NearDedupConfig:
+        if self.num_bands * self.rows_per_band != self.num_hashes:
+            raise ValueError(
+                "num_bands * rows_per_band must equal num_hashes for LSH bucketing"
+            )
+        return self
 
 
 class DedupConfig(StrictModel):

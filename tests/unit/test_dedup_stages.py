@@ -187,3 +187,22 @@ def test_near_dedup_drops_lexically_similar_instructions_and_writes_artifacts(
     assert clusters.select("representative_id").to_series().to_list() == ["r1"]
     member_ids = json.loads(clusters.select("member_ids_json").to_series().item())
     assert member_ids == ["r1", "r2"]
+
+
+def test_near_dedup_config_validation_raises_error_for_invalid_bands() -> None:
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(
+        ValidationError, match="num_bands \* rows_per_band must equal num_hashes"
+    ):
+        _base_config(
+            dedup={
+                "near": {
+                    "enabled": True,
+                    "num_hashes": 128,
+                    "num_bands": 10,
+                    "rows_per_band": 10,
+                }
+            }
+        )

@@ -50,6 +50,8 @@ dedup:
   exact:
     enabled: true
   near:
+    num_bands: 16
+    rows_per_band: 8
     enabled: true
 
 filters:
