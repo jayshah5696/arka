@@ -75,7 +75,10 @@ def config_dict() -> dict:
             "target_count": 2,
             "generation_multiplier": 1,
         },
-        "dedup": {"exact": {"enabled": False}, "near": {"enabled": False}},
+        "dedup": {
+            "exact": {"enabled": False},
+            "near": {"enabled": False, "bands": 16, "rows": 8},
+        },
         "filters": {"target_count": 2},
         "embeddings": {"provider": "huggingface", "model": "all-MiniLM-L6-v2"},
         "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},

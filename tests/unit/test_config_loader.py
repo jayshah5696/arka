@@ -170,7 +170,10 @@ def test_load_config_accepts_valid_evol_instruct_config() -> None:
                     "breadth_mutation",
                 ],
             },
-            "dedup": {"exact": {"enabled": False}, "near": {"enabled": False}},
+            "dedup": {
+                "exact": {"enabled": False},
+                "near": {"enabled": False, "bands": 16, "rows": 8},
+            },
             "filters": {"target_count": 2},
             "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
         }
@@ -202,7 +205,10 @@ def test_load_config_rejects_unknown_evol_operator() -> None:
                     "branching_factor": 1,
                     "operators": ["unknown_operator"],
                 },
-                "dedup": {"exact": {"enabled": False}, "near": {"enabled": False}},
+                "dedup": {
+                    "exact": {"enabled": False},
+                    "near": {"enabled": False, "bands": 16, "rows": 8},
+                },
                 "filters": {"target_count": 2},
                 "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
             }
@@ -230,7 +236,10 @@ def test_load_config_rejects_zero_evol_rounds_or_branching() -> None:
                     "branching_factor": 1,
                     "operators": ["deepen"],
                 },
-                "dedup": {"exact": {"enabled": False}, "near": {"enabled": False}},
+                "dedup": {
+                    "exact": {"enabled": False},
+                    "near": {"enabled": False, "bands": 16, "rows": 8},
+                },
                 "filters": {"target_count": 2},
                 "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
             }
@@ -256,7 +265,10 @@ def test_load_config_rejects_zero_evol_rounds_or_branching() -> None:
                     "branching_factor": 0,
                     "operators": ["deepen"],
                 },
-                "dedup": {"exact": {"enabled": False}, "near": {"enabled": False}},
+                "dedup": {
+                    "exact": {"enabled": False},
+                    "near": {"enabled": False, "bands": 16, "rows": 8},
+                },
                 "filters": {"target_count": 2},
                 "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
             }

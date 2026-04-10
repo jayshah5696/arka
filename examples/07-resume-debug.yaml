@@ -37,6 +37,8 @@ dedup:
     enabled: false
   near:
     enabled: false
+    bands: 16
+    rows: 8
 
 filters:
   target_count: 10

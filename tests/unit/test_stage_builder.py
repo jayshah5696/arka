@@ -32,7 +32,10 @@ def _base_config(**overrides) -> ResolvedConfig:
             "target_count": 2,
             "generation_multiplier": 1,
         },
-        "dedup": {"exact": {"enabled": False}, "near": {"enabled": False}},
+        "dedup": {
+            "exact": {"enabled": False},
+            "near": {"enabled": False, "bands": 16, "rows": 8},
+        },
         "filters": {"target_count": 2},
         "embeddings": {"provider": "huggingface", "model": "all-MiniLM-L6-v2"},
         "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
@@ -162,7 +165,10 @@ def test_exact_dedup_included_when_enabled(tmp_path: Path) -> None:
 
 def test_near_dedup_included_when_enabled(tmp_path: Path) -> None:
     config = _base_config(
-        dedup={"exact": {"enabled": False}, "near": {"enabled": True}}
+        dedup={
+            "exact": {"enabled": False},
+            "near": {"enabled": True, "bands": 16, "rows": 8},
+        }
     )
     stages = StageBuilder(config=config, project_root=tmp_path).build()
 
@@ -201,7 +207,10 @@ def test_evol_instruct_builds_one_stage_per_round_and_preserves_order(
             "branching_factor": 1,
             "operators": ["deepen"],
         },
-        dedup={"exact": {"enabled": True}, "near": {"enabled": True}},
+        dedup={
+            "exact": {"enabled": True},
+            "near": {"enabled": True, "bands": 16, "rows": 8},
+        },
         filters={
             "target_count": 2,
             "length": {"enabled": True},
@@ -244,7 +253,10 @@ def test_ifd_enabled_inserts_stage_before_label_quality(tmp_path: Path) -> None:
 
 def test_all_filters_ordering_without_ifd(tmp_path: Path) -> None:
     config = _base_config(
-        dedup={"exact": {"enabled": True}, "near": {"enabled": True}},
+        dedup={
+            "exact": {"enabled": True},
+            "near": {"enabled": True, "bands": 16, "rows": 8},
+        },
         filters={
             "target_count": 2,
             "length": {"enabled": True},
