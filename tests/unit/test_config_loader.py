@@ -261,3 +261,27 @@ def test_load_config_rejects_zero_evol_rounds_or_branching() -> None:
                 "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
             }
         )
+
+
+def test_missing_field_raises_clear_error(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("""
+version: "1"
+llm:
+  provider: openai
+  model: gpt-4o-mini
+  base_url: https://api.openai.com/v1
+executor:
+  mode: threadpool
+  max_workers: 4
+data_source:
+  type: seeds
+  path: ./seeds.jsonl
+    """)
+
+    with pytest.raises(ConfigValidationError) as exc_info:
+        ConfigLoader().load(config_path)
+
+    error_msg = str(exc_info.value)
+    assert "llm.api_key" in error_msg
+    assert "Field required" in error_msg

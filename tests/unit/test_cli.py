@@ -128,3 +128,15 @@ def test_cli_supports_explicit_config_run_id_and_resume(
     main(["--config", str(config_path), "--run-id", "custom-run", "--resume"])
 
     assert (tmp_path / "runs" / "custom-run" / "manifest.json").exists()
+
+
+def test_cli_dry_run_flag(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    (tmp_path / "seeds.jsonl").write_text('{"instruction":"Hello?","response":"Hi."}\n')
+    (tmp_path / "config.yaml").write_text(CONFIG_TEXT)
+
+    main(["--dry-run"])
+
+    # If --dry-run works, the output file should not exist because pipeline didn't run
+    assert not (tmp_path / "output" / "dataset.jsonl").exists()
