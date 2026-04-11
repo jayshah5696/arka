@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections import defaultdict
 from typing import Any
 
 import polars as pl
@@ -115,28 +116,52 @@ class NearDedupStage(Stage):
         representatives: dict[str, ConversationRecord] = {}
         drop_reasons: dict[str, int] = {}
 
+        # PERF: Added LSH bucketing to reduce NearDedupStage from O(n^2) to O(n) average case
+        lsh_index = LSHIndex(
+            num_bands=ctx.config.dedup.near.num_bands,
+            rows_per_band=ctx.config.dedup.near.rows_per_band,
+        )
+        representative_signatures: dict[str, list[int]] = {}
+
         for record in records:
             if not isinstance(record, ConversationRecord):
                 kept_records.append(record)
                 continue
 
+            record_tokens = _tokenize(record.payload.instruction)
+            if not record_tokens:
+                kept_records.append(record)
+                continue
+
+            record_signature = _minhash_signature(
+                tokens=record_tokens,
+                shingle_size=ctx.config.dedup.near.shingle_size,
+                num_hashes=ctx.config.dedup.near.num_hashes,
+            )
+
             matched_cluster_id: str | None = None
             matched_reason: str | None = None
-            for cluster_id, representative in representatives.items():
-                reason_code = self._near_duplicate_reason(
-                    left=representative.payload.instruction,
-                    right=record.payload.instruction,
-                    ctx=ctx,
-                )
-                if reason_code is None:
+
+            candidate_cluster_ids = lsh_index.query(record_signature)
+
+            for cluster_id in candidate_cluster_ids:
+                representative_signature = representative_signatures.get(cluster_id)
+                if not representative_signature:
                     continue
-                matched_cluster_id = cluster_id
-                matched_reason = reason_code
-                break
+
+                similarity = _minhash_similarity(
+                    representative_signature, record_signature
+                )
+                if similarity >= ctx.config.dedup.near.jaccard_threshold:
+                    matched_cluster_id = cluster_id
+                    matched_reason = "near_duplicate_minhash"
+                    break
 
             if matched_cluster_id is None or matched_reason is None:
                 cluster_id = self._cluster_id(record.payload.instruction)
                 representatives[cluster_id] = record
+                representative_signatures[cluster_id] = record_signature
+                lsh_index.insert(cluster_id, record_signature)
                 cluster_members[cluster_id] = [record]
                 kept_records.append(record)
                 continue
@@ -226,6 +251,39 @@ class NearDedupStage(Stage):
                 ]
             }
         )
+
+
+class LSHIndex:
+    def __init__(self, num_bands: int, rows_per_band: int):
+        self.num_bands = num_bands
+        self.rows_per_band = rows_per_band
+        self.bands: list[dict[tuple[int, ...], set[str]]] = [
+            defaultdict(set) for _ in range(num_bands)
+        ]
+
+    def insert(self, record_id: str, signature: list[int]) -> None:
+        if not signature:
+            return
+        for i in range(self.num_bands):
+            start = i * self.rows_per_band
+            end = start + self.rows_per_band
+            if end > len(signature):
+                break
+            band_tuple = tuple(signature[start:end])
+            self.bands[i][band_tuple].add(record_id)
+
+    def query(self, signature: list[int]) -> set[str]:
+        candidates: set[str] = set()
+        if not signature:
+            return candidates
+        for i in range(self.num_bands):
+            start = i * self.rows_per_band
+            end = start + self.rows_per_band
+            if end > len(signature):
+                break
+            band_tuple = tuple(signature[start:end])
+            candidates.update(self.bands[i].get(band_tuple, []))
+        return candidates
 
 
 def _write_artifacts(
