@@ -1,0 +1,1 @@
+## 2024-04-12 - Prevent API key leakage in serialized configs via Field(exclude=True) / Vulnerability: API keys serialized in plaintext to config.resolved.yaml / Learning: Pydantic V2 json_encoders deprecation means SecretStr is ignored in model_dump unless Field(exclude=True) is used / Prevention: Use Field(exclude=True) for sensitive config fields
