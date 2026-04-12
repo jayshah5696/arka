@@ -1,0 +1,1 @@
+## 2025-04-10 - CRITICAL API Key Leak / Vulnerability: Plaintext API key leak in resolved config / Learning: json_encoders does not apply to model_dump() used for PyYAML serialization / Prevention: Use Field(exclude=True) to ensure sensitive fields are omitted from configuration dumps.
