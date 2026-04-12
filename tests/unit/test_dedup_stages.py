@@ -34,7 +34,10 @@ def _base_config(**overrides) -> ResolvedConfig:
                 "target_count": 2,
                 "generation_multiplier": 1,
             },
-            "dedup": {"exact": {"enabled": False}, "near": {"enabled": False}},
+            "dedup": {
+                "exact": {"enabled": False},
+                "near": {"enabled": False, "lsh_bands": 16},
+            },
             "filters": {"target_count": 2},
             "embeddings": {"provider": "huggingface", "model": "all-MiniLM-L6-v2"},
             "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
@@ -138,7 +141,7 @@ def test_near_dedup_drops_lexically_similar_instructions_and_writes_artifacts(
     tmp_path: Path,
 ) -> None:
     config = _base_config(
-        dedup={"exact": {"enabled": False}, "near": {"enabled": True}}
+        dedup={"exact": {"enabled": False}, "near": {"enabled": True, "lsh_bands": 16}}
     )
     stage = NearDedupStage()
     records = [

@@ -116,6 +116,7 @@ class NearDedupConfig(StrictModel):
     enabled: bool = False
     shingle_size: int = 5
     num_hashes: int = 128
+    lsh_bands: int = 16
     jaccard_threshold: float = 0.7
 
 
