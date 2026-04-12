@@ -114,7 +114,7 @@ def test_resolve_run_id_auto_generates_uuid_when_both_none() -> None:
 
 
 def test_cli_supports_explicit_config_run_id_and_resume(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch, capsys
 ) -> None:
     config_path = tmp_path / "custom-config.yaml"
     config_path.write_text(CONFIG_TEXT)
@@ -125,6 +125,13 @@ def test_cli_supports_explicit_config_run_id_and_resume(
     )
 
     main(["--config", str(config_path), "--run-id", "custom-run"])
+
+    out, _ = capsys.readouterr()
+    assert "--- Pipeline Summary" in out
+    assert "Run ID: custom-run" in out
+
     main(["--config", str(config_path), "--run-id", "custom-run", "--resume"])
 
     assert (tmp_path / "runs" / "custom-run" / "manifest.json").exists()
+    out, _ = capsys.readouterr()
+    assert "--- Pipeline Summary" in out
