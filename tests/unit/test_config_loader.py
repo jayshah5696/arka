@@ -111,7 +111,9 @@ def test_load_config_rejects_unknown_keys(
     config_path = tmp_path / "config.yaml"
     config_path.write_text(CONFIG_YAML + "unexpected_key: true\n")
 
-    with pytest.raises(ConfigValidationError):
+    with pytest.raises(
+        ConfigValidationError, match="unexpected_key: Extra inputs are not permitted"
+    ):
         ConfigLoader().load(config_path)
 
 
@@ -182,7 +184,7 @@ def test_load_config_accepts_valid_evol_instruct_config() -> None:
 
 
 def test_load_config_rejects_unknown_evol_operator() -> None:
-    with pytest.raises(ConfigValidationError, match="unsupported names"):
+    with pytest.raises(ConfigValidationError, match="generator:.*unsupported names"):
         ConfigLoader().load_dict(
             {
                 "version": "1",
@@ -210,7 +212,9 @@ def test_load_config_rejects_unknown_evol_operator() -> None:
 
 
 def test_load_config_rejects_zero_evol_rounds_or_branching() -> None:
-    with pytest.raises(ConfigValidationError, match="generator.rounds"):
+    with pytest.raises(
+        ConfigValidationError, match="generator:.*generator.rounds must be >= 1"
+    ):
         ConfigLoader().load_dict(
             {
                 "version": "1",
@@ -236,7 +240,10 @@ def test_load_config_rejects_zero_evol_rounds_or_branching() -> None:
             }
         )
 
-    with pytest.raises(ConfigValidationError, match="generator.branching_factor"):
+    with pytest.raises(
+        ConfigValidationError,
+        match="generator:.*generator.branching_factor must be >= 1",
+    ):
         ConfigLoader().load_dict(
             {
                 "version": "1",
