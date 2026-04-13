@@ -105,6 +105,9 @@ class NearDedupStage(Stage):
         self._output_writer = OutputWriter()
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
+        # PERF: Use LSH bucketing to drop minhash deduplication from O(n^2) to O(n) average case.
+        # This dramatically speeds up duplicate detection on large datasets by only doing full
+        # similarity comparison on candidates that share at least one minhash band.
         if not ctx.config.dedup.near.enabled:
             return records
 
@@ -113,31 +116,65 @@ class NearDedupStage(Stage):
         clusters: list[dict[str, Any]] = []
         cluster_members: dict[str, list[ConversationRecord]] = {}
         representatives: dict[str, ConversationRecord] = {}
+        representative_signatures: dict[str, list[int]] = {}
         drop_reasons: dict[str, int] = {}
+        lsh_index: dict[str, set[str]] = {}
+
+        threshold = ctx.config.dedup.near.jaccard_threshold
+        shingle_size = ctx.config.dedup.near.shingle_size
+        num_hashes = ctx.config.dedup.near.num_hashes
+        num_bands = ctx.config.dedup.near.num_bands
+        rows_per_band = ctx.config.dedup.near.rows_per_band
 
         for record in records:
             if not isinstance(record, ConversationRecord):
                 kept_records.append(record)
                 continue
 
+            tokens = _tokenize(record.payload.instruction)
+            if not tokens:
+                kept_records.append(record)
+                continue
+
+            signature = _minhash_signature(
+                tokens=tokens,
+                shingle_size=shingle_size,
+                num_hashes=num_hashes,
+            )
+
+            if not signature:
+                kept_records.append(record)
+                continue
+
+            candidate_cluster_ids = set()
+            for band_idx in range(num_bands):
+                start = band_idx * rows_per_band
+                end = start + rows_per_band
+                band = tuple(signature[start:end])
+                band_hash = f"{band_idx}:{hash(band)}"
+                if band_hash in lsh_index:
+                    candidate_cluster_ids.update(lsh_index[band_hash])
+
             matched_cluster_id: str | None = None
             matched_reason: str | None = None
-            for cluster_id, representative in representatives.items():
-                reason_code = self._near_duplicate_reason(
-                    left=representative.payload.instruction,
-                    right=record.payload.instruction,
-                    ctx=ctx,
-                )
-                if reason_code is None:
-                    continue
-                matched_cluster_id = cluster_id
-                matched_reason = reason_code
-                break
+            for candidate_id in candidate_cluster_ids:
+                candidate_signature = representative_signatures[candidate_id]
+                if _minhash_similarity(candidate_signature, signature) >= threshold:
+                    matched_cluster_id = candidate_id
+                    matched_reason = "near_duplicate_minhash"
+                    break
 
             if matched_cluster_id is None or matched_reason is None:
                 cluster_id = self._cluster_id(record.payload.instruction)
                 representatives[cluster_id] = record
+                representative_signatures[cluster_id] = signature
                 cluster_members[cluster_id] = [record]
+                for band_idx in range(num_bands):
+                    start = band_idx * rows_per_band
+                    end = start + rows_per_band
+                    band = tuple(signature[start:end])
+                    band_hash = f"{band_idx}:{hash(band)}"
+                    lsh_index.setdefault(band_hash, set()).add(cluster_id)
                 kept_records.append(record)
                 continue
 
@@ -178,35 +215,6 @@ class NearDedupStage(Stage):
             drop_reasons=drop_reasons,
         )
         return kept_records
-
-    def _near_duplicate_reason(
-        self,
-        *,
-        left: str,
-        right: str,
-        ctx: StageContext,
-    ) -> str | None:
-        left_tokens = _tokenize(left)
-        right_tokens = _tokenize(right)
-        if not left_tokens or not right_tokens:
-            return None
-
-        threshold = ctx.config.dedup.near.jaccard_threshold
-        shingle_size = ctx.config.dedup.near.shingle_size
-        num_hashes = ctx.config.dedup.near.num_hashes
-        left_signature = _minhash_signature(
-            tokens=left_tokens,
-            shingle_size=shingle_size,
-            num_hashes=num_hashes,
-        )
-        right_signature = _minhash_signature(
-            tokens=right_tokens,
-            shingle_size=shingle_size,
-            num_hashes=num_hashes,
-        )
-        if _minhash_similarity(left_signature, right_signature) >= threshold:
-            return "near_duplicate_minhash"
-        return None
 
     def _cluster_id(self, instruction: str) -> str:
         return hashlib.sha256(instruction.strip().encode("utf-8")).hexdigest()

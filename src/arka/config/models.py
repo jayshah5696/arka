@@ -117,6 +117,8 @@ class NearDedupConfig(StrictModel):
     shingle_size: int = 5
     num_hashes: int = 128
     jaccard_threshold: float = 0.7
+    num_bands: int = 16
+    rows_per_band: int = 8
 
 
 class DedupConfig(StrictModel):

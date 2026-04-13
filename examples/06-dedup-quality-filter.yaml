@@ -57,7 +57,8 @@ dedup:
     enabled: true
   near:
     enabled: true
-
+    num_bands: 16
+    rows_per_band: 8
 filters:
   target_count: 10
   length:
