@@ -16,7 +16,7 @@ class LLMConfig(StrictModel):
     provider: Literal["openai"]
     model: str
     # SECURITY: Using SecretStr to prevent plaintext API keys from leaking into serialized configs on disk (e.g., config.resolved.yaml)
-    api_key: SecretStr
+    api_key: SecretStr = Field(exclude=True)
     base_url: HttpUrl
     timeout_seconds: float = 30.0
     max_retries: int = 3
@@ -165,7 +165,7 @@ class EmbeddingsConfig(StrictModel):
     provider: Literal["huggingface", "openai"] = "huggingface"
     model: str = "all-MiniLM-L6-v2"
     # SECURITY: Using SecretStr to prevent plaintext API keys from leaking into serialized configs on disk (e.g., config.resolved.yaml)
-    api_key: SecretStr | None = None
+    api_key: SecretStr | None = Field(default=None, exclude=True)
     base_url: HttpUrl | None = None
     timeout_seconds: float | None = None
     max_retries: int | None = None

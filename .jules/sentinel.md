@@ -1,0 +1,1 @@
+## 2024-05-24 - [Leak of Sensitive Config] / Vulnerability: [Plaintext serialization of `api_key`] / Learning: [Pydantic V2 `SecretStr` is dumped in plaintext by default if `json_encoders` is deprecated/unused, so `Field(exclude=True)` is the robust mechanism] / Prevention: [Use `Field(exclude=True)` on secret fields that shouldn't be serialized to disk]
