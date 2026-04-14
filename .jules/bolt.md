@@ -1,0 +1,1 @@
+## 2024-04-14 - [LSH Bucketing NearDedupStage] / Learning: [NearDedupStage had an O(n^2) bottleneck because it performed Jaccard similarity across every record compared to every existing cluster representative] / Action: [Added Locality-Sensitive Hashing (LSH) by bucketing MinHash signatures. Reduces O(n^2) to near O(n) average time complexity]
