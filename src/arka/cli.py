@@ -11,10 +11,23 @@ from arka.pipeline.stage_builder import StageBuilder
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="arka")
-    parser.add_argument("--config", default="config.yaml")
-    parser.add_argument("--run-id", default=None)
-    parser.add_argument("--resume", action="store_true")
+    # DX: added clear, descriptive help text for CLI arguments to improve discoverability
+    parser = argparse.ArgumentParser(prog="arka", description="Arka synthetic data generation pipeline")
+    parser.add_argument(
+        "--config",
+        default="config.yaml",
+        help="Path to the pipeline configuration YAML file (default: config.yaml)"
+    )
+    parser.add_argument(
+        "--run-id",
+        default=None,
+        help="Custom identifier for this run. Auto-generated if not provided."
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume the pipeline from the latest successful stage checkpoint."
+    )
     return parser
 
 
