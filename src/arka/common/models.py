@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, SecretStr
+from pydantic import BaseModel, ConfigDict
 
 
 class StrictModel(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-        json_encoders={SecretStr: lambda v: "***"}
-    )
+    model_config = ConfigDict(extra="forbid")
