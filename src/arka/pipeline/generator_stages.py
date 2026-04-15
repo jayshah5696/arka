@@ -13,7 +13,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from arka.common.models import StrictModel
-from arka.config.models import GeneratorConfig, LLMConfig
+from arka.config.models import GeneratorConfig, LLMConfig, resolve_llm_override
 from arka.llm.client import LLMClient
 from arka.llm.models import LLMOutput, TokenUsage
 from arka.pipeline.checkpoint import CheckpointManager
@@ -31,7 +31,11 @@ from arka.records.models import (
     StageEvent,
 )
 
-__all__ = ["PromptBasedGeneratorStage", "compute_prompt_hash"]
+__all__ = [
+    "PromptBasedGeneratorStage",
+    "TransformGeneratorStage",
+    "compute_prompt_hash",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -501,3 +505,185 @@ class PromptBasedGeneratorStage(Stage):
             if parent.name == "runs":
                 return parent.parent
         raise ValueError(f"Could not determine project_root from work_dir: {work_dir}")
+
+
+class TransformResponse(StrictModel):
+    text: str
+
+
+class TransformGeneratorStage(Stage):
+    name = "02_transform_generate"
+    stage_action = "generated"
+
+    def __init__(
+        self,
+        llm_client: Any | None = None,
+        output_writer: OutputWriter | None = None,
+        project_root: Path | None = None,
+    ) -> None:
+        self._llm_client = llm_client
+        self._output_writer = output_writer or OutputWriter()
+        self._project_root = project_root
+
+    def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
+        transformable_records = [
+            record for record in records if isinstance(record, ConversationRecord)
+        ]
+        if not transformable_records:
+            self._write_artifacts(ctx=ctx, dropped_records=[], costs=[])
+            return []
+
+        effective_llm_config = resolve_llm_override(
+            ctx.config.llm, ctx.config.generator.llm_override
+        )
+        llm_client = self._llm_client or LLMClient(config=effective_llm_config)
+        transformed_records: list[Record] = []
+        costs: list[float] = []
+
+        for record in transformable_records:
+            input_text = self._field_value(record, ctx.config.generator.input_field)
+            output = llm_client.complete_structured(
+                messages=self._messages_for_input(input_text, ctx.config.generator),
+                schema=TransformResponse,
+                temperature=ctx.config.generator.temperature,
+                max_tokens=ctx.config.generator.max_tokens,
+            )
+            parsed = output.parsed
+            if not isinstance(parsed, TransformResponse):
+                raise ValueError("Transform output did not parse into TransformResponse")
+            if output.usage.cost_usd is not None:
+                costs.append(output.usage.cost_usd)
+            transformed_records.append(
+                self._build_transformed_record(
+                    record=record,
+                    transformed_text=parsed.text.strip(),
+                    config_hash=self._config_hash(ctx),
+                    generator_config=ctx.config.generator,
+                )
+            )
+
+        self._write_artifacts(ctx=ctx, dropped_records=[], costs=costs)
+        return transformed_records
+
+    def _messages_for_input(
+        self,
+        input_text: str,
+        generator_config: GeneratorConfig,
+    ) -> list[dict[str, str]]:
+        content = generator_config.prompt_template.format(input_text=input_text)
+        return [{"role": "user", "content": content}]
+
+    def _build_transformed_record(
+        self,
+        *,
+        record: ConversationRecord,
+        transformed_text: str,
+        config_hash: str,
+        generator_config: GeneratorConfig,
+    ) -> ConversationRecord:
+        payload = record.payload.model_copy(deep=True)
+        original_text = self._field_value(record, generator_config.output_field)
+        payload = self._set_payload_field(
+            payload=payload,
+            field_path=generator_config.output_field,
+            value=transformed_text,
+        )
+        if generator_config.preserve_original:
+            payload.system = json.dumps(
+                {
+                    "transform_original": {
+                        "field": generator_config.output_field,
+                        "text": original_text,
+                    }
+                },
+                separators=(",", ":"),
+            )
+
+        lineage = RecordLineage(
+            root_id=record.lineage.root_id,
+            parent_ids=[record.id],
+            operator="transform",
+            round=(record.lineage.round or 0) + 1,
+            depth=(record.lineage.depth or 0) + 1,
+        )
+        record_id = self._record_id(payload, lineage)
+        return ConversationRecord(
+            id=record_id,
+            content_hash=self._content_hash(payload),
+            source=record.source.model_copy(deep=True),
+            lineage=lineage,
+            payload=payload,
+            scores=RecordScores(),
+            config_hash=config_hash,
+            created_at=datetime.now(UTC).isoformat(),
+        )
+
+    def _field_value(self, record: ConversationRecord, field_path: str | None) -> str:
+        if field_path == "payload.instruction":
+            return record.payload.instruction
+        if field_path == "payload.response":
+            return record.payload.response
+        if field_path == "payload.system":
+            return record.payload.system or ""
+        raise ValueError(f"Unsupported transform field path: {field_path}")
+
+    def _set_payload_field(
+        self,
+        *,
+        payload: ConversationPayload,
+        field_path: str | None,
+        value: str,
+    ) -> ConversationPayload:
+        if field_path == "payload.instruction":
+            return payload.model_copy(update={"instruction": value})
+        if field_path == "payload.response":
+            return payload.model_copy(update={"response": value})
+        if field_path == "payload.system":
+            return payload.model_copy(update={"system": value})
+        raise ValueError(f"Unsupported transform field path: {field_path}")
+
+    def _content_hash(self, payload: ConversationPayload) -> str:
+        return hashlib.sha256(
+            payload.model_dump_json(exclude_none=True).encode("utf-8")
+        ).hexdigest()
+
+    def _record_id(self, payload: ConversationPayload, lineage: RecordLineage) -> str:
+        identity_payload = {
+            "payload": payload.model_dump(mode="json", exclude_none=True),
+            "lineage": lineage.model_dump(mode="json", exclude_none=True),
+        }
+        return hashlib.sha256(
+            json.dumps(identity_payload, sort_keys=True, separators=(",", ":")).encode(
+                "utf-8"
+            )
+        ).hexdigest()
+
+    def _config_hash(self, ctx: StageContext) -> str:
+        return hashlib.sha256(
+            json.dumps(ctx.config.model_dump(mode="json"), sort_keys=True).encode(
+                "utf-8"
+            )
+        ).hexdigest()
+
+    def _write_artifacts(
+        self,
+        *,
+        ctx: StageContext,
+        dropped_records: list[Record],
+        costs: list[float],
+    ) -> None:
+        ctx.work_dir.mkdir(parents=True, exist_ok=True)
+        self._output_writer.write_dropped_parquet(
+            records=dropped_records,
+            path=ctx.work_dir / "dropped.parquet",
+        )
+        total_cost = round(sum(costs), 6) if costs else None
+        stats = {
+            "stage": self.name,
+            "count_in": len(costs) if costs else 0,
+            "count_out": len(costs) if costs else 0,
+            "dropped_count": len(dropped_records),
+            "drop_reasons": {},
+            "cost_usd": total_cost,
+        }
+        (ctx.work_dir / "stats.json").write_text(json.dumps(stats, indent=2))

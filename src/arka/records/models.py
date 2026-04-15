@@ -36,6 +36,10 @@ class RecordScores(StrictModel):
     judge_prompt_hash: str | None = None
     ifd: float | None = None
     reward_model: float | None = None
+    humanness: float | None = None
+    humanness_per_dim: dict[str, float] | None = None
+    humanness_checklist: dict[str, bool] | None = None
+    humanness_reasoning: str | None = None
 
 
 class StageEvent(StrictModel):

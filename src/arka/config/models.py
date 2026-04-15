@@ -67,10 +67,20 @@ class EvolFilterConfig(StrictModel):
     )
 
 
+class StageLLMOverride(StrictModel):
+    """Override top-level LLM settings for a specific stage."""
+
+    model: str | None = None
+    base_url: HttpUrl | None = None
+    api_key: SecretStr | None = None
+    temperature: float | None = None
+    max_tokens: int | None = None
+
+
 class GeneratorConfig(StrictModel):
     type: str
-    target_count: int
-    generation_multiplier: int
+    target_count: int = 1
+    generation_multiplier: int = 1
     prompt_template: str = (
         "You generate synthetic instruction-response pairs for supervised fine-tuning.\n"
         "Create one new instruction and one strong response inspired by the seed example.\n"
@@ -81,6 +91,10 @@ class GeneratorConfig(StrictModel):
     )
     temperature: float = 0.7
     max_tokens: int = 512
+    input_field: str | None = None
+    output_field: str | None = None
+    preserve_original: bool = False
+    llm_override: StageLLMOverride | None = None
     rounds: int | None = None
     branching_factor: int | None = None
     operators: list[str] = Field(default_factory=list)
@@ -88,6 +102,16 @@ class GeneratorConfig(StrictModel):
 
     @model_validator(mode="after")
     def validate_generator_options(self) -> GeneratorConfig:
+        if self.type == "transform":
+            if self.input_field is None:
+                raise ValueError(
+                    "generator.input_field is required when generator.type='transform'"
+                )
+            if self.output_field is None:
+                raise ValueError(
+                    "generator.output_field is required when generator.type='transform'"
+                )
+            return self
         if self.type != "evol_instruct":
             return self
         if self.rounds is None or self.rounds < 1:
@@ -124,6 +148,11 @@ class DedupConfig(StrictModel):
     near: NearDedupConfig = Field(default_factory=NearDedupConfig)
 
 
+class SentenceVarianceFilterConfig(StrictModel):
+    enabled: bool = False
+    min_cv: float = 0.15
+
+
 class LengthFilterConfig(StrictModel):
     enabled: bool = False
     min_instruction_chars: int = 10
@@ -148,12 +177,40 @@ class IFDFilterConfig(StrictModel):
     min_score: float = 0.2
 
 
+class RewardModelFilterConfig(StrictModel):
+    enabled: bool = False
+    min_score: float | None = None
+    llm_override: StageLLMOverride | None = None
+
+
+class PairDeltaFilterConfig(StrictModel):
+    enabled: bool = False
+    score_field: str = "quality"
+    min_delta: float = 0.30
+    length_ratio_max: float | None = None
+
+
+class CompositeSelectConfig(StrictModel):
+    enabled: bool = False
+    target_count: int | None = None
+    weights: dict[str, float] = Field(default_factory=dict)
+    strategy: str = "top_n"
+
+
 class FiltersConfig(StrictModel):
     target_count: int
     length: LengthFilterConfig = Field(default_factory=LengthFilterConfig)
     language: LanguageFilterConfig = Field(default_factory=LanguageFilterConfig)
     ifd: IFDFilterConfig = Field(default_factory=IFDFilterConfig)
     labeling_engine: LabelingFilterConfig = Field(default_factory=LabelingFilterConfig)
+    reward_model: RewardModelFilterConfig = Field(
+        default_factory=RewardModelFilterConfig
+    )
+    pair_delta: PairDeltaFilterConfig = Field(default_factory=PairDeltaFilterConfig)
+    sentence_variance: SentenceVarianceFilterConfig = Field(
+        default_factory=SentenceVarianceFilterConfig
+    )
+    select: CompositeSelectConfig = Field(default_factory=lambda: CompositeSelectConfig())
 
 
 class OutputConfig(StrictModel):
@@ -175,6 +232,22 @@ class EmbeddingsConfig(StrictModel):
 class LabelingEngineConfig(StrictModel):
     rubric_path: str | None = None
     mode: Literal["single", "multi"] = "single"
+
+
+def resolve_llm_override(base: LLMConfig, override: StageLLMOverride | None) -> LLMConfig:
+    """Merge a stage-local LLM override onto the top-level LLM config."""
+    if override is None:
+        return base
+    updates: dict[str, object] = {}
+    if override.model is not None:
+        updates["model"] = override.model
+    if override.base_url is not None:
+        updates["base_url"] = override.base_url
+    if override.api_key is not None:
+        updates["api_key"] = override.api_key
+    if not updates:
+        return base
+    return base.model_copy(update=updates)
 
 
 class ResolvedConfig(StrictModel):

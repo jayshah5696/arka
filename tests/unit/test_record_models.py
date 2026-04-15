@@ -98,6 +98,35 @@ def test_record_text_for_diversity_defaults_to_none() -> None:
     assert record.text_for_diversity() is None
 
 
+def test_record_scores_supports_humanness_fields() -> None:
+    scores = RecordScores(
+        quality=4.0,
+        humanness=0.82,
+        humanness_per_dim={
+            "opener_pattern": 0.9,
+            "hedging_density": 0.7,
+        },
+        humanness_checklist={
+            "opener_pattern": True,
+            "hedging_density": False,
+        },
+        humanness_reasoning="Openers are clean, some hedging remains.",
+    )
+
+    assert scores.humanness == 0.82
+    assert scores.humanness_per_dim["opener_pattern"] == 0.9
+    assert scores.humanness_checklist["hedging_density"] is False
+    assert "hedging" in scores.humanness_reasoning
+
+
+def test_record_scores_humanness_defaults_to_none() -> None:
+    scores = RecordScores()
+    assert scores.humanness is None
+    assert scores.humanness_per_dim is None
+    assert scores.humanness_checklist is None
+    assert scores.humanness_reasoning is None
+
+
 def test_conversation_and_grounded_chunk_records_expose_diversity_text() -> None:
     conversation = ConversationRecord(
         id="rec-1",

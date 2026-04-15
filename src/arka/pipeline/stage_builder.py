@@ -10,7 +10,10 @@ from arka.pipeline.filter_stages import (
     LabelingQualityFilterStage,
     validate_ifd_capability,
 )
-from arka.pipeline.generator_stages import PromptBasedGeneratorStage
+from arka.pipeline.generator_stages import (
+    PromptBasedGeneratorStage,
+    TransformGeneratorStage,
+)
 from arka.pipeline.ifd_stage import IFDFilterStage
 from arka.pipeline.models import StageContext
 from arka.pipeline.source_stages import PDFSourceStage, SeedSourceStage
@@ -49,6 +52,12 @@ class StageBuilder:
         if self.config.generator.type == "prompt_based":
             return [
                 PromptBasedGeneratorStage(
+                    project_root=self.project_root,
+                )
+            ]
+        if self.config.generator.type == "transform":
+            return [
+                TransformGeneratorStage(
                     project_root=self.project_root,
                 )
             ]

@@ -9,7 +9,10 @@ from arka.pipeline.cheap_filters import LanguageFilterStage, LengthFilterStage
 from arka.pipeline.dedup_stages import ExactDedupStage, NearDedupStage
 from arka.pipeline.evol_generator_stage import EvolInstructRoundStage
 from arka.pipeline.filter_stages import LabelingQualityFilterStage
-from arka.pipeline.generator_stages import PromptBasedGeneratorStage
+from arka.pipeline.generator_stages import (
+    PromptBasedGeneratorStage,
+    TransformGeneratorStage,
+)
 from arka.pipeline.ifd_stage import IFDFilterStage
 from arka.pipeline.source_stages import PDFSourceStage, SeedSourceStage
 from arka.pipeline.stage_builder import StageBuilder
@@ -113,6 +116,23 @@ def test_unsupported_data_source_type_raises(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Unsupported data_source.type"):
         StageBuilder(config=config, project_root=tmp_path).build()
+
+
+def test_transform_generator_builds_transform_stage(tmp_path: Path) -> None:
+    config = _base_config(
+        generator={
+            "type": "transform",
+            "input_field": "payload.instruction",
+            "output_field": "payload.response",
+            "prompt_template": "Rewrite this text:\n{input_text}",
+        }
+    )
+    stages = StageBuilder(config=config, project_root=tmp_path).build()
+
+    assert len(stages) == 3
+    assert isinstance(stages[0], SeedSourceStage)
+    assert isinstance(stages[1], NormalizeConversationStage)
+    assert isinstance(stages[2], TransformGeneratorStage)
 
 
 def test_unsupported_generator_type_raises(tmp_path: Path) -> None:
@@ -226,6 +246,7 @@ def test_evol_instruct_builds_one_stage_per_round_and_preserves_order(
 
 
 def test_ifd_enabled_inserts_stage_before_label_quality(tmp_path: Path) -> None:
+    """IFD is now supported for the openai provider, so it builds successfully."""
     config = _base_config(
         filters={
             "target_count": 2,
@@ -236,10 +257,10 @@ def test_ifd_enabled_inserts_stage_before_label_quality(tmp_path: Path) -> None:
         }
     )
 
-    with pytest.raises(
-        ValueError, match="IFD requires provider/model response-scoring capability"
-    ):
-        StageBuilder(config=config, project_root=tmp_path).build()
+    stages = StageBuilder(config=config, project_root=tmp_path).build()
+
+    assert isinstance(stages[-2], IFDFilterStage)
+    assert isinstance(stages[-1], LabelingQualityFilterStage)
 
 
 def test_all_filters_ordering_without_ifd(tmp_path: Path) -> None:

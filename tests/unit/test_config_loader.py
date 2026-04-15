@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from arka.config.loader import ConfigLoader, ConfigValidationError
+from arka.config.models import LLMConfig, StageLLMOverride, resolve_llm_override
 
 CONFIG_YAML = """
 version: "1"
@@ -145,6 +146,62 @@ def test_load_config_supports_openrouter_style_openai_compatible_settings(
     assert resolved.embeddings.api_key.get_secret_value() == "openrouter-key"
 
 
+def test_load_config_accepts_transform_generator_config() -> None:
+    resolved = ConfigLoader().load_dict(
+        {
+            "version": "1",
+            "llm": {
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "api_key": "test-key",
+                "base_url": "https://api.openai.com/v1",
+            },
+            "executor": {"mode": "threadpool", "max_workers": 1},
+            "data_source": {"type": "seeds", "path": "./seeds.jsonl"},
+            "generator": {
+                "type": "transform",
+                "input_field": "payload.instruction",
+                "output_field": "payload.response",
+                "prompt_template": "Rewrite this text:\n{input_text}",
+                "preserve_original": True,
+            },
+            "dedup": {"exact": {"enabled": False}, "near": {"enabled": False}},
+            "filters": {"target_count": 2},
+            "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
+        }
+    )
+
+    assert resolved.generator.type == "transform"
+    assert resolved.generator.input_field == "payload.instruction"
+    assert resolved.generator.output_field == "payload.response"
+    assert resolved.generator.preserve_original is True
+
+
+def test_load_config_rejects_transform_generator_missing_fields() -> None:
+    with pytest.raises(ConfigValidationError, match="generator.input_field"):
+        ConfigLoader().load_dict(
+            {
+                "version": "1",
+                "llm": {
+                    "provider": "openai",
+                    "model": "gpt-4o-mini",
+                    "api_key": "test-key",
+                    "base_url": "https://api.openai.com/v1",
+                },
+                "executor": {"mode": "threadpool", "max_workers": 1},
+                "data_source": {"type": "seeds", "path": "./seeds.jsonl"},
+                "generator": {
+                    "type": "transform",
+                    "output_field": "payload.response",
+                    "prompt_template": "Rewrite this text:\n{input_text}",
+                },
+                "dedup": {"exact": {"enabled": False}, "near": {"enabled": False}},
+                "filters": {"target_count": 2},
+                "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
+            }
+        )
+
+
 def test_load_config_accepts_valid_evol_instruct_config() -> None:
     resolved = ConfigLoader().load_dict(
         {
@@ -261,3 +318,62 @@ def test_load_config_rejects_zero_evol_rounds_or_branching() -> None:
                 "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
             }
         )
+
+
+def test_load_config_accepts_transform_with_llm_override() -> None:
+    resolved = ConfigLoader().load_dict(
+        {
+            "version": "1",
+            "llm": {
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "api_key": "test-key",
+                "base_url": "https://api.openai.com/v1",
+            },
+            "executor": {"mode": "threadpool", "max_workers": 1},
+            "data_source": {"type": "seeds", "path": "./seeds.jsonl"},
+            "generator": {
+                "type": "transform",
+                "input_field": "payload.instruction",
+                "output_field": "payload.response",
+                "prompt_template": "Rewrite:\n{input_text}",
+                "llm_override": {
+                    "model": "qwen/qwen3.5-9b",
+                },
+            },
+            "dedup": {"exact": {"enabled": False}, "near": {"enabled": False}},
+            "filters": {"target_count": 2},
+            "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
+        }
+    )
+
+    assert resolved.generator.llm_override is not None
+    assert resolved.generator.llm_override.model == "qwen/qwen3.5-9b"
+
+
+def test_resolve_llm_override_merges_model_only() -> None:
+    base = LLMConfig(
+        provider="openai",
+        model="gpt-4o-mini",
+        api_key="test-key",
+        base_url="https://api.openai.com/v1",
+    )
+    override = StageLLMOverride(model="qwen/qwen3.5-9b")
+
+    resolved = resolve_llm_override(base, override)
+
+    assert resolved.model == "qwen/qwen3.5-9b"
+    assert resolved.api_key.get_secret_value() == "test-key"
+    assert str(resolved.base_url) == "https://api.openai.com/v1"
+
+
+def test_resolve_llm_override_returns_base_when_no_override() -> None:
+    base = LLMConfig(
+        provider="openai",
+        model="gpt-4o-mini",
+        api_key="test-key",
+        base_url="https://api.openai.com/v1",
+    )
+
+    assert resolve_llm_override(base, None) is base
+    assert resolve_llm_override(base, StageLLMOverride()) is base

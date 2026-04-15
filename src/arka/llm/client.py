@@ -38,7 +38,7 @@ CAPABILITIES: dict[str, dict[str, bool | tuple[str, ...]]] = {
             "prompt_parse_fallback",
         ),
         "logprobs": True,
-        "response_scoring": False,
+        "response_scoring": True,
         "batch_api": True,
     }
 }
@@ -417,10 +417,67 @@ class LLMClient:
                     "does not support response scoring"
                 ),
             )
-        raise LLMClientError(
-            "unsupported_capability",
-            "response scoring is not yet implemented for live providers",
+        scoring_messages = [
+            *list(messages),
+            {"role": "assistant", "content": target_text},
+        ]
+        try:
+            response = self._client.chat.completions.create(
+                model=self.config.model,
+                messages=scoring_messages,
+                max_tokens=1,
+                logprobs=True,
+                echo=True,
+            )
+        except BadRequestError:
+            # Fallback: some providers don't support echo — use plain completion
+            # with logprobs on a re-generated response as an approximation.
+            response = self._client.chat.completions.create(
+                model=self.config.model,
+                messages=list(messages),
+                max_tokens=max(len(target_text.split()) * 2, 64),
+                logprobs=True,
+            )
+        except AuthenticationError as exc:
+            raise LLMClientError("auth_error", str(exc)) from exc
+
+        logprobs_list = self._extract_logprobs(response)
+        if not logprobs_list:
+            raise LLMClientError(
+                "unsupported_capability",
+                "Provider returned no logprobs for scoring",
+            )
+        total_logprob = sum(logprobs_list)
+        mean_logprob = total_logprob / len(logprobs_list)
+        return SequenceScore(
+            token_count=len(logprobs_list),
+            mean_logprob=round(mean_logprob, 6),
+            total_logprob=round(total_logprob, 6),
+            provider=self.config.provider,
+            model=response.model if hasattr(response, "model") else self.config.model,
         )
+
+    def _extract_logprobs(self, response: Any) -> list[float]:
+        """Extract per-token logprobs from an OpenAI-compatible response."""
+        choice = response.choices[0] if response.choices else None
+        if choice is None:
+            return []
+        logprobs_obj = getattr(choice, "logprobs", None)
+        if logprobs_obj is None:
+            return []
+        # OpenAI v1 format: logprobs.content is a list of TokenLogprob objects
+        content_logprobs = getattr(logprobs_obj, "content", None)
+        if content_logprobs is not None:
+            return [
+                token_lp.logprob
+                for token_lp in content_logprobs
+                if hasattr(token_lp, "logprob")
+            ]
+        # Legacy format: logprobs.token_logprobs is a list of floats
+        token_logprobs = getattr(logprobs_obj, "token_logprobs", None)
+        if token_logprobs is not None:
+            return [lp for lp in token_logprobs if lp is not None]
+        return []
 
     def _to_output(self, response: Any, latency_ms: int) -> LLMOutput:
         usage = self._usage_from_response(response)

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+import statistics
 
 from arka.pipeline.models import StageContext
 from arka.pipeline.output import OutputWriter
@@ -169,6 +171,82 @@ class LanguageFilterStage(Stage):
             return True  # Empty or non-alpha text is allowed through.
         latin_count = sum(1 for ch in alpha_chars if ord(ch) < 0x0250)
         return latin_count / len(alpha_chars) >= 0.7
+
+    def _drop_record(self, record: Record, reason_code: str) -> Record:
+        return record.model_copy(
+            update={
+                "stage_events": [
+                    *record.stage_events,
+                    StageEvent(
+                        stage=self.name,
+                        action="dropped",
+                        reason_code=reason_code,
+                        seq=len(record.stage_events) + 1,
+                    ),
+                ]
+            }
+        )
+
+
+_SENTENCE_SPLIT_PATTERN = re.compile(r"[.!?]+")
+
+
+def _sentence_lengths(text: str) -> list[int]:
+    """Split text on sentence-ending punctuation and return word counts."""
+    parts = _SENTENCE_SPLIT_PATTERN.split(text)
+    return [len(part.split()) for part in parts if part.strip()]
+
+
+def _coefficient_of_variation(values: list[int]) -> float:
+    """Return the coefficient of variation (stdev / mean)."""
+    if len(values) < 2:
+        return 1.0  # single sentence passes by convention
+    mean = statistics.fmean(values)
+    if mean == 0:
+        return 0.0
+    std = statistics.pstdev(values)
+    return std / mean
+
+
+class SentenceVarianceFilterStage(Stage):
+    """Drop records whose response has too-uniform sentence lengths."""
+
+    name = "02f_sentence_variance"
+    stage_action = "filtered"
+
+    def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
+        cfg = ctx.config.filters.sentence_variance
+        if not cfg.enabled:
+            return records
+
+        kept: list[Record] = []
+        dropped: list[Record] = []
+        drop_reasons: dict[str, int] = {}
+
+        for record in records:
+            if not isinstance(record, ConversationRecord):
+                kept.append(record)
+                continue
+
+            lengths = _sentence_lengths(record.payload.response)
+            cv = _coefficient_of_variation(lengths)
+
+            if cv >= cfg.min_cv:
+                kept.append(record)
+            else:
+                reason = "low_sentence_variance"
+                dropped.append(self._drop_record(record, reason_code=reason))
+                drop_reasons[reason] = drop_reasons.get(reason, 0) + 1
+
+        write_filter_artifacts(
+            stage_name=self.name,
+            ctx=ctx,
+            dropped=dropped,
+            count_in=len(records),
+            count_out=len(kept),
+            drop_reasons=drop_reasons,
+        )
+        return kept
 
     def _drop_record(self, record: Record, reason_code: str) -> Record:
         return record.model_copy(

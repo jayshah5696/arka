@@ -720,15 +720,64 @@ def test_usage_from_response_leaves_cost_none_when_absent() -> None:
     assert usage.cost_usd is None
 
 
-def test_provider_supports_sequence_scoring_is_currently_false() -> None:
+def test_provider_supports_sequence_scoring_is_true_for_openai() -> None:
     config = build_config()
-    assert provider_supports_sequence_scoring(config) is False
+    assert provider_supports_sequence_scoring(config) is True
 
 
-def test_score_response_raises_until_live_provider_support_exists() -> None:
-    client = _make_client_for_extraction()
-    with pytest.raises(LLMClientError, match="does not support response scoring"):
-        client.score_response(
-            messages=[{"role": "user", "content": "Explain gravity"}],
-            target_text="Gravity attracts masses.",
-        )
+class FakeTokenLogprob:
+    def __init__(self, token: str, logprob: float) -> None:
+        self.token = token
+        self.logprob = logprob
+
+
+class FakeLogprobsContent:
+    def __init__(self, token_logprobs: list[FakeTokenLogprob]) -> None:
+        self.content = token_logprobs
+
+
+class FakeLogprobChoice:
+    def __init__(
+        self, content: str, logprobs: FakeLogprobsContent, finish_reason: str = "stop"
+    ) -> None:
+        self.message = FakeMessage(content)
+        self.logprobs = logprobs
+        self.finish_reason = finish_reason
+
+
+class FakeLogprobResponse:
+    def __init__(
+        self,
+        content: str,
+        token_logprobs: list[FakeTokenLogprob],
+        model: str = "gpt-4o-mini",
+    ) -> None:
+        self.choices = [FakeLogprobChoice(content, FakeLogprobsContent(token_logprobs))]
+        self.usage = FakeUsage(10, 5)
+        self.model = model
+        self.id = "req_lp_123"
+
+
+def test_score_response_computes_mean_logprob_from_token_logprobs() -> None:
+    logprobs = [
+        FakeTokenLogprob("Gravity", -0.5),
+        FakeTokenLogprob("attracts", -1.0),
+        FakeTokenLogprob("masses", -0.3),
+    ]
+    fake_client = FakeClient([FakeLogprobResponse("Gravity attracts masses", logprobs)])
+    client = LLMClient(
+        config=build_config(),
+        client_factory=lambda _: fake_client,
+        sleep=lambda _: None,
+    )
+
+    score = client.score_response(
+        messages=[{"role": "user", "content": "Explain gravity"}],
+        target_text="Gravity attracts masses.",
+    )
+
+    assert score.token_count == 3
+    assert score.mean_logprob == round((-0.5 + -1.0 + -0.3) / 3, 6)
+    assert score.total_logprob == round(-0.5 + -1.0 + -0.3, 6)
+    assert score.provider == "openai"
+    assert score.model == "gpt-4o-mini"
