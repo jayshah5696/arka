@@ -112,8 +112,25 @@ def test_load_config_rejects_unknown_keys(
     config_path = tmp_path / "config.yaml"
     config_path.write_text(CONFIG_YAML + "unexpected_key: true\n")
 
-    with pytest.raises(ConfigValidationError):
+    with pytest.raises(ConfigValidationError, match="Configuration is invalid"):
         ConfigLoader().load(config_path)
+
+
+def test_config_validation_error_is_human_readable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pydantic errors should be formatted as a clean bulleted list."""
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    config_path = tmp_path / "config.yaml"
+    # Minimal invalid config: missing required keys
+    config_path.write_text("version: '1'\n")
+
+    with pytest.raises(ConfigValidationError, match="Configuration is invalid") as exc_info:
+        ConfigLoader().load(config_path)
+
+    message = str(exc_info.value)
+    assert "  - llm: " in message
+    assert "  - filters: " in message
 
 
 def test_load_config_requires_declared_env_vars(tmp_path: Path) -> None:
