@@ -9,6 +9,8 @@ class CheckpointManager:
         self.sqlite_path = sqlite_path
         self.sqlite_path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
+        # SECURITY: Set restrictive file permissions on the state database to prevent unauthorized access by other users
+        self.sqlite_path.chmod(0o600)
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.sqlite_path)

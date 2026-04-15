@@ -40,6 +40,9 @@ class SeedSourceStage(Stage):
                 "data_source.path is required when data_source.type='seeds'"
             )
         source_path = self.project_root / ctx.config.data_source.path
+        # SECURITY: Enforce max seed file size (50MB) to prevent OOM DOS
+        if source_path.stat().st_size > 50 * 1024 * 1024:
+            raise ValueError("Seed file exceeds maximum allowed size of 50MB")
         config_hash = self._config_hash(ctx)
         if source_path.suffix == ".jsonl":
             return self._read_jsonl(source_path=source_path, config_hash=config_hash)
@@ -88,8 +91,9 @@ class SeedSourceStage(Stage):
         source_path: Path,
         config_hash: str,
     ) -> ConversationRecord:
-        normalized_instruction = instruction.strip()
-        normalized_response = response.strip()
+        # SECURITY: Sanitize seed input by limiting length to mitigate prompt injection and context overflow
+        normalized_instruction = instruction.strip()[:16384]
+        normalized_response = response.strip()[:16384]
         payload = ConversationPayload(
             instruction=normalized_instruction,
             response=normalized_response,
