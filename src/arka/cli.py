@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import uuid
 from collections.abc import Sequence
 from pathlib import Path
 
-from arka.config.loader import ConfigLoader
+from arka.config.loader import ConfigLoader, ConfigValidationError
 from arka.pipeline.runner import PipelineRunner
 from arka.pipeline.stage_builder import StageBuilder
 
@@ -91,7 +92,17 @@ def main(argv: Sequence[str] | None = None) -> None:
     args = parser.parse_args(list(argv) if argv is not None else None)
     config_path = Path(args.config).expanduser().resolve()
     project_root = config_path.parent
-    config = ConfigLoader().load(config_path)
+
+    # DX: Print clean error messages for config issues instead of Python tracebacks.
+    try:
+        config = ConfigLoader().load(config_path)
+    except FileNotFoundError:
+        print(f"Error: Configuration file not found at {config_path}", file=sys.stderr)
+        sys.exit(1)
+    except ConfigValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        sys.exit(1)
+
     run_id = _resolve_run_id(args.run_id, config.run_id)
     stages = StageBuilder(config=config, project_root=project_root).build()
 
