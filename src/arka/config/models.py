@@ -198,6 +198,16 @@ class CompositeSelectConfig(StrictModel):
     strategy: str = "top_n"
 
 
+class SemanticSimilarityFilterConfig(StrictModel):
+    enabled: bool = False
+    threshold: float = 0.9
+
+
+class CanaryFilterConfig(StrictModel):
+    enabled: bool = False
+    phrases: list[str] = Field(default_factory=list)
+
+
 class FiltersConfig(StrictModel):
     target_count: int
     length: LengthFilterConfig = Field(default_factory=LengthFilterConfig)
@@ -211,6 +221,10 @@ class FiltersConfig(StrictModel):
     sentence_variance: SentenceVarianceFilterConfig = Field(
         default_factory=SentenceVarianceFilterConfig
     )
+    semantic_similarity: SemanticSimilarityFilterConfig = Field(
+        default_factory=SemanticSimilarityFilterConfig
+    )
+    canary: CanaryFilterConfig = Field(default_factory=CanaryFilterConfig)
     select: CompositeSelectConfig = Field(default_factory=lambda: CompositeSelectConfig())
 
 

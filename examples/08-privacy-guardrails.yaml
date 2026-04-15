@@ -1,0 +1,55 @@
+# WHAT:      Privacy-Aware Guardrails example.
+# WHEN:      Use this to generate synthetic data with canary tracking and semantic similarity filtering.
+# REQUIRES:  examples/seeds/08-privacy-seeds.jsonl
+# RUN:       uv run arka --config examples/08-privacy-guardrails.yaml --run-id test-08
+# ARTIFACTS: runs/<run-id>/... plus ./output/08-privacy-guardrails-dataset.jsonl.
+# TEACHES:   Canary filtering and Semantic Similarity filtering.
+# COST:      low
+version: "1"
+
+llm:
+  provider: openai
+  model: gpt-4o-mini
+  api_key: ${OPENAI_API_KEY}
+  base_url: https://api.openai.com/v1
+  timeout_seconds: 30
+
+executor:
+  mode: threadpool
+  max_workers: 1
+
+data_source:
+  type: seeds
+  path: ./seeds/08-privacy-seeds.jsonl
+
+generator:
+  type: prompt_based
+  target_count: 5
+  generation_multiplier: 1
+  prompt_template: |
+    Rewrite this instruction and response to be more concise.
+    Return only JSON with keys "instruction" and "response".
+
+    Seed instruction:
+    {seed_instruction}
+
+    Seed response:
+    {seed_response}
+
+filters:
+  target_count: 5
+  semantic_similarity:
+    enabled: true
+    threshold: 0.95
+  canary:
+    enabled: true
+    phrases:
+      - "SUPER_SECRET_PROJECT_X"
+
+embeddings:
+  provider: huggingface
+  model: all-MiniLM-L6-v2
+
+output:
+  format: jsonl
+  path: ./output/08-privacy-guardrails-dataset.jsonl

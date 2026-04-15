@@ -5,6 +5,8 @@ import statistics
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from arka.labeling.engine import LabelingEngine
 from arka.labeling.rubric import RubricLoader
 from arka.llm.client import (
@@ -21,6 +23,161 @@ from arka.records.models import (
     RecordScores,
     StageEvent,
 )
+
+
+class CanaryFilterStage(Stage):
+    """Drop records whose text contains any configured canary phrase."""
+
+    name = "02g_canary_filter"
+    stage_action = "filtered"
+
+    def __init__(self) -> None:
+        self._output_writer = OutputWriter()
+
+    def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
+        filter_config = ctx.config.filters.canary
+        if not filter_config.enabled or not filter_config.phrases:
+            return records
+
+        kept: list[Record] = []
+        dropped: list[Record] = []
+        drop_reasons: dict[str, int] = {}
+
+        for record in records:
+            if not isinstance(record, ConversationRecord):
+                kept.append(record)
+                continue
+
+            text = f"{record.payload.instruction}\n{record.payload.response}"
+            matched = next(
+                (p for p in filter_config.phrases if p in text), None
+            )
+
+            if matched is None:
+                kept.append(record)
+            else:
+                reason = "canary_leak"
+                dropped.append(
+                    _drop_record(record, self.name, reason, f"Matched canary phrase: {matched}")
+                )
+                drop_reasons[reason] = drop_reasons.get(reason, 0) + 1
+
+        _write_filter_artifacts(
+            self._output_writer, ctx, self.name, len(records), len(kept), dropped, drop_reasons
+        )
+        return kept
+
+
+class SemanticSimilarityFilterStage(Stage):
+    """Drop generated records too similar to their seed records."""
+
+    name = "02h_semantic_similarity_filter"
+    stage_action = "filtered"
+
+    def __init__(self) -> None:
+        self._output_writer = OutputWriter()
+
+    def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
+        filter_config = ctx.config.filters.semantic_similarity
+        if not filter_config.enabled:
+            return records
+
+        generated: list[ConversationRecord] = []
+        seeds: list[ConversationRecord] = []
+        other: list[Record] = []
+
+        for record in records:
+            if not isinstance(record, ConversationRecord):
+                other.append(record)
+                continue
+            if record.source.type == "seed":
+                seeds.append(record)
+            else:
+                generated.append(record)
+
+        if not seeds or not generated:
+            return records
+
+        from arka.pipeline.runner import PipelineRunner
+
+        runner = PipelineRunner(project_root=ctx.work_dir)
+        gen_texts = [f"{r.payload.instruction}\n{r.payload.response}" for r in generated]
+        seed_texts = [f"{r.payload.instruction}\n{r.payload.response}" for r in seeds]
+
+        gen_emb = runner._embed_texts(config=ctx.config, texts=gen_texts)
+        seed_emb = runner._embed_texts(config=ctx.config, texts=seed_texts)
+
+        if gen_emb is None or seed_emb is None:
+            return records
+
+        # Cosine similarity matrix
+        gen_norm = gen_emb / np.maximum(np.linalg.norm(gen_emb, axis=1, keepdims=True), 1e-9)
+        seed_norm = seed_emb / np.maximum(np.linalg.norm(seed_emb, axis=1, keepdims=True), 1e-9)
+        sim_matrix = gen_norm @ seed_norm.T
+
+        kept: list[Record] = list(seeds) + list(other)
+        dropped: list[Record] = []
+        drop_reasons: dict[str, int] = {}
+
+        for i, record in enumerate(generated):
+            max_sim = float(np.max(sim_matrix[i]))
+            if max_sim > filter_config.threshold:
+                reason = "high_semantic_similarity"
+                dropped.append(
+                    _drop_record(
+                        record, self.name, reason,
+                        f"Max cosine similarity {max_sim:.4f} > {filter_config.threshold}",
+                    )
+                )
+                drop_reasons[reason] = drop_reasons.get(reason, 0) + 1
+            else:
+                kept.append(record)
+
+        _write_filter_artifacts(
+            self._output_writer, ctx, self.name, len(records), len(kept), dropped, drop_reasons
+        )
+        return kept
+
+
+def _drop_record(
+    record: Record, stage_name: str, reason_code: str, details: str
+) -> Record:
+    return record.model_copy(
+        update={
+            "stage_events": [
+                *record.stage_events,
+                StageEvent(
+                    stage=stage_name,
+                    action="dropped",
+                    reason_code=reason_code,
+                    details=details,
+                    seq=len(record.stage_events) + 1,
+                ),
+            ]
+        }
+    )
+
+
+def _write_filter_artifacts(
+    writer: OutputWriter,
+    ctx: StageContext,
+    stage_name: str,
+    count_in: int,
+    count_out: int,
+    dropped: list[Record],
+    drop_reasons: dict[str, int],
+) -> None:
+    ctx.work_dir.mkdir(parents=True, exist_ok=True)
+    if dropped:
+        writer.write_dropped_parquet(records=dropped, path=ctx.work_dir / "dropped.parquet")
+    stats = {
+        "stage": stage_name,
+        "count_in": count_in,
+        "count_out": count_out,
+        "dropped_count": len(dropped),
+        "drop_reasons": drop_reasons,
+    }
+    (ctx.work_dir / "stats.json").write_text(json.dumps(stats, indent=2))
 
 
 class LabelingQualityFilterStage(Stage):
