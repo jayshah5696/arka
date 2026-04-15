@@ -133,7 +133,10 @@ def test_config_validation_error_is_human_readable(
     assert "  - filters: " in message
 
 
-def test_load_config_requires_declared_env_vars(tmp_path: Path) -> None:
+def test_load_config_requires_declared_env_vars(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     config_path = tmp_path / "config.yaml"
     config_path.write_text(CONFIG_YAML)
 
