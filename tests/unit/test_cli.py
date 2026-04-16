@@ -156,3 +156,28 @@ def test_cli_supports_dry_run(tmp_path: Path, monkeypatch, capsys) -> None:
 
     # Pipeline output should not exist since it's a dry run
     assert not (tmp_path / "runs" / "test-dry-run" / "manifest.json").exists()
+
+
+def test_cli_exits_gracefully_on_config_error(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    import pytest
+
+    # Test file not found
+    with pytest.raises(SystemExit) as exc:
+        main(["--config", str(tmp_path / "non_existent.yaml")])
+
+    assert exc.value.code == 1
+    captured = capsys.readouterr()
+    assert "Error: [Errno 2] No such file or directory:" in captured.err
+
+    # Test config validation error
+    bad_config_path = tmp_path / "bad_config.yaml"
+    bad_config_path.write_text("invalid_key: true")
+    with pytest.raises(SystemExit) as exc:
+        main(["--config", str(bad_config_path)])
+
+    assert exc.value.code == 1
+    captured = capsys.readouterr()
+    assert "Error: Configuration is invalid" in captured.err
+    assert "version: Field required" in captured.err
