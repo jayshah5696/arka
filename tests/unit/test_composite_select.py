@@ -29,7 +29,9 @@ def _record(
         content_hash=f"hash-{record_id}",
         source=RecordSource(type="generated"),
         lineage=RecordLineage(root_id=f"root-{record_id}", parent_ids=[]),
-        payload=ConversationPayload(instruction=f"Q-{record_id}", response=f"A-{record_id}"),
+        payload=ConversationPayload(
+            instruction=f"Q-{record_id}", response=f"A-{record_id}"
+        ),
         scores=RecordScores(quality=quality, reward_model=reward_model, ifd=ifd),
         config_hash="cfg-1",
         created_at="2026-04-14T00:00:00Z",
@@ -84,9 +86,9 @@ def test_composite_select_keeps_top_n_by_weighted_score(tmp_path: Path) -> None:
 
     records = stage.run(
         [
-            _record("1", quality=0.9, reward_model=0.8),   # composite = 0.85
-            _record("2", quality=0.3, reward_model=0.2),   # composite = 0.25
-            _record("3", quality=0.7, reward_model=0.6),   # composite = 0.65
+            _record("1", quality=0.9, reward_model=0.8),  # composite = 0.85
+            _record("2", quality=0.3, reward_model=0.2),  # composite = 0.25
+            _record("3", quality=0.7, reward_model=0.6),  # composite = 0.65
         ],
         ctx,
     )
@@ -110,8 +112,8 @@ def test_composite_select_handles_missing_scores_as_zero(tmp_path: Path) -> None
 
     records = stage.run(
         [
-            _record("1", quality=0.8, ifd=None),      # composite = 0.4
-            _record("2", quality=0.3, ifd=0.9),        # composite = 0.6
+            _record("1", quality=0.8, ifd=None),  # composite = 0.4
+            _record("2", quality=0.3, ifd=0.9),  # composite = 0.6
         ],
         ctx,
     )
