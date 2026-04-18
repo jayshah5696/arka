@@ -121,5 +121,9 @@ def main(argv: Sequence[str] | None = None) -> None:
             run_id=run_id,
             resume=args.resume,
         )
+    except FileNotFoundError as exc:
+        # DX: Print clean error messages for missing pipeline dependencies like seeds.jsonl.
+        print(f"Error: Required file not found: {exc.filename}", file=sys.stderr)
+        sys.exit(1)
     finally:
         _print_summary(run_id, project_root)

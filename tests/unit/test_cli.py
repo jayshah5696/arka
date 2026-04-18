@@ -183,3 +183,19 @@ def test_cli_handles_invalid_config_gracefully(tmp_path: Path, capsys) -> None:
     assert exc.value.code == 1
     out, err = capsys.readouterr()
     assert "Configuration is invalid:" in err
+
+
+def test_cli_handles_pipeline_errors_gracefully(tmp_path: Path, monkeypatch, capsys) -> None:
+    config_path = tmp_path / "custom-config.yaml"
+    config_path.write_text(CONFIG_TEXT)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    # We omit the seeds.jsonl file so that the pipeline raises a FileNotFoundError
+    import pytest
+    with pytest.raises(SystemExit) as exc:
+        main(["--config", str(config_path), "--run-id", "test-err-run"])
+
+    assert exc.value.code == 1
+    out, err = capsys.readouterr()
+    assert "Error: Required file not found:" in err
+    assert "Traceback" not in err
