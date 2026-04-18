@@ -32,16 +32,7 @@ class FakeRewardClient:
 
         class FakeOutput:
             text = str(score)
-            usage = type(
-                "U",
-                (),
-                {
-                    "cost_usd": None,
-                    "prompt_tokens": 5,
-                    "completion_tokens": 1,
-                    "total_tokens": 6,
-                },
-            )()
+            usage = type("U", (), {"cost_usd": None, "prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6})()
             model = "nvidia/reward-model"
             provider = "openai"
             latency_ms = 10
