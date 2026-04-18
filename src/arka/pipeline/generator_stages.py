@@ -550,9 +550,7 @@ class TransformGeneratorStage(Stage):
             )
             parsed = output.parsed
             if not isinstance(parsed, TransformResponse):
-                raise ValueError(
-                    "Transform output did not parse into TransformResponse"
-                )
+                raise ValueError("Transform output did not parse into TransformResponse")
             if output.usage.cost_usd is not None:
                 costs.append(output.usage.cost_usd)
             transformed_records.append(

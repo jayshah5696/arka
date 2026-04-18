@@ -137,9 +137,7 @@ def test_keeps_records_with_only_one_sentence(tmp_path: Path) -> None:
     ctx = _ctx(tmp_path, min_cv=0.15)
     stage = SentenceVarianceFilterStage()
 
-    single_sentence = _record(
-        "1", "Just one sentence here without any period at the end"
-    )
+    single_sentence = _record("1", "Just one sentence here without any period at the end")
     result = stage.run([single_sentence], ctx)
 
     assert len(result) == 1
