@@ -125,7 +125,9 @@ def test_config_validation_error_is_human_readable(
     # Minimal invalid config: missing required keys
     config_path.write_text("version: '1'\n")
 
-    with pytest.raises(ConfigValidationError, match="Configuration is invalid") as exc_info:
+    with pytest.raises(
+        ConfigValidationError, match="Configuration is invalid"
+    ) as exc_info:
         ConfigLoader().load(config_path)
 
     message = str(exc_info.value)
