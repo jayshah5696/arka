@@ -121,5 +121,10 @@ def main(argv: Sequence[str] | None = None) -> None:
             run_id=run_id,
             resume=args.resume,
         )
+    except Exception as exc:
+        # DX: Catch pipeline execution errors to prevent raw Python tracebacks.
+        # This provides a clean, human-readable error message to the user.
+        print(f"Error: Pipeline execution failed - {exc}", file=sys.stderr)
+        sys.exit(1)
     finally:
         _print_summary(run_id, project_root)
