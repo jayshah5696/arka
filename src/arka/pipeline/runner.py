@@ -59,7 +59,7 @@ class PipelineRunner:
         failed_error: StageErrorInfo | None = None
 
         try:
-            for stage in stages:
+            for i, stage in enumerate(stages, 1):
                 stage_path = run_paths.stage_data_path(stage.name)
                 stage_checkpoint = checkpoint_manager.load_stage(run_id, stage.name)
                 if self._should_resume_stage(
@@ -78,6 +78,10 @@ class PipelineRunner:
                             stats_path=run_paths.stage_stats_path(stage.name),
                         )
                     )
+                    # DX: Provide per-stage progress indication for skipped stages
+                    print(
+                        f"Skipping stage {i}/{len(stages)}: {stage.name} (resumed from checkpoint)..."
+                    )
                     continue
 
                 stage_dir = run_paths.stage_dir(stage.name)
@@ -92,6 +96,10 @@ class PipelineRunner:
                     checkpoint_manager=checkpoint_manager,
                 )
                 count_in = len(records)
+                # DX: Provide per-stage progress indication during long runs
+                print(
+                    f"Running stage {i}/{len(stages)}: {stage.name} ({count_in} records in)..."
+                )
                 try:
                     stage_output = list(stage.run(records, context))
                 except Exception as exc:
