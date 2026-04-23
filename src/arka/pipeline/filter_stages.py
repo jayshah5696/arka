@@ -49,21 +49,27 @@ class CanaryFilterStage(Stage):
                 continue
 
             text = f"{record.payload.instruction}\n{record.payload.response}"
-            matched = next(
-                (p for p in filter_config.phrases if p in text), None
-            )
+            matched = next((p for p in filter_config.phrases if p in text), None)
 
             if matched is None:
                 kept.append(record)
             else:
                 reason = "canary_leak"
                 dropped.append(
-                    _drop_record(record, self.name, reason, f"Matched canary phrase: {matched}")
+                    _drop_record(
+                        record, self.name, reason, f"Matched canary phrase: {matched}"
+                    )
                 )
                 drop_reasons[reason] = drop_reasons.get(reason, 0) + 1
 
         _write_filter_artifacts(
-            self._output_writer, ctx, self.name, len(records), len(kept), dropped, drop_reasons
+            self._output_writer,
+            ctx,
+            self.name,
+            len(records),
+            len(kept),
+            dropped,
+            drop_reasons,
         )
         return kept
 
@@ -101,18 +107,32 @@ class SemanticSimilarityFilterStage(Stage):
         from arka.pipeline.runner import PipelineRunner
 
         runner = PipelineRunner(project_root=ctx.work_dir)
-        gen_texts = [f"{r.payload.instruction}\n{r.payload.response}" for r in generated]
+        gen_texts = [
+            f"{r.payload.instruction}\n{r.payload.response}" for r in generated
+        ]
         seed_texts = [f"{r.payload.instruction}\n{r.payload.response}" for r in seeds]
 
-        gen_emb = runner._embed_texts(config=ctx.config, texts=gen_texts)
-        seed_emb = runner._embed_texts(config=ctx.config, texts=seed_texts)
+        gen_emb = runner._embed_texts(
+            config=ctx.config,
+            texts=gen_texts,
+            checkpoint_manager=ctx.checkpoint_manager,
+        )
+        seed_emb = runner._embed_texts(
+            config=ctx.config,
+            texts=seed_texts,
+            checkpoint_manager=ctx.checkpoint_manager,
+        )
 
         if gen_emb is None or seed_emb is None:
             return records
 
         # Cosine similarity matrix
-        gen_norm = gen_emb / np.maximum(np.linalg.norm(gen_emb, axis=1, keepdims=True), 1e-9)
-        seed_norm = seed_emb / np.maximum(np.linalg.norm(seed_emb, axis=1, keepdims=True), 1e-9)
+        gen_norm = gen_emb / np.maximum(
+            np.linalg.norm(gen_emb, axis=1, keepdims=True), 1e-9
+        )
+        seed_norm = seed_emb / np.maximum(
+            np.linalg.norm(seed_emb, axis=1, keepdims=True), 1e-9
+        )
         sim_matrix = gen_norm @ seed_norm.T
 
         kept: list[Record] = list(seeds) + list(other)
@@ -125,7 +145,9 @@ class SemanticSimilarityFilterStage(Stage):
                 reason = "high_semantic_similarity"
                 dropped.append(
                     _drop_record(
-                        record, self.name, reason,
+                        record,
+                        self.name,
+                        reason,
                         f"Max cosine similarity {max_sim:.4f} > {filter_config.threshold}",
                     )
                 )
@@ -134,7 +156,13 @@ class SemanticSimilarityFilterStage(Stage):
                 kept.append(record)
 
         _write_filter_artifacts(
-            self._output_writer, ctx, self.name, len(records), len(kept), dropped, drop_reasons
+            self._output_writer,
+            ctx,
+            self.name,
+            len(records),
+            len(kept),
+            dropped,
+            drop_reasons,
         )
         return kept
 
@@ -169,7 +197,9 @@ def _write_filter_artifacts(
 ) -> None:
     ctx.work_dir.mkdir(parents=True, exist_ok=True)
     if dropped:
-        writer.write_dropped_parquet(records=dropped, path=ctx.work_dir / "dropped.parquet")
+        writer.write_dropped_parquet(
+            records=dropped, path=ctx.work_dir / "dropped.parquet"
+        )
     stats = {
         "stage": stage_name,
         "count_in": count_in,

@@ -225,7 +225,9 @@ class FiltersConfig(StrictModel):
         default_factory=SemanticSimilarityFilterConfig
     )
     canary: CanaryFilterConfig = Field(default_factory=CanaryFilterConfig)
-    select: CompositeSelectConfig = Field(default_factory=lambda: CompositeSelectConfig())
+    select: CompositeSelectConfig = Field(
+        default_factory=lambda: CompositeSelectConfig()
+    )
 
 
 class OutputConfig(StrictModel):
@@ -249,7 +251,9 @@ class LabelingEngineConfig(StrictModel):
     mode: Literal["single", "multi"] = "single"
 
 
-def resolve_llm_override(base: LLMConfig, override: StageLLMOverride | None) -> LLMConfig:
+def resolve_llm_override(
+    base: LLMConfig, override: StageLLMOverride | None
+) -> LLMConfig:
     """Merge a stage-local LLM override onto the top-level LLM config."""
     if override is None:
         return base

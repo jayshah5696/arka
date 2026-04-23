@@ -166,6 +166,7 @@ class PipelineRunner:
                 report_dir=run_paths.report_dir,
                 records=records,
                 config=resolved_config,
+                checkpoint_manager=checkpoint_manager,
             )
             run_paths.manifest_path.write_text(json.dumps(manifest, indent=2))
             run_paths.run_report_path.write_text(json.dumps(run_report, indent=2))
@@ -198,6 +199,7 @@ class PipelineRunner:
             report_dir=run_paths.report_dir,
             records=records,
             config=resolved_config,
+            checkpoint_manager=checkpoint_manager,
         )
         run_paths.manifest_path.write_text(json.dumps(manifest, indent=2))
         run_paths.run_report_path.write_text(json.dumps(run_report, indent=2))
@@ -390,6 +392,7 @@ class PipelineRunner:
         report_dir: Path,
         records: list[Record],
         config: ResolvedConfig,
+        checkpoint_manager: CheckpointManager | None = None,
     ) -> dict[str, Any]:
         report_dir.mkdir(parents=True, exist_ok=True)
         samples_path = self._write_samples(
@@ -397,7 +400,11 @@ class PipelineRunner:
         )
         canaries_path = report_dir / "canaries.json"
         canaries = self._build_canaries(config=config, report_path=canaries_path)
-        diversity_score = self._compute_diversity_score(records=records, config=config)
+        diversity_score = self._compute_diversity_score(
+            records=records,
+            config=config,
+            checkpoint_manager=checkpoint_manager,
+        )
 
         stage_costs = [
             stage_stat.cost_usd
@@ -531,6 +538,7 @@ class PipelineRunner:
         *,
         records: list[Record],
         config: ResolvedConfig,
+        checkpoint_manager: CheckpointManager | None = None,
     ) -> float | None:
         instructions = [
             text
@@ -540,7 +548,11 @@ class PipelineRunner:
         if len(instructions) < 2:
             return None
 
-        embeddings = self._embed_texts(config=config, texts=instructions)
+        embeddings = self._embed_texts(
+            config=config,
+            texts=instructions,
+            checkpoint_manager=checkpoint_manager,
+        )
         if embeddings is None or len(embeddings) < 2:
             return None
 
@@ -559,10 +571,53 @@ class PipelineRunner:
         *,
         config: ResolvedConfig,
         texts: list[str],
+        checkpoint_manager: CheckpointManager | None = None,
     ) -> np.ndarray | None:
-        if config.embeddings.provider == "huggingface":
-            return self._embed_texts_huggingface(config=config, texts=texts)
-        return self._embed_texts_openai(config=config, texts=texts)
+        if not texts:
+            return None
+
+        # PERF: Cache embedding vectors to avoid recompute on --resume runs. Expected impact: Saves minutes of CPU/API time by fetching cached embeddings from SQLite.
+        import hashlib
+
+        vectors: list[np.ndarray | None] = [None] * len(texts)
+        texts_to_embed: list[tuple[int, str, str]] = []
+
+        model_key = f"{config.embeddings.provider}:{config.embeddings.model}:"
+
+        for i, text in enumerate(texts):
+            text_hash = model_key + hashlib.sha256(text.encode("utf-8")).hexdigest()
+            cached = (
+                checkpoint_manager.load_embedding(text_hash)
+                if checkpoint_manager
+                else None
+            )
+            if cached is not None:
+                vectors[i] = np.frombuffer(cached, dtype=float)
+            else:
+                texts_to_embed.append((i, text_hash, text))
+
+        if texts_to_embed:
+            new_texts = [item[2] for item in texts_to_embed]
+            if config.embeddings.provider == "huggingface":
+                new_vectors = self._embed_texts_huggingface(
+                    config=config, texts=new_texts
+                )
+            else:
+                new_vectors = self._embed_texts_openai(config=config, texts=new_texts)
+
+            if new_vectors is not None and len(new_vectors) == len(new_texts):
+                for (idx, text_hash, _), vec in zip(
+                    texts_to_embed, new_vectors, strict=True
+                ):
+                    vectors[idx] = vec
+                    if checkpoint_manager is not None:
+                        checkpoint_manager.save_embedding(
+                            text_hash, vec.astype(float).tobytes()
+                        )
+
+        if any(v is None for v in vectors):
+            return None
+        return np.array(vectors, dtype=float)
 
     def _embed_texts_huggingface(
         self,
