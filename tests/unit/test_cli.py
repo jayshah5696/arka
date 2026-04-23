@@ -178,3 +178,21 @@ def test_cli_handles_invalid_config_gracefully(tmp_path: Path, capsys) -> None:
     assert exc.value.code == 1
     out, err = capsys.readouterr()
     assert "Configuration is invalid:" in err
+
+
+def test_cli_handles_missing_runtime_file_gracefully(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    config_path = tmp_path / "custom-config.yaml"
+    config_path.write_text(CONFIG_TEXT)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    # Note: seeds.jsonl is deliberately NOT created to trigger FileNotFoundError during run.
+
+    import pytest
+
+    with pytest.raises(SystemExit) as exc:
+        main(["--config", str(config_path), "--run-id", "test-file-not-found"])
+
+    assert exc.value.code == 1
+    out, err = capsys.readouterr()
+    assert "Error: Required file not found" in err
