@@ -33,8 +33,8 @@ class LabelingScoreStage(Stage):
         self._llm_client = llm_client
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        filter_config = ctx.config.filters.labeling_engine
-        if not filter_config.enabled or filter_config.rubric_path is None:
+        filter_config = ctx.config.filters.get_stage_config("labeling_engine")
+        if filter_config is None or filter_config.rubric_path is None:
             return records
 
         rubric_path = self.project_root / filter_config.rubric_path
@@ -145,8 +145,8 @@ class RewardModelScoringStage(Stage):
         self._output_writer = OutputWriter()
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        reward_config = ctx.config.filters.reward_model
-        if not reward_config.enabled:
+        reward_config = ctx.config.filters.get_stage_config("reward_model")
+        if reward_config is None:
             return records
 
         effective_llm_config = resolve_llm_override(
@@ -289,8 +289,8 @@ class PairDeltaFilterStage(Stage):
         *,
         parent_records: list[Record] | None = None,
     ) -> list[Record]:
-        pair_config = ctx.config.filters.pair_delta
-        if not pair_config.enabled:
+        pair_config = ctx.config.filters.get_stage_config("pair_delta")
+        if pair_config is None:
             return records
 
         parent_by_id: dict[str, Record] = {}
@@ -424,8 +424,8 @@ class CompositeSelectStage(Stage):
         self._output_writer = OutputWriter()
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        select_config = ctx.config.filters.select
-        if not select_config.enabled:
+        select_config = ctx.config.filters.get_stage_config("select")
+        if select_config is None:
             return records
 
         weights = select_config.weights

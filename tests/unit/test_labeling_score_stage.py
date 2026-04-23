@@ -70,13 +70,15 @@ def _ctx(tmp_path: Path) -> StageContext:
                 "target_count": 2,
                 "generation_multiplier": 1,
             },
-            "dedup": {"exact": {"enabled": False}},
+            
             "filters": {
                 "target_count": 2,
-                "labeling_engine": {
-                    "enabled": True,
-                    "rubric_path": "rubrics/sft_quality.yaml",
-                },
+                "stages": [
+                    {
+                        "type": "labeling_engine",
+                        "rubric_path": "rubrics/sft_quality.yaml",
+                    },
+                ],
             },
             "labeling_engine": {
                 "rubric_path": "rubrics/sft_quality.yaml",

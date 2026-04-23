@@ -91,7 +91,7 @@ def _ctx(tmp_path: Path, **generator_overrides) -> StageContext:
                 "preserve_original": True,
                 **generator_overrides,
             },
-            "dedup": {"exact": {"enabled": False}, "near": {"enabled": False}},
+            
             "filters": {"target_count": 1},
             "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
         }

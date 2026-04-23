@@ -24,11 +24,6 @@ generator:
   type: prompt_based
   target_count: 5
   generation_multiplier: 2
-dedup:
-  exact:
-    enabled: false
-  near:
-    enabled: false
 filters:
   target_count: 5
 embeddings:
@@ -60,17 +55,12 @@ generator:
   type: prompt_based
   target_count: 5
   generation_multiplier: 2
-dedup:
-  exact:
-    enabled: false
-  near:
-    enabled: false
 filters:
   target_count: 5
-  labeling_engine:
-    enabled: true
-    rubric_path: ./rubrics/sft_quality.yaml
-    min_overall_score: 3.5
+  stages:
+    - type: labeling_engine
+      rubric_path: ./rubrics/sft_quality.yaml
+      min_overall_score: 3.5
 labeling_engine:
   rubric_path: ./rubrics/sft_quality.yaml
   mode: single
@@ -159,7 +149,9 @@ def test_load_config_supports_openrouter_style_openai_compatible_settings(
     assert resolved.llm.openai_compatible is not None
     assert str(resolved.llm.openai_compatible.referer) == "https://example.com/"
     assert resolved.llm.openai_compatible.title == "arka"
-    assert resolved.filters.labeling_engine.enabled is True
+    labeling_cfg = resolved.filters.get_stage_config("labeling_engine")
+    assert labeling_cfg is not None
+    assert labeling_cfg.rubric_path == "./rubrics/sft_quality.yaml"
     assert resolved.labeling_engine.rubric_path == "./rubrics/sft_quality.yaml"
     assert resolved.embeddings.provider == "openai"
     assert resolved.embeddings.model == "text-embedding-3-small"
@@ -185,7 +177,7 @@ def test_load_config_accepts_transform_generator_config() -> None:
                 "prompt_template": "Rewrite this text:\n{input_text}",
                 "preserve_original": True,
             },
-            "dedup": {"exact": {"enabled": False}, "near": {"enabled": False}},
+            
             "filters": {"target_count": 2},
             "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
         }
@@ -215,7 +207,7 @@ def test_load_config_rejects_transform_generator_missing_fields() -> None:
                     "output_field": "payload.response",
                     "prompt_template": "Rewrite this text:\n{input_text}",
                 },
-                "dedup": {"exact": {"enabled": False}, "near": {"enabled": False}},
+                
                 "filters": {"target_count": 2},
                 "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
             }
@@ -247,7 +239,7 @@ def test_load_config_accepts_valid_evol_instruct_config() -> None:
                     "breadth_mutation",
                 ],
             },
-            "dedup": {"exact": {"enabled": False}, "near": {"enabled": False}},
+            
             "filters": {"target_count": 2},
             "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
         }
@@ -279,7 +271,7 @@ def test_load_config_rejects_unknown_evol_operator() -> None:
                     "branching_factor": 1,
                     "operators": ["unknown_operator"],
                 },
-                "dedup": {"exact": {"enabled": False}, "near": {"enabled": False}},
+                
                 "filters": {"target_count": 2},
                 "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
             }
@@ -307,7 +299,7 @@ def test_load_config_rejects_zero_evol_rounds_or_branching() -> None:
                     "branching_factor": 1,
                     "operators": ["deepen"],
                 },
-                "dedup": {"exact": {"enabled": False}, "near": {"enabled": False}},
+                
                 "filters": {"target_count": 2},
                 "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
             }
@@ -333,7 +325,7 @@ def test_load_config_rejects_zero_evol_rounds_or_branching() -> None:
                     "branching_factor": 0,
                     "operators": ["deepen"],
                 },
-                "dedup": {"exact": {"enabled": False}, "near": {"enabled": False}},
+                
                 "filters": {"target_count": 2},
                 "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
             }
@@ -361,7 +353,7 @@ def test_load_config_accepts_transform_with_llm_override() -> None:
                     "model": "qwen/qwen3.5-9b",
                 },
             },
-            "dedup": {"exact": {"enabled": False}, "near": {"enabled": False}},
+            
             "filters": {"target_count": 2},
             "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
         }

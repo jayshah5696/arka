@@ -50,10 +50,9 @@ def _ctx(tmp_path: Path, min_cv: float = 0.15) -> StageContext:
                 "target_count": 2,
                 "generation_multiplier": 1,
             },
-            "dedup": {"exact": {"enabled": False}},
             "filters": {
                 "target_count": 2,
-                "sentence_variance": {"enabled": True, "min_cv": min_cv},
+                "stages": [{"type": "sentence_variance", "min_cv": min_cv}],
             },
             "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
         }
@@ -110,7 +109,6 @@ def test_passes_all_when_disabled(tmp_path: Path) -> None:
                 "target_count": 2,
                 "generation_multiplier": 1,
             },
-            "dedup": {"exact": {"enabled": False}},
             "filters": {"target_count": 2},
             "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
         }

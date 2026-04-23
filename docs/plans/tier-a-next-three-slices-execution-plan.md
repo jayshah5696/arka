@@ -329,11 +329,11 @@ Once Evol-Instruct lands, output volume and complexity go up. Cheap heuristics a
 
 This slice includes:
 
-- `filters.ifd.enabled`
+- IFD filter stage (add `{type: ifd}` to `filters.stages` list)
 - per-record `scores.ifd`
 - stage artifact writing (`dropped.parquet`, `stats.json`)
 - capability gating
-- run-time failure if enabled on unsupported backend
+- run-time failure if provider doesn't support scoring
 
 This slice does **not** include:
 
@@ -395,15 +395,14 @@ Add something like:
 ```yaml
 filters:
   target_count: 10000
-  ifd:
-    enabled: true
-    min_score: 0.2
-```
+  stages:
+    - type: ifd
+      min_score: 0.2
 ```
 
 Validation behavior:
-- if `enabled = false`, no gating needed
-- if `enabled = true` but provider/model cannot support scoring, fail fast
+- if `ifd` is absent from the stages list, no gating needed
+- if `ifd` is present but provider/model cannot support scoring, fail fast
 
 ## LLM client/API design
 
@@ -489,9 +488,9 @@ Before all else, create a minimal test harness or manual verification path for t
 
 ### Step 1 — config + StageBuilder
 Write tests for:
-- `filters.ifd.enabled`
+- IFD stage present in `filters.stages` list
 - stage insertion ordering
-- fail-fast on unsupported capability when enabled
+- fail-fast on unsupported capability when IFD is in the list
 
 ### Step 2 — LLM client scoring API
 Write tests for:
@@ -526,7 +525,7 @@ Write tests that verify:
 
 ## Done means
 
-A run with `filters.ifd.enabled = true` either:
+A run with `{type: ifd}` in `filters.stages` either:
 - works end-to-end on a supported backend and writes IFD stats, or
 - fails immediately with a precise unsupported-capability error
 
@@ -719,7 +718,7 @@ If a stage drops records or computes stats, it writes:
 ## 4. Fail fast on unsupported config combinations
 Examples:
 - `generator.type = evol_instruct` with no operators
-- `filters.ifd.enabled = true` on unsupported backend
+- `{type: ifd}` in `filters.stages` on unsupported backend
 - `data_source.type = pdf` with missing path
 
 ## 5. Thin slice over completeness

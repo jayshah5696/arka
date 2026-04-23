@@ -22,8 +22,8 @@ class IFDFilterStage(Stage):
         self._output_writer = OutputWriter()
 
     def run(self, records: list[Record], ctx) -> list[Record]:
-        filter_config = ctx.config.filters.ifd
-        if not filter_config.enabled:
+        filter_config = ctx.config.filters.get_stage_config("ifd")
+        if filter_config is None:
             return records
 
         llm_client = self._llm_client or LLMClient(config=ctx.config.llm)

@@ -59,10 +59,10 @@ def _ctx(tmp_path: Path, **pair_delta_overrides) -> StageContext:
                 "target_count": 2,
                 "generation_multiplier": 1,
             },
-            "dedup": {"exact": {"enabled": False}},
+            
             "filters": {
                 "target_count": 2,
-                "pair_delta": {"enabled": True, **pair_delta_overrides},
+                "stages": [{"type": "pair_delta", **pair_delta_overrides}],
             },
             "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
         }

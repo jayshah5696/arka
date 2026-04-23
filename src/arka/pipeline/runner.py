@@ -450,9 +450,12 @@ class PipelineRunner:
         if report_path.exists():
             return json.loads(report_path.read_text())
 
-        filter_cfg = config.filters.labeling_engine
-        rubric_path_value = filter_cfg.rubric_path or config.labeling_engine.rubric_path
-        if not filter_cfg.enabled or rubric_path_value is None:
+        filter_cfg = config.filters.get_stage_config("labeling_engine")
+        rubric_path_value = (
+            (filter_cfg.rubric_path if filter_cfg is not None else None)
+            or config.labeling_engine.rubric_path
+        )
+        if filter_cfg is None or rubric_path_value is None:
             payload = {
                 "known_good": [],
                 "known_bad": [],

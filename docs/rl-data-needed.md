@@ -35,12 +35,13 @@ A `RewardModelScoringStage` that:
 
 ```yaml
 filters:
-  reward_model:
-    enabled: true
-    model: "nvidia/Llama-3.1-Nemotron-70B-Reward"  # or any reward model
-    base_url: "https://integrate.api.nvidia.com/v1"
-    min_score: 0.0          # normalized threshold
-    normalize: percentile   # percentile | minmax | none
+  target_count: 5000
+  stages:
+    - type: reward_model
+      min_score: 0.0          # normalized threshold
+      llm_override:
+        model: "nvidia/Llama-3.1-Nemotron-70B-Reward"
+        base_url: "https://integrate.api.nvidia.com/v1"
 ```
 
 **Why this is generic:** Any SFT/DPO pipeline benefits from reward model scoring. It's not humanize-rl-specific.
@@ -138,14 +139,15 @@ Then it combines them with a clustering-based approach for final selection. Mode
 
 ```yaml
 filters:
-  select:
-    enabled: true
-    target_count: 5000
-    composite_weights:
-      quality: 0.4           # from LabelingEngine
-      reward_model: 0.3      # from RewardModelScoringStage
-      ifd: 0.3               # from IFD scorer
-    strategy: top_n           # top_n | clustered_top_n
+  target_count: 5000
+  stages:
+    - type: select
+      target_count: 5000
+      weights:
+        quality: 0.4           # from LabelingEngine
+        reward_model: 0.3      # from RewardModelScoringStage
+        ifd: 0.3               # from IFD scorer
+      strategy: top_n           # top_n | clustered_top_n
 ```
 
 **Why this is generic:** Every SFT pipeline benefits from multi-signal selection. Single-signal (just LLM judge, or just reward model) is known to be suboptimal (CROWDSELECT paper).
@@ -172,16 +174,12 @@ A `PairFilterStage` (or extend existing filter infrastructure) that:
 
 ```yaml
 filters:
-  pair_delta:
-    enabled: true
-    score_field: quality              # compare this score
-    min_delta: 0.30                   # before→after improvement
-    semantic_similarity:
-      enabled: true
-      min_score: 0.80
-      method: bertscore               # bertscore | cosine
-    length_ratio:
-      max: 1.30                       # max 30% length change
+  target_count: 5000
+  stages:
+    - type: pair_delta
+      score_field: quality              # compare this score
+      min_delta: 0.30                   # before→after improvement
+      length_ratio_max: 1.30            # max 30% length change
 ```
 
 **Why this is generic:** Any rewriting or preference-pair pipeline needs delta filtering. DPO pair generation, text simplification, style transfer — all need "did the transformation actually improve things?"
@@ -209,16 +207,11 @@ These are cheap, deterministic, and universally useful. NOT humanize-rl-specific
 
 ```yaml
 filters:
-  heuristic:
-    enabled: true
-    min_alpha_ratio: 0.6
-    max_repeated_ngrams: 3
-    sentence_variance:
-      enabled: true
+  target_count: 5000
+  stages:
+    - type: sentence_variance
       min_cv: 0.15                    # coefficient of variation
-    formatting:
-      max_bullet_ratio: 0.25         # max % of lines that are bullets
-      max_em_dash_rate: 3.0          # per 500 words
+    # heuristic, formatting filters are planned but not yet implemented
 ```
 
 ---
@@ -274,29 +267,22 @@ labeling_engine:
 
 # Step 3: Filters (cheap first, expensive last)
 dedup:
-  exact:
-    enabled: true
-  near:
-    enabled: true
+  - type: exact
+  - type: near
 
 filters:
   target_count: 5000
-  length:
-    enabled: true
-    min_instruction_chars: 200
-    max_instruction_chars: 2400
-  language:
-    enabled: true
-    allowed: [en]
-  heuristic:
-    enabled: true
-    sentence_variance:
-      enabled: true
+  stages:
+    - type: length
+      min_instruction_chars: 200
+      max_instruction_chars: 2400
+    - type: language
+      allowed: [en]
+    - type: sentence_variance
       min_cv: 0.15
-  labeling_engine:
-    enabled: true
-    rubric_path: ./rubrics/humanness_v01.yaml
-    max_overall_score: 0.40           # AI-ified text MUST score low (clearly AI)
+    - type: labeling_engine
+      rubric_path: ./rubrics/humanness_v01.yaml
+      min_overall_score: 0.40           # AI-ified text MUST score low (clearly AI)
 
 output:
   format: jsonl

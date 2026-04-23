@@ -34,10 +34,7 @@ def _base_config(**overrides) -> ResolvedConfig:
                 "target_count": 2,
                 "generation_multiplier": 1,
             },
-            "dedup": {
-                "exact": {"enabled": False},
-                "near": {"enabled": False, "lsh_bands": 16},
-            },
+
             "filters": {"target_count": 2},
             "embeddings": {"provider": "huggingface", "model": "all-MiniLM-L6-v2"},
             "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
@@ -77,8 +74,9 @@ def _ctx(config: ResolvedConfig, tmp_path: Path, stage_name: str) -> StageContex
     )
 
 
-def test_exact_dedup_disabled_passes_all(tmp_path: Path) -> None:
-    config = _base_config(dedup={"exact": {"enabled": False}})
+def test_exact_dedup_always_deduplicates_when_instantiated(tmp_path: Path) -> None:
+    """Stage always runs when instantiated — gating is done by StageBuilder."""
+    config = _base_config(dedup=[{"type": "exact"}])
     stage = ExactDedupStage()
     records = [
         _record("r1", "Question", "Answer", "hash-1"),
@@ -87,13 +85,14 @@ def test_exact_dedup_disabled_passes_all(tmp_path: Path) -> None:
 
     result = stage.run(records, _ctx(config, tmp_path, stage.name))
 
-    assert len(result) == 2
+    assert len(result) == 1
+    assert result[0].id == "r1"
 
 
 def test_exact_dedup_drops_duplicate_content_hash_and_writes_artifacts(
     tmp_path: Path,
 ) -> None:
-    config = _base_config(dedup={"exact": {"enabled": True}})
+    config = _base_config(dedup=[{"type": "exact"}])
     stage = ExactDedupStage()
     records = [
         _record("r1", "Question", "Answer", "hash-1"),
@@ -141,7 +140,7 @@ def test_near_dedup_drops_lexically_similar_instructions_and_writes_artifacts(
     tmp_path: Path,
 ) -> None:
     config = _base_config(
-        dedup={"exact": {"enabled": False}, "near": {"enabled": True, "lsh_bands": 16}}
+        dedup=[{"type": "near", "lsh_bands": 16}]
     )
     stage = NearDedupStage()
     records = [
