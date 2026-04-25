@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -108,15 +107,21 @@ def test_semantic_similarity_filter_drops_high_similarity(
         stages=[SemanticSimilarityFilterConfig(threshold=0.9)],
     )
 
-    seed = _record("s1", "What is Python?", "A programming language.", source_type="seed")
-    gen_similar = _record("g1", "What is Python?", "A programming language.", source_type="generated")
-    gen_different = _record("g2", "What is Rust?", "A systems language.", source_type="generated")
+    seed = _record(
+        "s1", "What is Python?", "A programming language.", source_type="seed"
+    )
+    gen_similar = _record(
+        "g1", "What is Python?", "A programming language.", source_type="generated"
+    )
+    gen_different = _record(
+        "g2", "What is Rust?", "A systems language.", source_type="generated"
+    )
 
     # Mock embeddings: seed and gen_similar get identical vectors, gen_different gets orthogonal
     seed_vec = np.array([1.0, 0.0, 0.0])
     diff_vec = np.array([0.0, 1.0, 0.0])
 
-    def fake_embed(self, *, config, texts):
+    def fake_embed(self, *, config, texts, checkpoint_manager=None):
         vecs = []
         for text in texts:
             if "Rust" in text:

@@ -186,7 +186,9 @@ def test_labeling_score_stage_passes_non_conversation_records_unchanged(
 
     _write_rubric(tmp_path)
     ctx = _ctx(tmp_path)
-    stage = LabelingScoreStage(project_root=tmp_path, llm_client=SequentialFakeLLMClient([]))
+    stage = LabelingScoreStage(
+        project_root=tmp_path, llm_client=SequentialFakeLLMClient([])
+    )
 
     plain_record = Record(
         id="plain-1",

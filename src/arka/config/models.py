@@ -72,7 +72,8 @@ class StageLLMOverride(StrictModel):
 
     model: str | None = None
     base_url: HttpUrl | None = None
-    api_key: SecretStr | None = None
+    # SECURITY: Using SecretStr and Field(exclude=True) to prevent plaintext API keys from leaking into serialized configs on disk (e.g., config.resolved.yaml)
+    api_key: SecretStr | None = Field(default=None, exclude=True)
     temperature: float | None = None
     max_tokens: int | None = None
 
@@ -262,7 +263,9 @@ class LabelingEngineConfig(StrictModel):
     mode: Literal["single", "multi"] = "single"
 
 
-def resolve_llm_override(base: LLMConfig, override: StageLLMOverride | None) -> LLMConfig:
+def resolve_llm_override(
+    base: LLMConfig, override: StageLLMOverride | None
+) -> LLMConfig:
     """Merge a stage-local LLM override onto the top-level LLM config."""
     if override is None:
         return base
