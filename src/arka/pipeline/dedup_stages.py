@@ -21,8 +21,8 @@ class ExactDedupStage(Stage):
         self._output_writer = OutputWriter()
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        if not ctx.config.dedup.exact.enabled:
-            return records
+        # Stage is only instantiated when present in config list;
+        # no enabled check needed.
 
         seen_content_hashes: dict[str, Record] = {}
         kept_records: list[Record] = []
@@ -105,8 +105,9 @@ class NearDedupStage(Stage):
         self._output_writer = OutputWriter()
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        if not ctx.config.dedup.near.enabled:
-            return records
+        # Stage is only instantiated when present in config list;
+        # look up the near dedup config from the list.
+        near_cfg = self._get_near_config(ctx)
 
         kept_records: list[Record] = []
         dropped_records: list[Record] = []
@@ -119,8 +120,8 @@ class NearDedupStage(Stage):
         lsh_buckets: dict[tuple[int, tuple[int, ...]], list[str]] = {}
         representative_signatures: dict[str, list[int]] = {}
 
-        num_hashes = ctx.config.dedup.near.num_hashes
-        lsh_bands = ctx.config.dedup.near.lsh_bands
+        num_hashes = near_cfg.num_hashes
+        lsh_bands = near_cfg.lsh_bands
         rows_per_band = max(1, num_hashes // lsh_bands)
 
         for record in records:
@@ -135,7 +136,7 @@ class NearDedupStage(Stage):
 
             record_signature = _minhash_signature(
                 tokens=record_tokens,
-                shingle_size=ctx.config.dedup.near.shingle_size,
+                shingle_size=near_cfg.shingle_size,
                 num_hashes=num_hashes,
             )
 
@@ -157,7 +158,7 @@ class NearDedupStage(Stage):
 
             matched_cluster_id: str | None = None
             matched_reason: str | None = None
-            threshold = ctx.config.dedup.near.jaccard_threshold
+            threshold = near_cfg.jaccard_threshold
 
             for cluster_id in candidate_cluster_ids:
                 rep_signature = representative_signatures.get(cluster_id)
@@ -217,6 +218,16 @@ class NearDedupStage(Stage):
             drop_reasons=drop_reasons,
         )
         return kept_records
+
+    @staticmethod
+    def _get_near_config(ctx: StageContext):
+        """Look up the NearDedupConfig from the dedup list."""
+        from arka.config.models import NearDedupConfig
+
+        for cfg in ctx.config.dedup:
+            if isinstance(cfg, NearDedupConfig):
+                return cfg
+        return NearDedupConfig()  # fallback to defaults
 
     def _cluster_id(self, instruction: str) -> str:
         return hashlib.sha256(instruction.strip().encode("utf-8")).hexdigest()

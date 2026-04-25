@@ -119,7 +119,7 @@ def _config(tmp_path: Path, **generator_overrides) -> StageContext:
                 "generation_multiplier": 1,
                 **generator_overrides,
             },
-            "dedup": {"exact": {"enabled": False}},
+            
             "filters": {"target_count": 2},
             "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
         }

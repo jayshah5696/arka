@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal, Union
 
-from pydantic import Field, HttpUrl, SecretStr, model_validator
+from pydantic import Discriminator, Field, HttpUrl, SecretStr, Tag, model_validator
 
 from arka.common.models import StrictModel
 
@@ -72,7 +72,8 @@ class StageLLMOverride(StrictModel):
 
     model: str | None = None
     base_url: HttpUrl | None = None
-    api_key: SecretStr | None = None
+    # SECURITY: Using SecretStr and Field(exclude=True) to prevent plaintext API keys from leaking into serialized configs on disk (e.g., config.resolved.yaml)
+    api_key: SecretStr | None = Field(default=None, exclude=True)
     temperature: float | None = None
     max_tokens: int | None = None
 
@@ -133,29 +134,33 @@ class GeneratorConfig(StrictModel):
 
 
 class ExactDedupConfig(StrictModel):
-    enabled: bool = False
+    type: Literal["exact"] = "exact"
 
 
 class NearDedupConfig(StrictModel):
-    enabled: bool = False
+    type: Literal["near"] = "near"
     shingle_size: int = 5
     num_hashes: int = 128
     lsh_bands: int = 16
     jaccard_threshold: float = 0.7
 
 
-class DedupConfig(StrictModel):
-    exact: ExactDedupConfig = Field(default_factory=ExactDedupConfig)
-    near: NearDedupConfig = Field(default_factory=NearDedupConfig)
+DedupStageConfig = Annotated[
+    Union[
+        Annotated[ExactDedupConfig, Tag("exact")],
+        Annotated[NearDedupConfig, Tag("near")],
+    ],
+    Discriminator("type"),
+]
 
 
 class SentenceVarianceFilterConfig(StrictModel):
-    enabled: bool = False
+    type: Literal["sentence_variance"] = "sentence_variance"
     min_cv: float = 0.15
 
 
 class LengthFilterConfig(StrictModel):
-    enabled: bool = False
+    type: Literal["length"] = "length"
     min_instruction_chars: int = 10
     max_instruction_chars: int = 4096
     min_response_chars: int = 10
@@ -163,71 +168,78 @@ class LengthFilterConfig(StrictModel):
 
 
 class LanguageFilterConfig(StrictModel):
-    enabled: bool = False
+    type: Literal["language"] = "language"
     allowed: list[str] = Field(default_factory=lambda: ["en"])
 
 
 class LabelingFilterConfig(StrictModel):
-    enabled: bool = False
+    type: Literal["labeling_engine"] = "labeling_engine"
     rubric_path: str | None = None
     min_overall_score: float | None = None
 
 
 class IFDFilterConfig(StrictModel):
-    enabled: bool = False
+    type: Literal["ifd"] = "ifd"
     min_score: float = 0.2
 
 
 class RewardModelFilterConfig(StrictModel):
-    enabled: bool = False
+    type: Literal["reward_model"] = "reward_model"
     min_score: float | None = None
     llm_override: StageLLMOverride | None = None
 
 
 class PairDeltaFilterConfig(StrictModel):
-    enabled: bool = False
+    type: Literal["pair_delta"] = "pair_delta"
     score_field: str = "quality"
     min_delta: float = 0.30
     length_ratio_max: float | None = None
 
 
 class CompositeSelectConfig(StrictModel):
-    enabled: bool = False
+    type: Literal["select"] = "select"
     target_count: int | None = None
     weights: dict[str, float] = Field(default_factory=dict)
     strategy: str = "top_n"
 
 
 class SemanticSimilarityFilterConfig(StrictModel):
-    enabled: bool = False
+    type: Literal["semantic_similarity"] = "semantic_similarity"
     threshold: float = 0.9
 
 
 class CanaryFilterConfig(StrictModel):
-    enabled: bool = False
+    type: Literal["canary"] = "canary"
     phrases: list[str] = Field(default_factory=list)
+
+
+FilterStageConfig = Annotated[
+    Union[
+        Annotated[LengthFilterConfig, Tag("length")],
+        Annotated[LanguageFilterConfig, Tag("language")],
+        Annotated[SentenceVarianceFilterConfig, Tag("sentence_variance")],
+        Annotated[IFDFilterConfig, Tag("ifd")],
+        Annotated[LabelingFilterConfig, Tag("labeling_engine")],
+        Annotated[RewardModelFilterConfig, Tag("reward_model")],
+        Annotated[PairDeltaFilterConfig, Tag("pair_delta")],
+        Annotated[CompositeSelectConfig, Tag("select")],
+        Annotated[SemanticSimilarityFilterConfig, Tag("semantic_similarity")],
+        Annotated[CanaryFilterConfig, Tag("canary")],
+    ],
+    Discriminator("type"),
+]
 
 
 class FiltersConfig(StrictModel):
     target_count: int
-    length: LengthFilterConfig = Field(default_factory=LengthFilterConfig)
-    language: LanguageFilterConfig = Field(default_factory=LanguageFilterConfig)
-    ifd: IFDFilterConfig = Field(default_factory=IFDFilterConfig)
-    labeling_engine: LabelingFilterConfig = Field(default_factory=LabelingFilterConfig)
-    reward_model: RewardModelFilterConfig = Field(
-        default_factory=RewardModelFilterConfig
-    )
-    pair_delta: PairDeltaFilterConfig = Field(default_factory=PairDeltaFilterConfig)
-    sentence_variance: SentenceVarianceFilterConfig = Field(
-        default_factory=SentenceVarianceFilterConfig
-    )
-    semantic_similarity: SemanticSimilarityFilterConfig = Field(
-        default_factory=SemanticSimilarityFilterConfig
-    )
-    canary: CanaryFilterConfig = Field(default_factory=CanaryFilterConfig)
-    select: CompositeSelectConfig = Field(
-        default_factory=lambda: CompositeSelectConfig()
-    )
+    stages: list[FilterStageConfig] = Field(default_factory=list)
+
+    def get_stage_config(self, type_name: str) -> StrictModel | None:
+        """Look up a filter stage config by type name. Returns None if not present."""
+        for stage in self.stages:
+            if stage.type == type_name:
+                return stage
+        return None
 
 
 class OutputConfig(StrictModel):
@@ -276,7 +288,7 @@ class ResolvedConfig(StrictModel):
     executor: ExecutorConfig
     data_source: DataSourceConfig
     generator: GeneratorConfig
-    dedup: DedupConfig = Field(default_factory=DedupConfig)
+    dedup: list[DedupStageConfig] = Field(default_factory=list)
     filters: FiltersConfig
     embeddings: EmbeddingsConfig = Field(default_factory=EmbeddingsConfig)
     labeling_engine: LabelingEngineConfig = Field(default_factory=LabelingEngineConfig)

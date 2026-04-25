@@ -53,7 +53,7 @@ For the current SFT slice, a run is in good standing when these checks pass.
 - final dataset is non-empty
 - `samples.jsonl` exists and is human-reviewable
 - `canaries.json` exists
-- when labeling is enabled, canary status is `pass` or any warning is explicitly reviewed
+- when labeling_engine is in the filter stages list, canary status is `pass` or any warning is explicitly reviewed
 - `drop_reasons` are present for records removed by quality or dedup stages
 - no unexpected parse/auth failures occurred in report or stage stats
 
@@ -63,7 +63,7 @@ For the current SFT slice, a run is in good standing when these checks pass.
 - `low_quality_score` drops appear in verification runs that intentionally include weaker examples
 - `diversity_score` is non-null when embeddings are configured and reachable
 - `samples.jsonl` is manually spot-checked before training
-- `clusters.parquet` is inspected when exact or near dedup is enabled
+- `clusters.parquet` is inspected when exact or near dedup is present in the dedup list
 
 ### Acceptable current limitations
 

@@ -28,17 +28,12 @@ generator:
   type: prompt_based
   target_count: 5
   generation_multiplier: 2
-dedup:
-  exact:
-    enabled: false
-  near:
-    enabled: false
 filters:
   target_count: 5
-  labeling_engine:
-    enabled: true
-    rubric_path: ./rubrics/sft_quality.yaml
-    min_overall_score: 3.5
+  stages:
+    - type: labeling_engine
+      rubric_path: ./rubrics/sft_quality.yaml
+      min_overall_score: 3.5
 labeling_engine:
   rubric_path: ./rubrics/sft_quality.yaml
   mode: single
@@ -53,6 +48,7 @@ output:
 
     resolved = ConfigLoader().load(config_path)
 
-    assert resolved.filters.labeling_engine.enabled is True
-    assert resolved.filters.labeling_engine.rubric_path == "./rubrics/sft_quality.yaml"
+    labeling_cfg = resolved.filters.get_stage_config("labeling_engine")
+    assert labeling_cfg is not None
+    assert labeling_cfg.rubric_path == "./rubrics/sft_quality.yaml"
     assert resolved.labeling_engine.mode == "single"

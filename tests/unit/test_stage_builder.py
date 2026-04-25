@@ -35,7 +35,6 @@ def _base_config(**overrides) -> ResolvedConfig:
             "target_count": 2,
             "generation_multiplier": 1,
         },
-        "dedup": {"exact": {"enabled": False}, "near": {"enabled": False}},
         "filters": {"target_count": 2},
         "embeddings": {"provider": "huggingface", "model": "all-MiniLM-L6-v2"},
         "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
@@ -60,11 +59,13 @@ def test_seeds_with_labeling_appends_quality_filter(tmp_path: Path) -> None:
     config = _base_config(
         filters={
             "target_count": 2,
-            "labeling_engine": {
-                "enabled": True,
-                "rubric_path": "rubrics/quality.yaml",
-                "min_overall_score": 3.0,
-            },
+            "stages": [
+                {
+                    "type": "labeling_engine",
+                    "rubric_path": "rubrics/quality.yaml",
+                    "min_overall_score": 3.0,
+                },
+            ],
         }
     )
     stages = StageBuilder(config=config, project_root=tmp_path).build()
@@ -76,14 +77,10 @@ def test_seeds_with_labeling_appends_quality_filter(tmp_path: Path) -> None:
     assert isinstance(stages[3], LabelingQualityFilterStage)
 
 
-def test_labeling_disabled_skips_quality_filter(tmp_path: Path) -> None:
+def test_labeling_absent_skips_quality_filter(tmp_path: Path) -> None:
     config = _base_config(
         filters={
             "target_count": 2,
-            "labeling_engine": {
-                "enabled": False,
-                "rubric_path": "rubrics/quality.yaml",
-            },
         }
     )
     stages = StageBuilder(config=config, project_root=tmp_path).build()
@@ -152,7 +149,9 @@ def test_project_root_propagated_to_stages(tmp_path: Path) -> None:
     config = _base_config(
         filters={
             "target_count": 2,
-            "labeling_engine": {"enabled": True, "rubric_path": "rubric.yaml"},
+            "stages": [
+                {"type": "labeling_engine", "rubric_path": "rubric.yaml"},
+            ],
         }
     )
     stages = StageBuilder(config=config, project_root=tmp_path).build()
@@ -171,8 +170,8 @@ def test_project_root_propagated_to_stages(tmp_path: Path) -> None:
     assert filter_stage.project_root == tmp_path
 
 
-def test_exact_dedup_included_when_enabled(tmp_path: Path) -> None:
-    config = _base_config(dedup={"exact": {"enabled": True}})
+def test_exact_dedup_included_when_in_list(tmp_path: Path) -> None:
+    config = _base_config(dedup=[{"type": "exact"}])
     stages = StageBuilder(config=config, project_root=tmp_path).build()
 
     assert len(stages) == 4
@@ -180,10 +179,8 @@ def test_exact_dedup_included_when_enabled(tmp_path: Path) -> None:
     assert isinstance(stages[3], ExactDedupStage)
 
 
-def test_near_dedup_included_when_enabled(tmp_path: Path) -> None:
-    config = _base_config(
-        dedup={"exact": {"enabled": False}, "near": {"enabled": True}}
-    )
+def test_near_dedup_included_when_in_list(tmp_path: Path) -> None:
+    config = _base_config(dedup=[{"type": "near"}])
     stages = StageBuilder(config=config, project_root=tmp_path).build()
 
     assert len(stages) == 4
@@ -191,8 +188,8 @@ def test_near_dedup_included_when_enabled(tmp_path: Path) -> None:
     assert isinstance(stages[3], NearDedupStage)
 
 
-def test_length_filter_included_when_enabled(tmp_path: Path) -> None:
-    config = _base_config(filters={"target_count": 2, "length": {"enabled": True}})
+def test_length_filter_included_when_in_list(tmp_path: Path) -> None:
+    config = _base_config(filters={"target_count": 2, "stages": [{"type": "length"}]})
     stages = StageBuilder(config=config, project_root=tmp_path).build()
 
     assert len(stages) == 4
@@ -200,8 +197,8 @@ def test_length_filter_included_when_enabled(tmp_path: Path) -> None:
     assert isinstance(stages[3], LengthFilterStage)
 
 
-def test_language_filter_included_when_enabled(tmp_path: Path) -> None:
-    config = _base_config(filters={"target_count": 2, "language": {"enabled": True}})
+def test_language_filter_included_when_in_list(tmp_path: Path) -> None:
+    config = _base_config(filters={"target_count": 2, "stages": [{"type": "language"}]})
     stages = StageBuilder(config=config, project_root=tmp_path).build()
 
     assert len(stages) == 4
@@ -221,12 +218,14 @@ def test_evol_instruct_builds_one_stage_per_round_and_preserves_order(
             "branching_factor": 1,
             "operators": ["deepen"],
         },
-        dedup={"exact": {"enabled": True}, "near": {"enabled": True}},
+        dedup=[{"type": "exact"}, {"type": "near"}],
         filters={
             "target_count": 2,
-            "length": {"enabled": True},
-            "language": {"enabled": True},
-            "labeling_engine": {"enabled": True, "rubric_path": "rubric.yaml"},
+            "stages": [
+                {"type": "length"},
+                {"type": "language"},
+                {"type": "labeling_engine", "rubric_path": "rubric.yaml"},
+            ],
         },
     )
     stages = StageBuilder(config=config, project_root=tmp_path).build()
@@ -250,10 +249,12 @@ def test_ifd_enabled_inserts_stage_before_label_quality(tmp_path: Path) -> None:
     config = _base_config(
         filters={
             "target_count": 2,
-            "length": {"enabled": True},
-            "language": {"enabled": True},
-            "ifd": {"enabled": True, "min_score": 0.2},
-            "labeling_engine": {"enabled": True, "rubric_path": "rubric.yaml"},
+            "stages": [
+                {"type": "length"},
+                {"type": "language"},
+                {"type": "ifd", "min_score": 0.2},
+                {"type": "labeling_engine", "rubric_path": "rubric.yaml"},
+            ],
         }
     )
 
@@ -265,15 +266,14 @@ def test_ifd_enabled_inserts_stage_before_label_quality(tmp_path: Path) -> None:
 
 def test_all_filters_ordering_without_ifd(tmp_path: Path) -> None:
     config = _base_config(
-        dedup={"exact": {"enabled": True}, "near": {"enabled": True}},
+        dedup=[{"type": "exact"}, {"type": "near"}],
         filters={
             "target_count": 2,
-            "length": {"enabled": True},
-            "language": {"enabled": True},
-            "labeling_engine": {
-                "enabled": True,
-                "rubric_path": "rubric.yaml",
-            },
+            "stages": [
+                {"type": "length"},
+                {"type": "language"},
+                {"type": "labeling_engine", "rubric_path": "rubric.yaml"},
+            ],
         },
     )
     stages = StageBuilder(config=config, project_root=tmp_path).build()
@@ -298,13 +298,12 @@ def test_ifd_stage_position_when_capability_check_is_stubbed(
     config = _base_config(
         filters={
             "target_count": 2,
-            "length": {"enabled": True},
-            "language": {"enabled": True},
-            "ifd": {"enabled": True, "min_score": 0.2},
-            "labeling_engine": {
-                "enabled": True,
-                "rubric_path": "rubric.yaml",
-            },
+            "stages": [
+                {"type": "length"},
+                {"type": "language"},
+                {"type": "ifd", "min_score": 0.2},
+                {"type": "labeling_engine", "rubric_path": "rubric.yaml"},
+            ],
         },
     )
     stages = StageBuilder(config=config, project_root=tmp_path).build()

@@ -38,13 +38,12 @@ generator:
 
 filters:
   target_count: 5
-  semantic_similarity:
-    enabled: true
-    threshold: 0.95
-  canary:
-    enabled: true
-    phrases:
-      - "SUPER_SECRET_PROJECT_X"
+  stages:
+    - type: semantic_similarity
+      threshold: 0.95
+    - type: canary
+      phrases:
+        - "SUPER_SECRET_PROJECT_X"
 
 embeddings:
   provider: huggingface
