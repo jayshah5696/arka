@@ -159,10 +159,10 @@ def _write_config(
             "target_count": target_count,
             "generation_multiplier": generation_multiplier,
         },
-        "dedup": {
-            "exact": {"enabled": exact_dedup},
-            "near": {"enabled": near_dedup},
-        },
+        "dedup": [
+            *([ {"type": "exact"} ] if exact_dedup else []),
+            *([ {"type": "near"} ] if near_dedup else []),
+        ],
         "filters": {
             "target_count": target_count,
         },
@@ -177,11 +177,11 @@ def _write_config(
     }
 
     if quality_filter:
-        config["filters"]["labeling_engine"] = {
-            "enabled": True,
+        config["filters"].setdefault("stages", []).append({
+            "type": "labeling_engine",
             "rubric_path": "./rubrics/sft_quality.yaml",
             "min_overall_score": 3.5,
-        }
+        })
         config["labeling_engine"] = {
             "rubric_path": "./rubrics/sft_quality.yaml",
             "mode": "single",

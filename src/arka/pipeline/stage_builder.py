@@ -2,7 +2,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from arka.config.models import ResolvedConfig
+from arka.config.models import (
+    CanaryFilterConfig,
+    ExactDedupConfig,
+    IFDFilterConfig,
+    LabelingFilterConfig,
+    LanguageFilterConfig,
+    LengthFilterConfig,
+    NearDedupConfig,
+    ResolvedConfig,
+    SemanticSimilarityFilterConfig,
+)
 from arka.pipeline.cheap_filters import LanguageFilterStage, LengthFilterStage
 from arka.pipeline.dedup_stages import ExactDedupStage, NearDedupStage
 from arka.pipeline.evol_generator_stage import EvolInstructRoundStage
@@ -21,6 +31,67 @@ from arka.pipeline.models import StageContext
 from arka.pipeline.source_stages import PDFSourceStage, SeedSourceStage
 from arka.pipeline.stages import Stage
 from arka.pipeline.transforms import NormalizeConversationStage
+
+# Registry: config type → stage factory
+_DEDUP_REGISTRY: dict[str, type[Stage]] = {
+    "exact": ExactDedupStage,
+    "near": NearDedupStage,
+}
+
+
+def _build_filter_stage(
+    cfg: object, project_root: Path, config: ResolvedConfig
+) -> Stage:
+    """Instantiate a filter stage from its config object."""
+    if isinstance(cfg, LengthFilterConfig):
+        return LengthFilterStage()
+    if isinstance(cfg, LanguageFilterConfig):
+        return LanguageFilterStage()
+    if isinstance(cfg, IFDFilterConfig):
+        validate_ifd_capability(
+            StageContext(
+                run_id="validation",
+                stage_name="02e_ifd_filter",
+                work_dir=project_root
+                / "runs"
+                / "validation"
+                / "stages"
+                / "02e_ifd_filter",
+                config=config,
+                executor_mode=config.executor.mode,
+                max_workers=config.executor.max_workers,
+            )
+        )
+        return IFDFilterStage(project_root=project_root)
+    if isinstance(cfg, CanaryFilterConfig):
+        return CanaryFilterStage()
+    if isinstance(cfg, SemanticSimilarityFilterConfig):
+        return SemanticSimilarityFilterStage()
+    if isinstance(cfg, LabelingFilterConfig):
+        return LabelingQualityFilterStage(project_root=project_root)
+    # SentenceVariance, RewardModel, PairDelta, CompositeSelect
+    from arka.pipeline.cheap_filters import SentenceVarianceFilterStage
+    from arka.pipeline.scoring_stages import (
+        CompositeSelectStage,
+        PairDeltaFilterStage,
+        RewardModelScoringStage,
+    )
+    from arka.config.models import (
+        SentenceVarianceFilterConfig,
+        RewardModelFilterConfig,
+        PairDeltaFilterConfig,
+        CompositeSelectConfig,
+    )
+
+    if isinstance(cfg, SentenceVarianceFilterConfig):
+        return SentenceVarianceFilterStage()
+    if isinstance(cfg, RewardModelFilterConfig):
+        return RewardModelScoringStage()
+    if isinstance(cfg, PairDeltaFilterConfig):
+        return PairDeltaFilterStage()
+    if isinstance(cfg, CompositeSelectConfig):
+        return CompositeSelectStage()
+    raise ValueError(f"Unknown filter config type: {type(cfg).__name__}")
 
 
 class StageBuilder:
@@ -75,39 +146,13 @@ class StageBuilder:
         raise ValueError(f"Unsupported generator.type: {self.config.generator.type!r}")
 
     def _dedup_stages(self) -> list[Stage]:
-        stages: list[Stage] = []
-        if self.config.dedup.exact.enabled:
-            stages.append(ExactDedupStage())
-        if self.config.dedup.near.enabled:
-            stages.append(NearDedupStage())
-        return stages
+        return [
+            _DEDUP_REGISTRY[cfg.type]()
+            for cfg in self.config.dedup
+        ]
 
     def _filter_stages(self) -> list[Stage]:
-        stages: list[Stage] = []
-        if self.config.filters.length.enabled:
-            stages.append(LengthFilterStage())
-        if self.config.filters.language.enabled:
-            stages.append(LanguageFilterStage())
-        if self.config.filters.ifd.enabled:
-            validate_ifd_capability(
-                StageContext(
-                    run_id="validation",
-                    stage_name="02e_ifd_filter",
-                    work_dir=self.project_root
-                    / "runs"
-                    / "validation"
-                    / "stages"
-                    / "02e_ifd_filter",
-                    config=self.config,
-                    executor_mode=self.config.executor.mode,
-                    max_workers=self.config.executor.max_workers,
-                )
-            )
-            stages.append(IFDFilterStage(project_root=self.project_root))
-        if self.config.filters.canary.enabled:
-            stages.append(CanaryFilterStage())
-        if self.config.filters.semantic_similarity.enabled:
-            stages.append(SemanticSimilarityFilterStage())
-        if self.config.filters.labeling_engine.enabled:
-            stages.append(LabelingQualityFilterStage(project_root=self.project_root))
-        return stages
+        return [
+            _build_filter_stage(cfg, self.project_root, self.config)
+            for cfg in self.config.filters.stages
+        ]

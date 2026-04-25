@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import numpy as np
 import pytest
 
-from arka.config.models import CanaryFilterConfig, SemanticSimilarityFilterConfig
+from arka.config.models import CanaryFilterConfig, FiltersConfig, SemanticSimilarityFilterConfig
 from arka.pipeline.filter_stages import CanaryFilterStage, SemanticSimilarityFilterStage
 from arka.pipeline.models import StageContext
 from arka.records.models import (
@@ -50,8 +49,7 @@ def _base_config():
     from unittest.mock import MagicMock
 
     config = MagicMock()
-    config.filters.canary = CanaryFilterConfig(enabled=False)
-    config.filters.semantic_similarity = SemanticSimilarityFilterConfig(enabled=False)
+    config.filters = FiltersConfig(target_count=5, stages=[])
     return config
 
 
@@ -59,14 +57,15 @@ def _base_config():
 
 
 def test_canary_filter_disabled_returns_all(ctx) -> None:
-    ctx.config.filters.canary = CanaryFilterConfig(enabled=False)
+    # No canary stage in list = disabled
     records = [_record("1", "hello", "world")]
     assert CanaryFilterStage().run(records, ctx) == records
 
 
 def test_canary_filter_drops_matching_phrase(ctx) -> None:
-    ctx.config.filters.canary = CanaryFilterConfig(
-        enabled=True, phrases=["SECRET"]
+    ctx.config.filters = FiltersConfig(
+        target_count=5,
+        stages=[CanaryFilterConfig(phrases=["SECRET"])],
     )
     records = [
         _record("1", "hello", "world"),
@@ -83,8 +82,9 @@ def test_canary_filter_drops_matching_phrase(ctx) -> None:
 
 
 def test_canary_filter_no_match_keeps_all(ctx) -> None:
-    ctx.config.filters.canary = CanaryFilterConfig(
-        enabled=True, phrases=["NOPE"]
+    ctx.config.filters = FiltersConfig(
+        target_count=5,
+        stages=[CanaryFilterConfig(phrases=["NOPE"])],
     )
     records = [_record("1", "hello", "world")]
     assert len(CanaryFilterStage().run(records, ctx)) == 1
@@ -94,9 +94,7 @@ def test_canary_filter_no_match_keeps_all(ctx) -> None:
 
 
 def test_semantic_similarity_filter_disabled_returns_all(ctx) -> None:
-    ctx.config.filters.semantic_similarity = SemanticSimilarityFilterConfig(
-        enabled=False
-    )
+    # No semantic_similarity stage in list = disabled
     records = [_record("1", "hello", "world")]
     assert SemanticSimilarityFilterStage().run(records, ctx) == records
 
@@ -104,19 +102,26 @@ def test_semantic_similarity_filter_disabled_returns_all(ctx) -> None:
 def test_semantic_similarity_filter_drops_high_similarity(
     ctx, monkeypatch
 ) -> None:
-    ctx.config.filters.semantic_similarity = SemanticSimilarityFilterConfig(
-        enabled=True, threshold=0.9
+    ctx.config.filters = FiltersConfig(
+        target_count=5,
+        stages=[SemanticSimilarityFilterConfig(threshold=0.9)],
     )
 
-    seed = _record("s1", "What is Python?", "A programming language.", source_type="seed")
-    gen_similar = _record("g1", "What is Python?", "A programming language.", source_type="generated")
-    gen_different = _record("g2", "What is Rust?", "A systems language.", source_type="generated")
+    seed = _record(
+        "s1", "What is Python?", "A programming language.", source_type="seed"
+    )
+    gen_similar = _record(
+        "g1", "What is Python?", "A programming language.", source_type="generated"
+    )
+    gen_different = _record(
+        "g2", "What is Rust?", "A systems language.", source_type="generated"
+    )
 
     # Mock embeddings: seed and gen_similar get identical vectors, gen_different gets orthogonal
     seed_vec = np.array([1.0, 0.0, 0.0])
     diff_vec = np.array([0.0, 1.0, 0.0])
 
-    def fake_embed(self, *, config, texts):
+    def fake_embed(self, *, config, texts, checkpoint_manager=None):
         vecs = []
         for text in texts:
             if "Rust" in text:

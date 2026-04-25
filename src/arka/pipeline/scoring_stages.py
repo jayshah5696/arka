@@ -33,8 +33,8 @@ class LabelingScoreStage(Stage):
         self._llm_client = llm_client
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        filter_config = ctx.config.filters.labeling_engine
-        if not filter_config.enabled or filter_config.rubric_path is None:
+        filter_config = ctx.config.filters.get_stage_config("labeling_engine")
+        if filter_config is None or filter_config.rubric_path is None:
             return records
 
         rubric_path = self.project_root / filter_config.rubric_path
@@ -145,8 +145,8 @@ class RewardModelScoringStage(Stage):
         self._output_writer = OutputWriter()
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        reward_config = ctx.config.filters.reward_model
-        if not reward_config.enabled:
+        reward_config = ctx.config.filters.get_stage_config("reward_model")
+        if reward_config is None:
             return records
 
         effective_llm_config = resolve_llm_override(
@@ -179,16 +179,11 @@ class RewardModelScoringStage(Stage):
             scores.append(score)
             updated_record = record.model_copy(
                 update={
-                    "scores": record.scores.model_copy(
-                        update={"reward_model": score}
-                    )
+                    "scores": record.scores.model_copy(update={"reward_model": score})
                 }
             )
 
-            if (
-                reward_config.min_score is not None
-                and score < reward_config.min_score
-            ):
+            if reward_config.min_score is not None and score < reward_config.min_score:
                 reason_code = "low_reward_score"
                 dropped_records.append(
                     self._drop_record(
@@ -289,8 +284,8 @@ class PairDeltaFilterStage(Stage):
         *,
         parent_records: list[Record] | None = None,
     ) -> list[Record]:
-        pair_config = ctx.config.filters.pair_delta
-        if not pair_config.enabled:
+        pair_config = ctx.config.filters.get_stage_config("pair_delta")
+        if pair_config is None:
             return records
 
         parent_by_id: dict[str, Record] = {}
@@ -324,7 +319,8 @@ class PairDeltaFilterStage(Stage):
                         reason = "length_ratio_exceeded"
                         dropped_records.append(
                             self._drop_record(
-                                record, reason,
+                                record,
+                                reason,
                                 f"ratio={ratio:.2f} > max={pair_config.length_ratio_max}",
                             )
                         )
@@ -337,7 +333,8 @@ class PairDeltaFilterStage(Stage):
                 reason = "insufficient_delta"
                 dropped_records.append(
                     self._drop_record(
-                        record, reason,
+                        record,
+                        reason,
                         f"delta={delta:.4f} < min_delta={pair_config.min_delta}",
                     )
                 )
@@ -424,8 +421,8 @@ class CompositeSelectStage(Stage):
         self._output_writer = OutputWriter()
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        select_config = ctx.config.filters.select
-        if not select_config.enabled:
+        select_config = ctx.config.filters.get_stage_config("select")
+        if select_config is None:
             return records
 
         weights = select_config.weights
@@ -446,12 +443,11 @@ class CompositeSelectStage(Stage):
 
         dropped_with_events = [
             self._drop_record(
-                record, "composite_select",
+                record,
+                "composite_select",
                 f"rank={i + target_count + 1} exceeds target_count={target_count}",
             )
-            for i, (_, record) in enumerate(
-                scored_pairs[target_count:]
-            )
+            for i, (_, record) in enumerate(scored_pairs[target_count:])
         ]
 
         self._write_artifacts(
@@ -462,9 +458,7 @@ class CompositeSelectStage(Stage):
         )
         return kept
 
-    def _composite_score(
-        self, record: Record, weights: dict[str, float]
-    ) -> float:
+    def _composite_score(self, record: Record, weights: dict[str, float]) -> float:
         total = 0.0
         for field, weight in weights.items():
             value = getattr(record.scores, field, None)

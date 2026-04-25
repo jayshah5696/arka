@@ -32,13 +32,6 @@ generator:
   target_count: 5
   generation_multiplier: 1
 
-dedup:
-  exact:
-    enabled: false
-  near:
-    enabled: false
-    lsh_bands: 16
-
 filters:
   target_count: 5
 

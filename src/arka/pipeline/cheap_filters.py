@@ -44,8 +44,8 @@ class LengthFilterStage(Stage):
     stage_action = "filtered"
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        cfg = ctx.config.filters.length
-        if not cfg.enabled:
+        cfg = ctx.config.filters.get_stage_config("length")
+        if cfg is None:
             return records
 
         kept: list[Record] = []
@@ -117,8 +117,8 @@ class LanguageFilterStage(Stage):
     stage_action = "filtered"
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        cfg = ctx.config.filters.language
-        if not cfg.enabled:
+        cfg = ctx.config.filters.get_stage_config("language")
+        if cfg is None:
             return records
 
         self._warn_if_no_heuristic_available(cfg.allowed)
@@ -215,8 +215,8 @@ class SentenceVarianceFilterStage(Stage):
     stage_action = "filtered"
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        cfg = ctx.config.filters.sentence_variance
-        if not cfg.enabled:
+        cfg = ctx.config.filters.get_stage_config("sentence_variance")
+        if cfg is None:
             return records
 
         kept: list[Record] = []

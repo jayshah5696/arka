@@ -53,27 +53,23 @@ generator:
     {seed_response}
 
 dedup:
-  exact:
-    enabled: true
-  near:
-    enabled: true
+  - type: exact
+  - type: near
     lsh_bands: 16
 
 filters:
   target_count: 10
-  length:
-    enabled: true
-    min_instruction_chars: 40
-    max_instruction_chars: 4096
-    min_response_chars: 40
-    max_response_chars: 16384
-  language:
-    enabled: true
-    allowed: [en]
-  labeling_engine:
-    enabled: true
-    rubric_path: ../rubrics/sft_quality.yaml
-    min_overall_score: 3.5
+  stages:
+    - type: length
+      min_instruction_chars: 40
+      max_instruction_chars: 4096
+      min_response_chars: 40
+      max_response_chars: 16384
+    - type: language
+      allowed: [en]
+    - type: labeling_engine
+      rubric_path: ../rubrics/sft_quality.yaml
+      min_overall_score: 3.5
 
 labeling_engine:
   rubric_path: ../rubrics/sft_quality.yaml

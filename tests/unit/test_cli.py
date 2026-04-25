@@ -54,11 +54,6 @@ generator:
   type: prompt_based
   target_count: 1
   generation_multiplier: 1
-dedup:
-  exact:
-    enabled: false
-  near:
-    enabled: false
 filters:
   target_count: 1
 embeddings:

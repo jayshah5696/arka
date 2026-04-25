@@ -35,8 +35,8 @@ class CanaryFilterStage(Stage):
         self._output_writer = OutputWriter()
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        filter_config = ctx.config.filters.canary
-        if not filter_config.enabled or not filter_config.phrases:
+        filter_config = ctx.config.filters.get_stage_config("canary")
+        if filter_config is None or not filter_config.phrases:
             return records
 
         kept: list[Record] = []
@@ -49,21 +49,27 @@ class CanaryFilterStage(Stage):
                 continue
 
             text = f"{record.payload.instruction}\n{record.payload.response}"
-            matched = next(
-                (p for p in filter_config.phrases if p in text), None
-            )
+            matched = next((p for p in filter_config.phrases if p in text), None)
 
             if matched is None:
                 kept.append(record)
             else:
                 reason = "canary_leak"
                 dropped.append(
-                    _drop_record(record, self.name, reason, f"Matched canary phrase: {matched}")
+                    _drop_record(
+                        record, self.name, reason, f"Matched canary phrase: {matched}"
+                    )
                 )
                 drop_reasons[reason] = drop_reasons.get(reason, 0) + 1
 
         _write_filter_artifacts(
-            self._output_writer, ctx, self.name, len(records), len(kept), dropped, drop_reasons
+            self._output_writer,
+            ctx,
+            self.name,
+            len(records),
+            len(kept),
+            dropped,
+            drop_reasons,
         )
         return kept
 
@@ -78,8 +84,8 @@ class SemanticSimilarityFilterStage(Stage):
         self._output_writer = OutputWriter()
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        filter_config = ctx.config.filters.semantic_similarity
-        if not filter_config.enabled:
+        filter_config = ctx.config.filters.get_stage_config("semantic_similarity")
+        if filter_config is None:
             return records
 
         generated: list[ConversationRecord] = []
@@ -101,7 +107,9 @@ class SemanticSimilarityFilterStage(Stage):
         from arka.pipeline.runner import PipelineRunner
 
         runner = PipelineRunner(project_root=ctx.work_dir)
-        gen_texts = [f"{r.payload.instruction}\n{r.payload.response}" for r in generated]
+        gen_texts = [
+            f"{r.payload.instruction}\n{r.payload.response}" for r in generated
+        ]
         seed_texts = [f"{r.payload.instruction}\n{r.payload.response}" for r in seeds]
 
         gen_emb = runner._embed_texts(config=ctx.config, texts=gen_texts)
@@ -111,8 +119,12 @@ class SemanticSimilarityFilterStage(Stage):
             return records
 
         # Cosine similarity matrix
-        gen_norm = gen_emb / np.maximum(np.linalg.norm(gen_emb, axis=1, keepdims=True), 1e-9)
-        seed_norm = seed_emb / np.maximum(np.linalg.norm(seed_emb, axis=1, keepdims=True), 1e-9)
+        gen_norm = gen_emb / np.maximum(
+            np.linalg.norm(gen_emb, axis=1, keepdims=True), 1e-9
+        )
+        seed_norm = seed_emb / np.maximum(
+            np.linalg.norm(seed_emb, axis=1, keepdims=True), 1e-9
+        )
         sim_matrix = gen_norm @ seed_norm.T
 
         kept: list[Record] = list(seeds) + list(other)
@@ -125,7 +137,9 @@ class SemanticSimilarityFilterStage(Stage):
                 reason = "high_semantic_similarity"
                 dropped.append(
                     _drop_record(
-                        record, self.name, reason,
+                        record,
+                        self.name,
+                        reason,
                         f"Max cosine similarity {max_sim:.4f} > {filter_config.threshold}",
                     )
                 )
@@ -134,7 +148,13 @@ class SemanticSimilarityFilterStage(Stage):
                 kept.append(record)
 
         _write_filter_artifacts(
-            self._output_writer, ctx, self.name, len(records), len(kept), dropped, drop_reasons
+            self._output_writer,
+            ctx,
+            self.name,
+            len(records),
+            len(kept),
+            dropped,
+            drop_reasons,
         )
         return kept
 
@@ -169,7 +189,9 @@ def _write_filter_artifacts(
 ) -> None:
     ctx.work_dir.mkdir(parents=True, exist_ok=True)
     if dropped:
-        writer.write_dropped_parquet(records=dropped, path=ctx.work_dir / "dropped.parquet")
+        writer.write_dropped_parquet(
+            records=dropped, path=ctx.work_dir / "dropped.parquet"
+        )
     stats = {
         "stage": stage_name,
         "count_in": count_in,
@@ -190,8 +212,8 @@ class LabelingQualityFilterStage(Stage):
         self._output_writer = OutputWriter()
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        filter_config = ctx.config.filters.labeling_engine
-        if not filter_config.enabled or filter_config.rubric_path is None:
+        filter_config = ctx.config.filters.get_stage_config("labeling_engine")
+        if filter_config is None or filter_config.rubric_path is None:
             return records
         rubric_path = self.project_root / filter_config.rubric_path
         try:
@@ -375,8 +397,8 @@ class LabelingQualityFilterStage(Stage):
 
 
 def validate_ifd_capability(ctx: StageContext) -> None:
-    filter_config = ctx.config.filters.ifd
-    if not filter_config.enabled:
+    filter_config = ctx.config.filters.get_stage_config("ifd")
+    if filter_config is None:
         return
     if not provider_supports_sequence_scoring(ctx.config.llm):
         raise ValueError(
