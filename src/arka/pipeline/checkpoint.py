@@ -68,6 +68,31 @@ class CheckpointManager:
                 )
                 """
             )
+            self._conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS embeddings_cache (
+                    text_hash TEXT PRIMARY KEY,
+                    vector BLOB NOT NULL
+                )
+                """
+            )
+
+    def load_embedding(self, text_hash: str) -> bytes | None:
+        with self._lock, self._conn:
+            row = self._conn.execute(
+                "SELECT vector FROM embeddings_cache WHERE text_hash = ?",
+                (text_hash,),
+            ).fetchone()
+        if row is not None:
+            return row["vector"]
+        return None
+
+    def save_embedding(self, text_hash: str, vector: bytes) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO embeddings_cache (text_hash, vector) VALUES (?, ?)",
+                (text_hash, vector),
+            )
 
     def register_run(self, run_id: str, config_hash: str, status: str) -> None:
         with self._lock, self._conn:

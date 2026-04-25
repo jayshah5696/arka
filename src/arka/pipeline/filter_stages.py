@@ -112,8 +112,16 @@ class SemanticSimilarityFilterStage(Stage):
         ]
         seed_texts = [f"{r.payload.instruction}\n{r.payload.response}" for r in seeds]
 
-        gen_emb = runner._embed_texts(config=ctx.config, texts=gen_texts)
-        seed_emb = runner._embed_texts(config=ctx.config, texts=seed_texts)
+        gen_emb = runner._embed_texts(
+            config=ctx.config,
+            texts=gen_texts,
+            checkpoint_manager=ctx.checkpoint_manager,
+        )
+        seed_emb = runner._embed_texts(
+            config=ctx.config,
+            texts=seed_texts,
+            checkpoint_manager=ctx.checkpoint_manager,
+        )
 
         if gen_emb is None or seed_emb is None:
             return records
