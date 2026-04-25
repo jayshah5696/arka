@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal
 
 from pydantic import Discriminator, Field, HttpUrl, SecretStr, Tag, model_validator
 
@@ -146,10 +146,7 @@ class NearDedupConfig(StrictModel):
 
 
 DedupStageConfig = Annotated[
-    Union[
-        Annotated[ExactDedupConfig, Tag("exact")],
-        Annotated[NearDedupConfig, Tag("near")],
-    ],
+    Annotated[ExactDedupConfig, Tag("exact")] | Annotated[NearDedupConfig, Tag("near")],
     Discriminator("type"),
 ]
 
@@ -213,19 +210,30 @@ class CanaryFilterConfig(StrictModel):
     phrases: list[str] = Field(default_factory=list)
 
 
+class DoubleCriticFilterConfig(StrictModel):
+    """Simula §2.2 double-critic. Two independent yes/no critic calls per record.
+
+    No tunable knobs in slice 1 — the inverse-prompt property is preserved by
+    construction. Future fields (alternate prompts, majority-of-N, llm_override)
+    land here without breaking the YAML schema.
+    """
+
+    type: Literal["double_critic"] = "double_critic"
+    llm_override: StageLLMOverride | None = None
+
+
 FilterStageConfig = Annotated[
-    Union[
-        Annotated[LengthFilterConfig, Tag("length")],
-        Annotated[LanguageFilterConfig, Tag("language")],
-        Annotated[SentenceVarianceFilterConfig, Tag("sentence_variance")],
-        Annotated[IFDFilterConfig, Tag("ifd")],
-        Annotated[LabelingFilterConfig, Tag("labeling_engine")],
-        Annotated[RewardModelFilterConfig, Tag("reward_model")],
-        Annotated[PairDeltaFilterConfig, Tag("pair_delta")],
-        Annotated[CompositeSelectConfig, Tag("select")],
-        Annotated[SemanticSimilarityFilterConfig, Tag("semantic_similarity")],
-        Annotated[CanaryFilterConfig, Tag("canary")],
-    ],
+    Annotated[LengthFilterConfig, Tag("length")]
+    | Annotated[LanguageFilterConfig, Tag("language")]
+    | Annotated[SentenceVarianceFilterConfig, Tag("sentence_variance")]
+    | Annotated[IFDFilterConfig, Tag("ifd")]
+    | Annotated[LabelingFilterConfig, Tag("labeling_engine")]
+    | Annotated[RewardModelFilterConfig, Tag("reward_model")]
+    | Annotated[PairDeltaFilterConfig, Tag("pair_delta")]
+    | Annotated[CompositeSelectConfig, Tag("select")]
+    | Annotated[SemanticSimilarityFilterConfig, Tag("semantic_similarity")]
+    | Annotated[CanaryFilterConfig, Tag("canary")]
+    | Annotated[DoubleCriticFilterConfig, Tag("double_critic")],
     Discriminator("type"),
 ]
 

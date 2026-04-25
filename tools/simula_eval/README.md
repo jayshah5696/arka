@@ -4,7 +4,8 @@ Reusable comparison rig for the Simula slices (double-critic, complexification,
 taxonomy generator, level-ratio coverage, batch-Elo complexity).
 
 Pipeline outputs and seed copies stay under `scratch/simula-eval/` (gitignored).
-The configs live under `examples/simula/`. The harness lives here.
+Configs live next to this README under `tools/simula_eval/configs/` so they
+are versioned but not subject to the user-facing `examples/` header policy.
 
 ## One-time setup
 
@@ -21,17 +22,17 @@ export OPENROUTER_API_KEY=sk-...
 
 ```bash
 # Slice 0 — baseline (no critic, no complexification, no taxonomy)
-uv run arka --config examples/simula/00-baseline.yaml --run-id slice-00-baseline
+uv run arka --config tools/simula_eval/configs/00-baseline.yaml --run-id slice-00-baseline
 
 # Compute metrics
 uv run python tools/simula_eval/metrics.py \
-  scratch/simula-eval/configs/runs/slice-00-baseline \
+  tools/simula_eval/configs/runs/slice-00-baseline \
   scratch/simula-eval/00-baseline/dataset.jsonl \
   --name 00-baseline
 ```
 
 (Subsequent slices follow the same pattern; configs land at
-`examples/simula/0N-<slice>.yaml` as they are added.)
+`tools/simula_eval/configs/0N-<slice>.yaml` as they are added.)
 
 ## Metrics computed
 

@@ -23,7 +23,7 @@ data_source:
   type: seeds
   # Personal writing-assistant seeds (humanize-rl). Pulled from outside the repo;
   # see tools/simula_eval/README.md for the copy command.
-  path: ../../scratch/simula-eval/seeds/human_seeds.jsonl
+  path: ../../../scratch/simula-eval/seeds/human_seeds.jsonl
 
 generator:
   type: prompt_based
@@ -79,4 +79,4 @@ embeddings:
 
 output:
   format: chatml
-  path: ../../scratch/simula-eval/00-baseline/dataset.jsonl
+  path: ../../../scratch/simula-eval/00-baseline/dataset.jsonl
