@@ -180,19 +180,33 @@ def test_cli_handles_invalid_config_gracefully(tmp_path: Path, capsys) -> None:
     assert "Configuration is invalid:" in err
 
 
-def test_cli_handles_missing_runtime_file_gracefully(
+def test_cli_catches_pipeline_runner_exceptions(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     config_path = tmp_path / "custom-config.yaml"
     config_path.write_text(CONFIG_TEXT)
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
-    # Note: seeds.jsonl is deliberately NOT created to trigger FileNotFoundError during run.
+
+    class FakePipelineRunner:
+        def __init__(self, project_root: Path) -> None:
+            self.project_root = project_root
+
+        def run(self, config, stages, run_id, resume) -> None:
+            raise ValueError("Something bad happened during execution")
+
+    monkeypatch.setattr("arka.cli.PipelineRunner", FakePipelineRunner)
 
     import pytest
 
     with pytest.raises(SystemExit) as exc:
-        main(["--config", str(config_path), "--run-id", "test-file-not-found"])
+        main(["--config", str(config_path), "--run-id", "test-error"])
 
     assert exc.value.code == 1
     out, err = capsys.readouterr()
-    assert "Error: Required file not found" in err
+    assert (
+        "Error: Pipeline execution failed - Something bad happened during execution"
+        in err
+    )
+    # Because FakePipelineRunner raises before creating the run_report.json,
+    # _print_summary will silently return. That's expected for a crash.
+    assert "--- Pipeline Summary" not in out

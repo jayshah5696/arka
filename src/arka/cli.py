@@ -115,16 +115,16 @@ def main(argv: Sequence[str] | None = None) -> None:
         return
 
     try:
-        try:
-            PipelineRunner(project_root=project_root).run(
-                config=config,
-                stages=stages,
-                run_id=run_id,
-                resume=args.resume,
-            )
-        except FileNotFoundError as exc:
-            # DX: Print clean error messages for missing files instead of Python tracebacks.
-            print(f"Error: Required file not found - {exc.filename}", file=sys.stderr)
-            sys.exit(1)
+        PipelineRunner(project_root=project_root).run(
+            config=config,
+            stages=stages,
+            run_id=run_id,
+            resume=args.resume,
+        )
+    except Exception as exc:
+        # DX: Catch pipeline execution errors to prevent raw Python tracebacks.
+        # This provides a clean, human-readable error message to the user.
+        print(f"Error: Pipeline execution failed - {exc}", file=sys.stderr)
+        sys.exit(1)
     finally:
         _print_summary(run_id, project_root)
