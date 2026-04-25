@@ -83,10 +83,10 @@ def _ctx(tmp_path: Path, **reward_overrides) -> StageContext:
                 "target_count": 2,
                 "generation_multiplier": 1,
             },
-            "dedup": {"exact": {"enabled": False}},
+            
             "filters": {
                 "target_count": 2,
-                "reward_model": {"enabled": True, **reward_overrides},
+                "stages": [{"type": "reward_model", **reward_overrides}],
             },
             "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
         }

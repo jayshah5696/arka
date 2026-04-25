@@ -47,23 +47,20 @@ generator:
       - "As an AI"
 
 dedup:
-  exact:
-    enabled: true
-  near:
-    enabled: true
+  - type: exact
+  - type: near
     lsh_bands: 16
 
 filters:
   target_count: 20
-  length:
-    enabled: true
-    min_instruction_chars: 10
-    max_instruction_chars: 4096
-    min_response_chars: 10
-    max_response_chars: 16384
-  language:
-    enabled: true
-    allowed: [en]
+  stages:
+    - type: length
+      min_instruction_chars: 10
+      max_instruction_chars: 4096
+      min_response_chars: 10
+      max_response_chars: 16384
+    - type: language
+      allowed: [en]
 
 embeddings:
   provider: huggingface

@@ -465,27 +465,24 @@ generator:
   # operators: [add_constraints, deepen, increase_reasoning_steps, breadth_mutation]
 
 dedup:
-  exact:
-    enabled: false
+  - type: exact
 
 filters:
-  length:
-    enabled: false
-    min_instruction_chars: 10
-    max_instruction_chars: 4096
-    min_response_chars: 10
-    max_response_chars: 16384
-  language:
-    enabled: false
-    allowed: [en]
-  labeling_engine:
-    enabled: true
-    rubric_path: ./rubrics/sft_quality.yaml
-    min_overall_score: 3.5
   target_count: 10000
+  stages:
+    - type: length
+      min_instruction_chars: 10
+      max_instruction_chars: 4096
+      min_response_chars: 10
+      max_response_chars: 16384
+    - type: language
+      allowed: [en]
+    - type: labeling_engine
+      rubric_path: ./rubrics/sft_quality.yaml
+      min_overall_score: 3.5
 
 contamination:
-  enabled: true
+  enabled: true   # contamination is a separate future feature, not part of filters
   benchmark_paths: []             # paths to eval benchmark JSONL files
   ngram_size: 13
   flag_threshold: 0.01            # >1% hit rate = warning
@@ -1009,12 +1006,11 @@ each removing what the previous missed.
 
 Current implementation:
 - stage exists as `02c_exact_dedup`
-- enabled via:
+- enabled by including in the `dedup` list:
 
 ```yaml
 dedup:
-  exact:
-    enabled: true
+  - type: exact
 ```
 
 - keeps the first record for a given `content_hash`

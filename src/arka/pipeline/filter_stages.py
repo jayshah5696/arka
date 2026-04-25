@@ -35,8 +35,8 @@ class CanaryFilterStage(Stage):
         self._output_writer = OutputWriter()
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        filter_config = ctx.config.filters.canary
-        if not filter_config.enabled or not filter_config.phrases:
+        filter_config = ctx.config.filters.get_stage_config("canary")
+        if filter_config is None or not filter_config.phrases:
             return records
 
         kept: list[Record] = []
@@ -84,8 +84,8 @@ class SemanticSimilarityFilterStage(Stage):
         self._output_writer = OutputWriter()
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        filter_config = ctx.config.filters.semantic_similarity
-        if not filter_config.enabled:
+        filter_config = ctx.config.filters.get_stage_config("semantic_similarity")
+        if filter_config is None:
             return records
 
         generated: list[ConversationRecord] = []
@@ -212,8 +212,8 @@ class LabelingQualityFilterStage(Stage):
         self._output_writer = OutputWriter()
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        filter_config = ctx.config.filters.labeling_engine
-        if not filter_config.enabled or filter_config.rubric_path is None:
+        filter_config = ctx.config.filters.get_stage_config("labeling_engine")
+        if filter_config is None or filter_config.rubric_path is None:
             return records
         rubric_path = self.project_root / filter_config.rubric_path
         try:
@@ -397,8 +397,8 @@ class LabelingQualityFilterStage(Stage):
 
 
 def validate_ifd_capability(ctx: StageContext) -> None:
-    filter_config = ctx.config.filters.ifd
-    if not filter_config.enabled:
+    filter_config = ctx.config.filters.get_stage_config("ifd")
+    if filter_config is None:
         return
     if not provider_supports_sequence_scoring(ctx.config.llm):
         raise ValueError(

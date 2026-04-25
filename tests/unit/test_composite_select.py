@@ -55,10 +55,9 @@ def _ctx(tmp_path: Path, **select_overrides) -> StageContext:
                 "target_count": 2,
                 "generation_multiplier": 1,
             },
-            "dedup": {"exact": {"enabled": False}},
             "filters": {
                 "target_count": 10,
-                "select": {"enabled": True, **select_overrides},
+                "stages": [{"type": "select", **select_overrides}],
             },
             "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
         }
@@ -139,7 +138,6 @@ def test_composite_select_passes_all_when_disabled(tmp_path: Path) -> None:
                 "target_count": 2,
                 "generation_multiplier": 1,
             },
-            "dedup": {"exact": {"enabled": False}},
             "filters": {"target_count": 10},
             "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
         }

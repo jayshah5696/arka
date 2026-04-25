@@ -60,24 +60,16 @@ generator:
     Seed response:
     {seed_response}
 
-dedup:
-  exact:
-    enabled: false
-  near:
-    enabled: false
-    lsh_bands: 16
-
 filters:
   target_count: 10
-  length:
-    enabled: true
-    min_instruction_chars: 40
-    max_instruction_chars: 4096
-    min_response_chars: 40
-    max_response_chars: 16384
-  language:
-    enabled: true
-    allowed: [en]
+  stages:
+    - type: length
+      min_instruction_chars: 40
+      max_instruction_chars: 4096
+      min_response_chars: 40
+      max_response_chars: 16384
+    - type: language
+      allowed: [en]
 
 embeddings:
   provider: huggingface

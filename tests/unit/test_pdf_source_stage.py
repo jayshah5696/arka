@@ -71,7 +71,7 @@ def _ctx(tmp_path: Path, relative_pdf_path: str) -> StageContext:
                 "target_count": 1,
                 "generation_multiplier": 1,
             },
-            "dedup": {"exact": {"enabled": False}, "near": {"enabled": False}},
+            
             "filters": {"target_count": 1},
             "embeddings": {"provider": "huggingface", "model": "all-MiniLM-L6-v2"},
             "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},

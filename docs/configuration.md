@@ -19,7 +19,7 @@ classDiagram
     ResolvedConfig *-- ExecutorConfig : executor
     ResolvedConfig *-- DataSourceConfig : data_source
     ResolvedConfig *-- GeneratorConfig : generator
-    ResolvedConfig *-- DedupConfig : dedup
+    ResolvedConfig *-- "list[DedupStageConfig]" : dedup
     ResolvedConfig *-- FiltersConfig : filters
     ResolvedConfig *-- EmbeddingsConfig : embeddings
     ResolvedConfig *-- LabelingEngineConfig : labeling_engine
@@ -35,8 +35,8 @@ llm: {...}
 executor: {...}
 data_source: {...}
 generator: {...}
-dedup: {...}
-filters: {...}
+dedup: [...]       # list of dedup stages (presence = enabled)
+filters: {...}     # includes stages: [...] list
 embeddings: {...}
 labeling_engine: {...}
 output: {...}
@@ -177,60 +177,128 @@ generator:
 
 ## 6. Deduplication (`dedup`)
 
-Settings for removing near-identical generations.
+A list of dedup stages. **Presence in the list = enabled.** Omit the section entirely to skip dedup.
 
 ```yaml
+# Both exact and near dedup:
 dedup:
-  exact:
-    enabled: true
-  near:
-    enabled: true
-    shingle_size: 5
+  - type: exact
+  - type: near
     lsh_bands: 16
     jaccard_threshold: 0.85
+
+# Just exact:
+dedup:
+  - type: exact
+
+# No dedup (omit the section entirely):
+# dedup:  # not present
 ```
 
-| Key | Description |
-| :--- | :--- |
-| **`exact.enabled`** | (`bool`, default: `False`) Enables fast byte-for-byte exact match filtering. |
-| **`near.enabled`** | (`bool`, default: `False`) Enables MinHash/LSH fuzzy deduplication. |
-| `near.shingle_size` | (`int`, default: `5`) Size of character/word n-grams for hashing. |
-| `near.num_hashes` | (`int`, default: `128`) Resolution of the MinHash signature. |
-| `near.lsh_bands` | (`int`, default: `16`) Number of LSH bands for bucketing. Records are only compared within matching bands, reducing dedup from O(n²) to O(n). |
-| `near.jaccard_threshold`| (`float`, default: `0.7`) Similarity threshold (0.0 to 1.0). Higher means stricter matching (only very similar items are dropped). |
+### `exact` Dedup
+Fast byte-for-byte content hash dedup. No additional config needed.
+
+| Key | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `type` | `Literal["exact"]` | **Required** | Discriminator field. |
+
+### `near` Dedup
+MinHash/LSH fuzzy deduplication.
+
+| Key | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `type` | `Literal["near"]` | **Required** | Discriminator field. |
+| `shingle_size` | `int` | `5` | Size of character/word n-grams for hashing. |
+| `num_hashes` | `int` | `128` | Resolution of the MinHash signature. |
+| `lsh_bands` | `int` | `16` | Number of LSH bands for bucketing. Records are only compared within matching bands, reducing dedup from O(n²) to O(n). |
+| `jaccard_threshold` | `float` | `0.7` | Similarity threshold (0.0 to 1.0). Higher means stricter matching. |
 
 ---
 
 ## 7. Filters (`filters`)
 
-Defines the quality gates that generations must pass to make it to the final dataset.
+Defines the quality gates that generations must pass. **Presence in the `stages` list = enabled.** Order in the list = execution order.
 
 ```yaml
 filters:
   target_count: 500
-  length:
-    enabled: true
-    min_response_chars: 50
-  language:
-    enabled: true
-    allowed: ["en", "es"]
+  stages:
+    - type: length
+      min_response_chars: 50
+    - type: language
+      allowed: ["en", "es"]
+    - type: canary
+      phrases: ["SECRET_PROJECT"]
+    - type: labeling_engine
+      rubric_path: ./rubrics/quality.yaml
+      min_overall_score: 3.5
 ```
 
-| Block | Key | Type | Default | Description |
-| :--- | :--- | :--- | :--- | :--- |
-| **Base** | `target_count` | `int` | **Required** | The final target number of valid items you want in your dataset after all filtering. |
-| **Length** | `enabled` | `bool` | `False` | Enable length restrictions. |
-| | `min_instruction_chars` | `int` | `10` | Minimum length for instructions. |
-| | `max_instruction_chars` | `int` | `4096` | Maximum length for instructions. |
-| | `min_response_chars` | `int` | `10` | Minimum length for responses. |
-| | `max_response_chars` | `int` | `16384`| Maximum length for responses. |
-| **Language**| `enabled` | `bool` | `False` | Enable automatic language detection filtering. |
-| | `allowed` | `list[str]`| `["en"]`| List of allowed ISO language codes. |
-| **IFD** | `enabled` | `bool` | `False` | Enable Instruction Following Difficulty scoring. |
-| | `min_score` | `float` | `0.2` | Minimum IFD score required to pass. |
-| **Labeling**| `enabled` | `bool` | `False` | Enable LLM-as-a-judge rubric grading. |
-| | `rubric_path` | `str` | `None` | Path to the YAML rubric definition file. |
-| | `min_overall_score`| `float` | `None` | Threshold score to pass the judge's evaluation. |
+| Key | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `target_count` | `int` | **Required** | The final target number of valid items after all filtering. |
+| `stages` | `list` | `[]` | Ordered list of filter stage configs. Each must have a `type` discriminator. |
+
+### Available Filter Stages
+
+#### `length`
+| Key | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `min_instruction_chars` | `int` | `10` | Minimum length for instructions. |
+| `max_instruction_chars` | `int` | `4096` | Maximum length for instructions. |
+| `min_response_chars` | `int` | `10` | Minimum length for responses. |
+| `max_response_chars` | `int` | `16384` | Maximum length for responses. |
+
+#### `language`
+| Key | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `allowed` | `list[str]` | `["en"]` | List of allowed ISO language codes. |
+
+#### `ifd`
+| Key | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `min_score` | `float` | `0.2` | Minimum IFD score required to pass. |
+
+#### `labeling_engine`
+| Key | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `rubric_path` | `str` | `None` | Path to the YAML rubric definition file. |
+| `min_overall_score` | `float` | `None` | Threshold score to pass the judge. |
+
+#### `canary`
+| Key | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `phrases` | `list[str]` | `[]` | Drop records containing any of these phrases. |
+
+#### `semantic_similarity`
+| Key | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `threshold` | `float` | `0.9` | Drop generated records with cosine similarity ≥ threshold to their seed. |
+
+#### `sentence_variance`
+| Key | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `min_cv` | `float` | `0.15` | Minimum coefficient of variation for sentence lengths. |
+
+#### `reward_model`
+| Key | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `min_score` | `float` | `None` | Minimum reward model score to pass. |
+| `llm_override` | `Object` | `None` | Override LLM settings for the reward model. |
+
+#### `pair_delta`
+| Key | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `score_field` | `str` | `"quality"` | Which score field to compare. |
+| `min_delta` | `float` | `0.30` | Minimum improvement over parent. |
+| `length_ratio_max` | `float` | `None` | Max response length ratio vs parent. |
+
+#### `select`
+| Key | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `target_count` | `int` | `None` | Number of records to select. |
+| `weights` | `dict[str, float]` | `{}` | Score weights for composite ranking. |
+| `strategy` | `str` | `"top_n"` | Selection strategy. |
 
 ---
 
@@ -255,7 +323,7 @@ embeddings:
 
 ## 9. Labeling Engine (`labeling_engine`)
 
-Settings governing the LLM-as-a-judge system if the labeling filter is enabled.
+Settings governing the LLM-as-a-judge system when the `labeling_engine` filter stage is present.
 
 ```yaml
 labeling_engine:

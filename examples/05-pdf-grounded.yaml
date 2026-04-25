@@ -36,23 +36,18 @@ generator:
   generation_multiplier: 1
 
 dedup:
-  exact:
-    enabled: true
-  near:
-    enabled: false
-    lsh_bands: 16
+  - type: exact
 
 filters:
   target_count: 10
-  length:
-    enabled: true
-    min_instruction_chars: 10
-    max_instruction_chars: 4096
-    min_response_chars: 10
-    max_response_chars: 16384
-  language:
-    enabled: true
-    allowed: [en]
+  stages:
+    - type: length
+      min_instruction_chars: 10
+      max_instruction_chars: 4096
+      min_response_chars: 10
+      max_response_chars: 16384
+    - type: language
+      allowed: [en]
 
 embeddings:
   provider: huggingface

@@ -54,10 +54,13 @@ generator:
   target_count: 100
   generation_multiplier: 2
 dedup:
-  near: { enabled: true, lsh_bands: 16 }
+  - type: near
+    lsh_bands: 16
 filters:
   target_count: 100
-  canary: { enabled: true, phrases: ["SECRET_TOKEN"] }
+  stages:
+    - type: canary
+      phrases: ["SECRET_TOKEN"]
 output:
   format: chatml
   path: ./output/dataset.jsonl

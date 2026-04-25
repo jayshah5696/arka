@@ -73,14 +73,16 @@ BASE_CONFIG = {
         "target_count": 2,
         "generation_multiplier": 1,
     },
-    "dedup": {"exact": {"enabled": False}},
+    
     "filters": {
         "target_count": 2,
-        "labeling_engine": {
-            "enabled": True,
-            "rubric_path": str(Path("rubrics/sft_quality.yaml").resolve()),
-            "min_overall_score": 3.5,
-        },
+        "stages": [
+            {
+                "type": "labeling_engine",
+                "rubric_path": str(Path("rubrics/sft_quality.yaml").resolve()),
+                "min_overall_score": 3.5,
+            },
+        ],
     },
     "labeling_engine": {
         "rubric_path": str(Path("rubrics/sft_quality.yaml").resolve()),
@@ -222,11 +224,13 @@ def test_labeling_filter_stage_wraps_missing_rubric_path_with_config_context(
             **BASE_CONFIG,
             "filters": {
                 "target_count": 2,
-                "labeling_engine": {
-                    "enabled": True,
-                    "rubric_path": "rubrics/missing.yaml",
-                    "min_overall_score": 3.5,
-                },
+                "stages": [
+                    {
+                        "type": "labeling_engine",
+                        "rubric_path": "rubrics/missing.yaml",
+                        "min_overall_score": 3.5,
+                    },
+                ],
             },
         }
     )
