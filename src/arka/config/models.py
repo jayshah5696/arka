@@ -100,6 +100,10 @@ class GeneratorConfig(StrictModel):
     branching_factor: int | None = None
     operators: list[str] = Field(default_factory=list)
     filter: EvolFilterConfig = Field(default_factory=EvolFilterConfig)
+    # Slice 3 — Simula taxonomy-driven generator. Path to a YAML TaxonomyBundle.
+    # Required when type='taxonomy_prompt'; ignored otherwise. Made optional on
+    # the model itself so other generator types stay backwards compatible.
+    taxonomy_path: str | None = None
 
     @model_validator(mode="after")
     def validate_generator_options(self) -> GeneratorConfig:
@@ -111,6 +115,12 @@ class GeneratorConfig(StrictModel):
             if self.output_field is None:
                 raise ValueError(
                     "generator.output_field is required when generator.type='transform'"
+                )
+            return self
+        if self.type == "taxonomy_prompt":
+            if not self.taxonomy_path:
+                raise ValueError(
+                    "generator.taxonomy_path is required when generator.type='taxonomy_prompt'"
                 )
             return self
         if self.type != "evol_instruct":

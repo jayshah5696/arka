@@ -1,0 +1,85 @@
+# Simula taxonomy for a personal writing assistant.
+# Factors and leaves chosen to mirror the humanize-rl seed mix
+# (blog/email/essay/technical/social/academic). Each leaf-path becomes one
+# requirement that goes into the generated meta-prompt.
+#
+# Schema: see src/arka/taxonomy/models.py.
+version: "1"
+
+factors:
+  - name: domain
+    root:
+      name: domain
+      children:
+        - name: email
+          children:
+            - name: work_internal
+            - name: work_external
+            - name: personal_brief
+        - name: blog
+          children:
+            - name: technical_postmortem
+            - name: opinion
+            - name: short_observation
+        - name: essay
+          children:
+            - name: argumentative
+            - name: reflective
+        - name: technical_writing
+          children:
+            - name: rfc
+            - name: design_doc_outline
+            - name: incident_review
+        - name: social
+          children:
+            - name: linkedin_announcement
+            - name: tweet_thread
+            - name: short_announcement
+        - name: academic
+          children:
+            - name: paper_abstract
+            - name: literature_summary
+
+  - name: intent
+    root:
+      name: intent
+      children:
+        - name: explain
+        - name: persuade
+        - name: announce
+        - name: critique
+        - name: summarize
+        - name: outline
+        - name: rewrite_for_clarity
+
+  - name: tone
+    root:
+      name: tone
+      children:
+        - name: casual
+        - name: professional
+        - name: assertive
+        - name: warm
+        - name: dryly_funny
+        - name: matter_of_fact
+
+  - name: constraint
+    root:
+      name: constraint
+      children:
+        - name: under_120_chars
+        - name: must_include_one_concrete_number
+        - name: must_avoid_em_dashes
+        - name: no_corporate_buzzwords
+        - name: must_end_with_a_question
+        - name: must_acknowledge_a_tradeoff
+
+strategies:
+  # Default strategy: sample one node per factor uniformly.
+  - name: default
+    include_factors: [domain, intent, tone, constraint]
+
+  # Short-form strategy: skip the constraint factor for short-form writing
+  # so the generator stays inside Jay's natural seed length.
+  - name: short_form
+    include_factors: [domain, intent, tone]

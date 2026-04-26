@@ -30,6 +30,7 @@ from arka.pipeline.ifd_stage import IFDFilterStage
 from arka.pipeline.models import StageContext
 from arka.pipeline.source_stages import PDFSourceStage, SeedSourceStage
 from arka.pipeline.stages import Stage
+from arka.pipeline.taxonomy_generator import TaxonomyGeneratorStage
 from arka.pipeline.transforms import NormalizeConversationStage
 
 # Registry: config type → stage factory
@@ -145,6 +146,8 @@ class StageBuilder:
                 )
                 for round_number in range(1, rounds + 1)
             ]
+        if self.config.generator.type == "taxonomy_prompt":
+            return [TaxonomyGeneratorStage(project_root=self.project_root)]
         raise ValueError(f"Unsupported generator.type: {self.config.generator.type!r}")
 
     def _dedup_stages(self) -> list[Stage]:
