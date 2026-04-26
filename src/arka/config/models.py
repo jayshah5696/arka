@@ -232,6 +232,20 @@ class DoubleCriticFilterConfig(StrictModel):
     llm_override: StageLLMOverride | None = None
 
 
+class ComplexityEloFilterConfig(StrictModel):
+    """Slice 5 — Simula §2.3 batch-Elo complexity scoring.
+
+    Annotates each ConversationRecord with a comparable `complexity_elo` and
+    does NOT drop. Filter or select stages downstream can consume the score.
+    """
+
+    type: Literal["complexity_elo"] = "complexity_elo"
+    batch_size: int = 5
+    samples_per_record: int = 4
+    k_factor: float = 32.0
+    llm_override: StageLLMOverride | None = None
+
+
 FilterStageConfig = Annotated[
     Annotated[LengthFilterConfig, Tag("length")]
     | Annotated[LanguageFilterConfig, Tag("language")]
@@ -243,7 +257,8 @@ FilterStageConfig = Annotated[
     | Annotated[CompositeSelectConfig, Tag("select")]
     | Annotated[SemanticSimilarityFilterConfig, Tag("semantic_similarity")]
     | Annotated[CanaryFilterConfig, Tag("canary")]
-    | Annotated[DoubleCriticFilterConfig, Tag("double_critic")],
+    | Annotated[DoubleCriticFilterConfig, Tag("double_critic")]
+    | Annotated[ComplexityEloFilterConfig, Tag("complexity_elo")],
     Discriminator("type"),
 ]
 

@@ -1,0 +1,75 @@
+# Slice 5 — Slice 3 + Simula §2.3 batch-Elo complexity scoring.
+# Adds the complexity_elo scoring stage AFTER the lang/length filters so the
+# Elo annotation reflects the FINAL accepted dataset.
+# Same generator + dedup + filters as slice 3 — the only delta is the new stage.
+# The generator is now seedless: it samples node-sets from the taxonomy and
+# builds a meta-prompt from them. Seeds are still loaded so the dedup stage
+# can filter against the existing dataset, but they are not used as prompts.
+# Compared to slices 0 and 2, this isolates the 'global coverage' axis.
+version: "1"
+run_id: null
+
+llm:
+  provider: openai
+  model: google/gemini-3.1-flash-lite-preview
+  api_key: ${OPENROUTER_API_KEY}
+  base_url: https://openrouter.ai/api/v1
+  timeout_seconds: 60
+  max_retries: 3
+  openai_compatible:
+    referer: https://github.com/jayshah5696/arka
+    title: arka-simula
+
+executor:
+  mode: threadpool
+  max_workers: 6
+
+data_source:
+  type: seeds
+  # Personal writing-assistant seeds (humanize-rl). Pulled from outside the repo;
+  # see tools/simula_eval/README.md for the copy command.
+  path: ../../../scratch/simula-eval/seeds/human_seeds.jsonl
+
+generator:
+  type: taxonomy_prompt
+  target_count: 150
+  generation_multiplier: 1
+  taxonomy_path: ../taxonomies/personal_writing.yaml
+
+dedup:
+  - type: exact
+  - type: near
+    lsh_bands: 16
+
+filters:
+  target_count: 150
+  stages:
+    - type: length
+      min_instruction_chars: 20
+      max_instruction_chars: 2048
+      min_response_chars: 40
+      max_response_chars: 4096
+    - type: language
+      allowed: [en]
+    # Simula §2.3 batch-Elo complexity. Ranks records 4-at-a-time, K=4 batches
+    # per record, computes pairwise Elo. Annotates record.scores; does NOT drop.
+    # Critic uses gemini-3-flash-preview — stronger model gives better rank signal.
+    - type: complexity_elo
+      batch_size: 4
+      samples_per_record: 3
+      k_factor: 32
+      llm_override:
+        model: google/gemini-3-flash-preview
+# NOTE: Slice 0 baseline intentionally omits the labeling-engine quality filter so
+# the only quality gate is structural (length+lang). Slice 1 will introduce the
+# Simula-style double-critic and we will compare against THIS clean baseline.
+# (There is also a pre-existing KeyError bug in the single-judge filter when the
+# judge LLM returns a partial scores dict — tracked separately.)
+
+embeddings:
+  provider: huggingface
+  model: BAAI/bge-small-en-v1.5
+
+output:
+  format: chatml
+  path: ../../../scratch/simula-eval/05-elo/dataset.jsonl

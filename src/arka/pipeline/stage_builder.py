@@ -4,6 +4,7 @@ from pathlib import Path
 
 from arka.config.models import (
     CanaryFilterConfig,
+    ComplexityEloFilterConfig,
     DoubleCriticFilterConfig,
     IFDFilterConfig,
     LabelingFilterConfig,
@@ -72,6 +73,10 @@ def _build_filter_stage(
         return LabelingQualityFilterStage(project_root=project_root)
     if isinstance(cfg, DoubleCriticFilterConfig):
         return DoubleCriticFilterStage()
+    if isinstance(cfg, ComplexityEloFilterConfig):
+        from arka.pipeline.complexity_elo_stage import ComplexityEloScoringStage
+
+        return ComplexityEloScoringStage()
     # SentenceVariance, RewardModel, PairDelta, CompositeSelect
     from arka.config.models import (
         CompositeSelectConfig,
