@@ -9,6 +9,7 @@ SUPPORTED_EVOL_OPERATORS: tuple[str, ...] = (
     "deepen",
     "increase_reasoning_steps",
     "breadth_mutation",
+    "complexify",
 )
 
 _OPERATOR_PROMPTS: dict[str, str] = {
@@ -27,6 +28,19 @@ _OPERATOR_PROMPTS: dict[str, str] = {
     "breadth_mutation": (
         "Create a new instruction on a related but different angle of the same "
         "general topic. Keep it self-contained and substantially different."
+    ),
+    # Simula §2.2 'complexify': preserve the task type and output format, push
+    # the difficulty up along ONE concrete axis. Distinct from breadth_mutation,
+    # which intentionally drifts to a sibling topic.
+    "complexify": (
+        "Rewrite the instruction so it is meaningfully more complex while "
+        "PRESERVING the original task type, the original topic, and the output "
+        "format. Pick exactly ONE complexification axis from this list and apply "
+        "it explicitly: (a) add one realistic constraint that makes the task "
+        "harder, (b) require an edge case or boundary condition to be handled, "
+        "(c) increase the depth of domain knowledge needed by one level, or "
+        "(d) add one extra reasoning step the answer must walk through. Do NOT "
+        "switch to a different topic; that is the job of breadth_mutation."
     ),
 }
 

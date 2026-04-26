@@ -4,17 +4,18 @@ from pathlib import Path
 
 from arka.config.models import (
     CanaryFilterConfig,
-    ExactDedupConfig,
+    ComplexityEloFilterConfig,
+    DoubleCriticFilterConfig,
     IFDFilterConfig,
     LabelingFilterConfig,
     LanguageFilterConfig,
     LengthFilterConfig,
-    NearDedupConfig,
     ResolvedConfig,
     SemanticSimilarityFilterConfig,
 )
 from arka.pipeline.cheap_filters import LanguageFilterStage, LengthFilterStage
 from arka.pipeline.dedup_stages import ExactDedupStage, NearDedupStage
+from arka.pipeline.double_critic_stage import DoubleCriticFilterStage
 from arka.pipeline.evol_generator_stage import EvolInstructRoundStage
 from arka.pipeline.filter_stages import (
     CanaryFilterStage,
@@ -30,6 +31,7 @@ from arka.pipeline.ifd_stage import IFDFilterStage
 from arka.pipeline.models import StageContext
 from arka.pipeline.source_stages import PDFSourceStage, SeedSourceStage
 from arka.pipeline.stages import Stage
+from arka.pipeline.taxonomy_generator import TaxonomyGeneratorStage
 from arka.pipeline.transforms import NormalizeConversationStage
 
 # Registry: config type → stage factory
@@ -69,18 +71,24 @@ def _build_filter_stage(
         return SemanticSimilarityFilterStage()
     if isinstance(cfg, LabelingFilterConfig):
         return LabelingQualityFilterStage(project_root=project_root)
+    if isinstance(cfg, DoubleCriticFilterConfig):
+        return DoubleCriticFilterStage()
+    if isinstance(cfg, ComplexityEloFilterConfig):
+        from arka.pipeline.complexity_elo_stage import ComplexityEloScoringStage
+
+        return ComplexityEloScoringStage()
     # SentenceVariance, RewardModel, PairDelta, CompositeSelect
+    from arka.config.models import (
+        CompositeSelectConfig,
+        PairDeltaFilterConfig,
+        RewardModelFilterConfig,
+        SentenceVarianceFilterConfig,
+    )
     from arka.pipeline.cheap_filters import SentenceVarianceFilterStage
     from arka.pipeline.scoring_stages import (
         CompositeSelectStage,
         PairDeltaFilterStage,
         RewardModelScoringStage,
-    )
-    from arka.config.models import (
-        SentenceVarianceFilterConfig,
-        RewardModelFilterConfig,
-        PairDeltaFilterConfig,
-        CompositeSelectConfig,
     )
 
     if isinstance(cfg, SentenceVarianceFilterConfig):
@@ -143,13 +151,12 @@ class StageBuilder:
                 )
                 for round_number in range(1, rounds + 1)
             ]
+        if self.config.generator.type == "taxonomy_prompt":
+            return [TaxonomyGeneratorStage(project_root=self.project_root)]
         raise ValueError(f"Unsupported generator.type: {self.config.generator.type!r}")
 
     def _dedup_stages(self) -> list[Stage]:
-        return [
-            _DEDUP_REGISTRY[cfg.type]()
-            for cfg in self.config.dedup
-        ]
+        return [_DEDUP_REGISTRY[cfg.type]() for cfg in self.config.dedup]
 
     def _filter_stages(self) -> list[Stage]:
         return [

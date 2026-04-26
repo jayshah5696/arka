@@ -1,0 +1,82 @@
+# Slice 0 — BEFORE snapshot baseline pipeline.
+# Prompt-based generation + exact/near dedup + length/lang + single-judge label filter.
+# Uses humanize-rl seeds (Jay's personal writing-assistant seeds).
+version: "1"
+run_id: null
+
+llm:
+  provider: openai
+  model: google/gemini-3.1-flash-lite-preview
+  api_key: ${OPENROUTER_API_KEY}
+  base_url: https://openrouter.ai/api/v1
+  timeout_seconds: 60
+  max_retries: 3
+  openai_compatible:
+    referer: https://github.com/jayshah5696/arka
+    title: arka-simula
+
+executor:
+  mode: threadpool
+  max_workers: 6
+
+data_source:
+  type: seeds
+  # Personal writing-assistant seeds (humanize-rl). Pulled from outside the repo;
+  # see tools/simula_eval/README.md for the copy command.
+  path: ../../../scratch/simula-eval/seeds/human_seeds.jsonl
+
+generator:
+  type: prompt_based
+  target_count: 150
+  generation_multiplier: 2
+  prompt_template: |
+    You are generating supervised fine-tuning examples for a personal writing assistant.
+    Tasks the assistant handles include: grammar correction on selected text, rewriting,
+    summarizing context, drafting emails from a topic + intent, outlining ML-engineering
+    documentation, and writing in the user's authentic voice.
+
+    Read the seed example below as a tone reference. Produce ONE new instruction/response
+    pair in the same spirit but on a different topic, varying domain and intent.
+
+    Return ONLY valid JSON with exactly two keys: "instruction" and "response".
+
+    Hard constraints:
+    - The response must sound like a real person wrote it. No corporate fluff.
+    - Avoid em dashes. Avoid magic adverbs ("simply", "actually", "really").
+    - Do not start the response with "I'm thrilled / excited / delighted / happy to ...".
+    - Keep the response between 40 and 600 characters.
+
+    Seed instruction:
+    {seed_instruction}
+
+    Seed response:
+    {seed_response}
+
+dedup:
+  - type: exact
+  - type: near
+    lsh_bands: 16
+
+filters:
+  target_count: 150
+  stages:
+    - type: length
+      min_instruction_chars: 20
+      max_instruction_chars: 2048
+      min_response_chars: 40
+      max_response_chars: 4096
+    - type: language
+      allowed: [en]
+# NOTE: Slice 0 baseline intentionally omits the labeling-engine quality filter so
+# the only quality gate is structural (length+lang). Slice 1 will introduce the
+# Simula-style double-critic and we will compare against THIS clean baseline.
+# (There is also a pre-existing KeyError bug in the single-judge filter when the
+# judge LLM returns a partial scores dict — tracked separately.)
+
+embeddings:
+  provider: huggingface
+  model: BAAI/bge-small-en-v1.5
+
+output:
+  format: chatml
+  path: ../../../scratch/simula-eval/00-baseline/dataset.jsonl

@@ -14,4 +14,13 @@ scratch/
 .vscode/
 *.pi/
 *.rtk/
+.pi
+.rtk
+# nwt symlinked dirs (worktrees)
+.venv
+
 runs/
+# arka writes a per-run sqlite checkpoint next to the config; never tracked.
+state.db
+tools/simula_eval/configs/runs/
+tools/simula_eval/configs/state.db

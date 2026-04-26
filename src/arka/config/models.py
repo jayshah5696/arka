@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal
 
 from pydantic import Discriminator, Field, HttpUrl, SecretStr, Tag, model_validator
 
@@ -100,6 +100,10 @@ class GeneratorConfig(StrictModel):
     branching_factor: int | None = None
     operators: list[str] = Field(default_factory=list)
     filter: EvolFilterConfig = Field(default_factory=EvolFilterConfig)
+    # Slice 3 — Simula taxonomy-driven generator. Path to a YAML TaxonomyBundle.
+    # Required when type='taxonomy_prompt'; ignored otherwise. Made optional on
+    # the model itself so other generator types stay backwards compatible.
+    taxonomy_path: str | None = None
 
     @model_validator(mode="after")
     def validate_generator_options(self) -> GeneratorConfig:
@@ -111,6 +115,12 @@ class GeneratorConfig(StrictModel):
             if self.output_field is None:
                 raise ValueError(
                     "generator.output_field is required when generator.type='transform'"
+                )
+            return self
+        if self.type == "taxonomy_prompt":
+            if not self.taxonomy_path:
+                raise ValueError(
+                    "generator.taxonomy_path is required when generator.type='taxonomy_prompt'"
                 )
             return self
         if self.type != "evol_instruct":
@@ -146,10 +156,7 @@ class NearDedupConfig(StrictModel):
 
 
 DedupStageConfig = Annotated[
-    Union[
-        Annotated[ExactDedupConfig, Tag("exact")],
-        Annotated[NearDedupConfig, Tag("near")],
-    ],
+    Annotated[ExactDedupConfig, Tag("exact")] | Annotated[NearDedupConfig, Tag("near")],
     Discriminator("type"),
 ]
 
@@ -213,19 +220,45 @@ class CanaryFilterConfig(StrictModel):
     phrases: list[str] = Field(default_factory=list)
 
 
+class DoubleCriticFilterConfig(StrictModel):
+    """Simula §2.2 double-critic. Two independent yes/no critic calls per record.
+
+    No tunable knobs in slice 1 — the inverse-prompt property is preserved by
+    construction. Future fields (alternate prompts, majority-of-N, llm_override)
+    land here without breaking the YAML schema.
+    """
+
+    type: Literal["double_critic"] = "double_critic"
+    llm_override: StageLLMOverride | None = None
+
+
+class ComplexityEloFilterConfig(StrictModel):
+    """Slice 5 — Simula §2.3 batch-Elo complexity scoring.
+
+    Annotates each ConversationRecord with a comparable `complexity_elo` and
+    does NOT drop. Filter or select stages downstream can consume the score.
+    """
+
+    type: Literal["complexity_elo"] = "complexity_elo"
+    batch_size: int = 5
+    samples_per_record: int = 4
+    k_factor: float = 32.0
+    llm_override: StageLLMOverride | None = None
+
+
 FilterStageConfig = Annotated[
-    Union[
-        Annotated[LengthFilterConfig, Tag("length")],
-        Annotated[LanguageFilterConfig, Tag("language")],
-        Annotated[SentenceVarianceFilterConfig, Tag("sentence_variance")],
-        Annotated[IFDFilterConfig, Tag("ifd")],
-        Annotated[LabelingFilterConfig, Tag("labeling_engine")],
-        Annotated[RewardModelFilterConfig, Tag("reward_model")],
-        Annotated[PairDeltaFilterConfig, Tag("pair_delta")],
-        Annotated[CompositeSelectConfig, Tag("select")],
-        Annotated[SemanticSimilarityFilterConfig, Tag("semantic_similarity")],
-        Annotated[CanaryFilterConfig, Tag("canary")],
-    ],
+    Annotated[LengthFilterConfig, Tag("length")]
+    | Annotated[LanguageFilterConfig, Tag("language")]
+    | Annotated[SentenceVarianceFilterConfig, Tag("sentence_variance")]
+    | Annotated[IFDFilterConfig, Tag("ifd")]
+    | Annotated[LabelingFilterConfig, Tag("labeling_engine")]
+    | Annotated[RewardModelFilterConfig, Tag("reward_model")]
+    | Annotated[PairDeltaFilterConfig, Tag("pair_delta")]
+    | Annotated[CompositeSelectConfig, Tag("select")]
+    | Annotated[SemanticSimilarityFilterConfig, Tag("semantic_similarity")]
+    | Annotated[CanaryFilterConfig, Tag("canary")]
+    | Annotated[DoubleCriticFilterConfig, Tag("double_critic")]
+    | Annotated[ComplexityEloFilterConfig, Tag("complexity_elo")],
     Discriminator("type"),
 ]
 
