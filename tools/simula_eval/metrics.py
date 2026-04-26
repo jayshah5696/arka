@@ -77,18 +77,82 @@ def _stage_stats(run_dir: Path) -> list[dict[str, Any]]:
     return out
 
 
-def compute(run_dir: Path, output_jsonl: Path, slice_name: str) -> dict[str, Any]:
+def _coverage_from_run(run_dir: Path, taxonomy_path: Path | None) -> dict | None:
+    """If a taxonomy and per-record taxonomy_nodes exist, compute level-ratio coverage.
+
+    Reads the LAST stage's parquet (after dedup + filters) so coverage reflects
+    the FINAL accepted set, not the raw generator output. Returns None when
+    coverage cannot be computed (no taxonomy passed, or no records carry
+    taxonomy_nodes).
+    """
+    if taxonomy_path is None or not taxonomy_path.exists():
+        return None
+    try:
+        import polars as pl
+
+        from arka.taxonomy.coverage import (
+            extract_sampled_from_record,
+            level_ratio_coverage,
+        )
+        from arka.taxonomy.models import TaxonomyBundle
+    except ImportError:
+        return None
+
+    stages_root = run_dir / "stages"
+    if not stages_root.exists():
+        return None
+
+    # Find the last stage that wrote data.parquet.
+    candidates = sorted(
+        (d for d in stages_root.iterdir() if d.is_dir() and (d / "data.parquet").exists()),
+        key=lambda d: d.name,
+    )
+    if not candidates:
+        return None
+    last_data = candidates[-1] / "data.parquet"
+
+    df = pl.read_parquet(last_data)
+    sampled_per_record: list = []
+    for row in df.iter_rows(named=True):
+        scores_json = row.get("scores_json")
+        if not scores_json:
+            sampled_per_record.append(None)
+            continue
+        scores = json.loads(scores_json)
+        sampled_per_record.append(
+            extract_sampled_from_record({"scores": scores})
+        )
+
+    if not any(sampled_per_record):
+        return None
+
+    bundle = TaxonomyBundle.from_yaml(taxonomy_path)
+    report = level_ratio_coverage(bundle, sampled_per_record)
+    return {
+        "by_level": {str(k): round(v, 4) for k, v in report.by_level.items()},
+        "by_factor": {
+            f: {str(k): round(v, 4) for k, v in d.items()}
+            for f, d in report.by_factor.items()
+        },
+        "unknown_factors": sorted(report.unknown_factors),
+        "unknown_node_count": len(report.unknown_nodes),
+        "records_with_taxonomy_assignment": sum(
+            1 for s in sampled_per_record if s
+        ),
+        "records_total": len(sampled_per_record),
+    }
+
+
+def compute(
+    run_dir: Path,
+    output_jsonl: Path,
+    slice_name: str,
+    taxonomy_path: Path | None = None,
+) -> dict[str, Any]:
     records = _load_jsonl(output_jsonl) if output_jsonl.exists() else []
     texts = [_extract_text(r) for r in records]
 
     stage_stats = _stage_stats(run_dir)
-    by_stage = {s["__stage"]: s for s in stage_stats}
-
-    def _count(stage: str) -> int | None:
-        s = by_stage.get(stage)
-        if not s:
-            return None
-        return s.get("output_records") or s.get("kept") or s.get("count")
 
     metrics = {
         "slice": slice_name,
@@ -106,6 +170,10 @@ def compute(run_dir: Path, output_jsonl: Path, slice_name: str) -> dict[str, Any
         metrics["text_chars_mean"] = statistics.mean(char_lens)
         metrics["text_chars_median"] = statistics.median(char_lens)
 
+    coverage = _coverage_from_run(run_dir, taxonomy_path)
+    if coverage is not None:
+        metrics["taxonomic_coverage"] = coverage
+
     return metrics
 
 
@@ -115,9 +183,16 @@ def main() -> None:
     ap.add_argument("output_jsonl", type=Path)
     ap.add_argument("--name", required=True, help="Slice name, e.g. '00-baseline'")
     ap.add_argument("--out", type=Path, default=None, help="Where to write metrics.json")
+    ap.add_argument(
+        "--taxonomy",
+        type=Path,
+        default=None,
+        help="Optional path to a TaxonomyBundle YAML. If set, level-ratio "
+        "coverage is computed from any per-record taxonomy_nodes assignments.",
+    )
     args = ap.parse_args()
 
-    metrics = compute(args.run_dir, args.output_jsonl, args.name)
+    metrics = compute(args.run_dir, args.output_jsonl, args.name, args.taxonomy)
     out = args.out or (args.output_jsonl.parent / "metrics.json")
     out.write_text(json.dumps(metrics, indent=2, default=str))
     print(json.dumps(metrics, indent=2, default=str))
