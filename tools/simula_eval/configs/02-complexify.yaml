@@ -1,0 +1,76 @@
+# Slice 2 — Evol-Instruct generator using ONLY the new `complexify` operator.
+# Same seeds, same dedup + filters as slice 0. Difference: generator is now
+# evol_instruct with rounds=1 and complexify is the only operator. We expect:
+#   - higher per-record token count (complexified instructions are longer)
+#   - slight drop in dedup rate (complexified outputs diverge from each other)
+#   - higher avg pairwise cosine distance (complexity drift adds breadth)
+# This is Simula's 'local complexity' axis isolated from everything else.
+version: "1"
+run_id: null
+
+llm:
+  provider: openai
+  model: google/gemini-3.1-flash-lite-preview
+  api_key: ${OPENROUTER_API_KEY}
+  base_url: https://openrouter.ai/api/v1
+  timeout_seconds: 60
+  max_retries: 3
+  openai_compatible:
+    referer: https://github.com/jayshah5696/arka
+    title: arka-simula
+
+executor:
+  mode: threadpool
+  max_workers: 6
+
+data_source:
+  type: seeds
+  # Personal writing-assistant seeds (humanize-rl). Pulled from outside the repo;
+  # see tools/simula_eval/README.md for the copy command.
+  path: ../../../scratch/simula-eval/seeds/human_seeds.jsonl
+
+generator:
+  type: evol_instruct
+  # Apples-to-apples target with slice 0/1 (50 seeds * branching_factor 3 -> 150 children).
+  target_count: 150
+  generation_multiplier: 1
+  rounds: 1
+  branching_factor: 3
+  operators:
+    - complexify
+  filter:
+    min_edit_distance_chars: 20
+    min_instruction_chars: 20
+    refusal_keywords:
+      - "I cannot"
+      - "I'm unable"
+      - "As an AI"
+
+dedup:
+  - type: exact
+  - type: near
+    lsh_bands: 16
+
+filters:
+  target_count: 150
+  stages:
+    - type: length
+      min_instruction_chars: 20
+      max_instruction_chars: 2048
+      min_response_chars: 40
+      max_response_chars: 4096
+    - type: language
+      allowed: [en]
+# NOTE: Slice 0 baseline intentionally omits the labeling-engine quality filter so
+# the only quality gate is structural (length+lang). Slice 1 will introduce the
+# Simula-style double-critic and we will compare against THIS clean baseline.
+# (There is also a pre-existing KeyError bug in the single-judge filter when the
+# judge LLM returns a partial scores dict — tracked separately.)
+
+embeddings:
+  provider: huggingface
+  model: BAAI/bge-small-en-v1.5
+
+output:
+  format: chatml
+  path: ../../../scratch/simula-eval/02-complexify/dataset.jsonl
