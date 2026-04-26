@@ -223,6 +223,57 @@ def test_double_critic_passes_through_non_conversation_records(tmp_path: Path) -
     assert fake.calls == 0
 
 
+def test_double_critic_uses_llm_override_when_set(tmp_path: Path) -> None:
+    """Slice 1.5 — a stage-level llm_override (different model / base_url) must
+    be applied to the critic LLMClient. We assert that when override.model is set
+    the resolved client is constructed against the override, not the top-level
+    config. We do NOT make a real HTTP call — we monkeypatch the LLMClient
+    constructor so we can capture the LLMConfig it received.
+    """
+    from arka.pipeline import double_critic_stage as dc_module
+    from arka.pipeline.double_critic_stage import DoubleCriticFilterStage
+
+    base_dict = _base_config_dict(model="gen-model")
+    base_dict["filters"]["stages"] = [
+        {
+            "type": "double_critic",
+            "llm_override": {"model": "strong-critic-model"},
+        }
+    ]
+    config = ConfigLoader().load_dict(base_dict)
+
+    captured: list[Any] = []
+
+    fake = FakeDoubleCriticClient([("yes", "no")])
+
+    class _CapturingClient:
+        def __init__(self, *, config) -> None:  # noqa: ANN001 — mirrors LLMClient
+            captured.append(config)
+            self._inner = fake
+
+        def complete_structured(self, messages, schema):
+            return self._inner.complete_structured(messages, schema)
+
+    # Stage with NO injected client — must construct one through LLMClient(...)
+    # which we monkeypatch in the module.
+    original = dc_module.LLMClient
+    try:
+        dc_module.LLMClient = _CapturingClient  # type: ignore[assignment]
+        stage = DoubleCriticFilterStage()
+        records = [_make_record("r1", "What is 2+2?", "4")]
+        kept = stage.run(records, _ctx(config, tmp_path))
+    finally:
+        dc_module.LLMClient = original  # type: ignore[assignment]
+
+    assert len(kept) == 1
+    assert len(captured) == 1, "LLMClient must be constructed once for the stage"
+    used_config = captured[0]
+    # Must reflect the override, not the top-level model:
+    assert used_config.model == "strong-critic-model", (
+        f"expected critic to use override model 'strong-critic-model', got {used_config.model!r}"
+    )
+
+
 def test_double_critic_yes_and_no_prompts_are_distinct(tmp_path: Path) -> None:
     """The two critic calls must use semantically inverse prompts. We assert that
     the yes-call mentions 'correct' positively and the no-call mentions 'incorrect',

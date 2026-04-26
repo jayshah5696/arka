@@ -23,6 +23,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from arka.config.models import resolve_llm_override
 from arka.llm.client import LLMClient, LLMClientError
 from arka.pipeline.filter_stages import _drop_record, _write_filter_artifacts
 from arka.pipeline.models import StageContext
@@ -103,11 +104,9 @@ class DoubleCriticFilterStage(Stage):
         self._llm_client = llm_client
         self._output_writer = OutputWriter()
 
-    # NOTE: filter_config is currently a no-op (no tunable knobs). The config
-    # entry exists so users can opt the stage in/out via YAML; future knobs
-    # (e.g. allow majority-of-N, alternate prompt templates) land here.
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        if ctx.config.filters.get_stage_config("double_critic") is None:
+        filter_config = ctx.config.filters.get_stage_config("double_critic")
+        if filter_config is None:
             # Stage was constructed but config absent → no-op (defensive).
             return records
 
@@ -128,7 +127,12 @@ class DoubleCriticFilterStage(Stage):
             )
             return list(records)
 
-        client = self._llm_client or LLMClient(config=ctx.config.llm)
+        # Apply per-stage llm_override so the critic can use a stronger model than
+        # the generator (paper's setup; matters most when generator==critic share
+        # blind spots). When llm_override is None, falls through to top-level llm.
+        override = getattr(filter_config, "llm_override", None)
+        critic_llm_config = resolve_llm_override(ctx.config.llm, override)
+        client = self._llm_client or LLMClient(config=critic_llm_config)
 
         # Run all 2N critic calls concurrently with the same worker budget the
         # rest of the pipeline uses. Each record's two calls are independent; we
