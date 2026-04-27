@@ -2,19 +2,16 @@
 
 from __future__ import annotations
 
-import json
 import statistics
 from pathlib import Path
 from typing import Any
 
-from arka.config.models import resolve_llm_override
 from arka.labeling.engine import LabelingEngine
 from arka.labeling.rubric import RubricLoader
-from arka.llm.client import LLMClient
+from arka.pipeline.artifacts import StageArtifacts, StageReport
 from arka.pipeline.models import StageContext
-from arka.pipeline.output import OutputWriter
 from arka.pipeline.stages import Stage
-from arka.records.models import ConversationRecord, Record, RecordScores, StageEvent
+from arka.records.models import ConversationRecord, Record, RecordScores
 
 
 class LabelingScoreStage(Stage):
@@ -44,7 +41,7 @@ class LabelingScoreStage(Stage):
                 f"{rubric_path}"
             )
         rubric = RubricLoader().load(rubric_path)
-        llm_client = self._llm_client or LLMClient(config=ctx.config.llm)
+        llm_client = self._llm_client or ctx.llm_client()
         engine = LabelingEngine(llm_client=llm_client)
 
         conversation_records: list[ConversationRecord] = [
@@ -106,15 +103,15 @@ class LabelingScoreStage(Stage):
         scored_count: int,
         scored_overall: list[float],
     ) -> None:
-        ctx.work_dir.mkdir(parents=True, exist_ok=True)
-        stats = {
-            "stage": self.name,
-            "count_in": scored_count,
-            "count_out": scored_count,
-            "scored_count": scored_count,
-            "quality_distribution": self._quality_distribution(scored_overall),
-        }
-        (ctx.work_dir / "stats.json").write_text(json.dumps(stats, indent=2))
+        StageArtifacts(ctx).write(
+            report=StageReport(
+                stage=self.name,
+                count_in=scored_count,
+                count_out=scored_count,
+                scored_count=scored_count,
+                quality_distribution=self._quality_distribution(scored_overall),
+            ),
+        )
 
     def _quality_distribution(self, scores: list[float]) -> dict[str, float] | None:
         if not scores:
@@ -142,17 +139,15 @@ class RewardModelScoringStage(Stage):
 
     def __init__(self, llm_client: Any | None = None) -> None:
         self._llm_client = llm_client
-        self._output_writer = OutputWriter()
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
         reward_config = ctx.config.filters.get_stage_config("reward_model")
         if reward_config is None:
             return records
 
-        effective_llm_config = resolve_llm_override(
-            ctx.config.llm, reward_config.llm_override
+        llm_client = self._llm_client or ctx.llm_client(
+            override=reward_config.llm_override
         )
-        llm_client = self._llm_client or LLMClient(config=effective_llm_config)
 
         kept_records: list[Record] = []
         dropped_records: list[Record] = []
@@ -186,13 +181,10 @@ class RewardModelScoringStage(Stage):
             if reward_config.min_score is not None and score < reward_config.min_score:
                 reason_code = "low_reward_score"
                 dropped_records.append(
-                    self._drop_record(
-                        record=updated_record,
-                        reason_code=reason_code,
-                        details=(
-                            f"reward_model={score} < "
-                            f"min_score={reward_config.min_score}"
-                        ),
+                    updated_record.dropped_by(
+                        self.name,
+                        reason_code,
+                        f"reward_model={score} < min_score={reward_config.min_score}",
                     )
                 )
                 drop_reasons[reason_code] = drop_reasons.get(reason_code, 0) + 1
@@ -209,22 +201,6 @@ class RewardModelScoringStage(Stage):
         )
         return kept_records
 
-    def _drop_record(self, record: Record, reason_code: str, details: str) -> Record:
-        return record.model_copy(
-            update={
-                "stage_events": [
-                    *record.stage_events,
-                    StageEvent(
-                        stage=self.name,
-                        action="dropped",
-                        reason_code=reason_code,
-                        details=details,
-                        seq=len(record.stage_events) + 1,
-                    ),
-                ]
-            }
-        )
-
     def _write_artifacts(
         self,
         *,
@@ -235,20 +211,17 @@ class RewardModelScoringStage(Stage):
         drop_reasons: dict[str, int],
         scores: list[float],
     ) -> None:
-        ctx.work_dir.mkdir(parents=True, exist_ok=True)
-        self._output_writer.write_dropped_parquet(
-            records=dropped_records,
-            path=ctx.work_dir / "dropped.parquet",
+        StageArtifacts(ctx).write(
+            report=StageReport(
+                stage=self.name,
+                count_in=count_in,
+                count_out=count_out,
+                dropped_count=len(dropped_records),
+                drop_reasons=drop_reasons,
+                reward_distribution=self._score_distribution(scores),
+            ),
+            dropped=dropped_records,
         )
-        stats = {
-            "stage": self.name,
-            "count_in": count_in,
-            "count_out": count_out,
-            "dropped_count": len(dropped_records),
-            "drop_reasons": drop_reasons,
-            "reward_distribution": self._score_distribution(scores),
-        }
-        (ctx.work_dir / "stats.json").write_text(json.dumps(stats, indent=2))
 
     def _score_distribution(self, scores: list[float]) -> dict[str, float] | None:
         if not scores:
@@ -275,7 +248,7 @@ class PairDeltaFilterStage(Stage):
     stage_action = "filtered"
 
     def __init__(self) -> None:
-        self._output_writer = OutputWriter()
+        pass
 
     def run(
         self,
@@ -318,8 +291,8 @@ class PairDeltaFilterStage(Stage):
                     if ratio > pair_config.length_ratio_max:
                         reason = "length_ratio_exceeded"
                         dropped_records.append(
-                            self._drop_record(
-                                record,
+                            record.dropped_by(
+                                self.name,
                                 reason,
                                 f"ratio={ratio:.2f} > max={pair_config.length_ratio_max}",
                             )
@@ -332,8 +305,8 @@ class PairDeltaFilterStage(Stage):
             if delta < pair_config.min_delta:
                 reason = "insufficient_delta"
                 dropped_records.append(
-                    self._drop_record(
-                        record,
+                    record.dropped_by(
+                        self.name,
                         reason,
                         f"delta={delta:.4f} < min_delta={pair_config.min_delta}",
                     )
@@ -367,22 +340,6 @@ class PairDeltaFilterStage(Stage):
             return len(record.payload.response)
         return 0
 
-    def _drop_record(self, record: Record, reason_code: str, details: str) -> Record:
-        return record.model_copy(
-            update={
-                "stage_events": [
-                    *record.stage_events,
-                    StageEvent(
-                        stage=self.name,
-                        action="dropped",
-                        reason_code=reason_code,
-                        details=details,
-                        seq=len(record.stage_events) + 1,
-                    ),
-                ]
-            }
-        )
-
     def _write_artifacts(
         self,
         *,
@@ -392,19 +349,16 @@ class PairDeltaFilterStage(Stage):
         count_out: int,
         drop_reasons: dict[str, int],
     ) -> None:
-        ctx.work_dir.mkdir(parents=True, exist_ok=True)
-        self._output_writer.write_dropped_parquet(
-            records=dropped_records,
-            path=ctx.work_dir / "dropped.parquet",
+        StageArtifacts(ctx).write(
+            report=StageReport(
+                stage=self.name,
+                count_in=count_in,
+                count_out=count_out,
+                dropped_count=len(dropped_records),
+                drop_reasons=drop_reasons,
+            ),
+            dropped=dropped_records,
         )
-        stats = {
-            "stage": self.name,
-            "count_in": count_in,
-            "count_out": count_out,
-            "dropped_count": len(dropped_records),
-            "drop_reasons": drop_reasons,
-        }
-        (ctx.work_dir / "stats.json").write_text(json.dumps(stats, indent=2))
 
 
 class CompositeSelectStage(Stage):
@@ -418,7 +372,7 @@ class CompositeSelectStage(Stage):
     stage_action = "selected"
 
     def __init__(self) -> None:
-        self._output_writer = OutputWriter()
+        pass
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
         select_config = ctx.config.filters.get_stage_config("select")
@@ -442,8 +396,8 @@ class CompositeSelectStage(Stage):
         kept = [record for _, record in scored_pairs[:target_count]]
 
         dropped_with_events = [
-            self._drop_record(
-                record,
+            record.dropped_by(
+                self.name,
                 "composite_select",
                 f"rank={i + target_count + 1} exceeds target_count={target_count}",
             )
@@ -467,22 +421,6 @@ class CompositeSelectStage(Stage):
             total += float(value) * weight
         return total
 
-    def _drop_record(self, record: Record, reason_code: str, details: str) -> Record:
-        return record.model_copy(
-            update={
-                "stage_events": [
-                    *record.stage_events,
-                    StageEvent(
-                        stage=self.name,
-                        action="dropped",
-                        reason_code=reason_code,
-                        details=details,
-                        seq=len(record.stage_events) + 1,
-                    ),
-                ]
-            }
-        )
-
     def _write_artifacts(
         self,
         *,
@@ -491,18 +429,15 @@ class CompositeSelectStage(Stage):
         count_in: int,
         count_out: int,
     ) -> None:
-        ctx.work_dir.mkdir(parents=True, exist_ok=True)
-        self._output_writer.write_dropped_parquet(
-            records=dropped_records,
-            path=ctx.work_dir / "dropped.parquet",
+        StageArtifacts(ctx).write(
+            report=StageReport(
+                stage=self.name,
+                count_in=count_in,
+                count_out=count_out,
+                dropped_count=len(dropped_records),
+                drop_reasons={"composite_select": len(dropped_records)}
+                if dropped_records
+                else {},
+            ),
+            dropped=dropped_records,
         )
-        stats = {
-            "stage": self.name,
-            "count_in": count_in,
-            "count_out": count_out,
-            "dropped_count": len(dropped_records),
-            "drop_reasons": {"composite_select": len(dropped_records)}
-            if dropped_records
-            else {},
-        }
-        (ctx.work_dir / "stats.json").write_text(json.dumps(stats, indent=2))

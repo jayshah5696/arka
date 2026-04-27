@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-import json
 import statistics
 from pathlib import Path
 from typing import Any
 
-from arka.llm.client import LLMClient, LLMClientError
+from arka.llm.client import LLMClientError
 from arka.llm.models import SequenceScore
-from arka.pipeline.output import OutputWriter
+from arka.pipeline.artifacts import StageArtifacts, StageReport
 from arka.pipeline.stages import Stage
-from arka.records.models import ConversationRecord, Record, StageEvent
+from arka.records.models import ConversationRecord, Record
 
 
 class IFDFilterStage(Stage):
@@ -19,14 +18,13 @@ class IFDFilterStage(Stage):
     def __init__(self, *, project_root: Path, llm_client: Any | None = None) -> None:
         self.project_root = project_root
         self._llm_client = llm_client
-        self._output_writer = OutputWriter()
 
     def run(self, records: list[Record], ctx) -> list[Record]:
         filter_config = ctx.config.filters.get_stage_config("ifd")
         if filter_config is None:
             return records
 
-        llm_client = self._llm_client or LLMClient(config=ctx.config.llm)
+        llm_client = self._llm_client or ctx.llm_client()
         if not llm_client.supports_sequence_scoring():
             raise ValueError(
                 "IFD requires provider/model response-scoring capability; "
@@ -70,10 +68,10 @@ class IFDFilterStage(Stage):
 
             reason_code = "low_ifd"
             dropped_records.append(
-                self._drop_record(
-                    record=updated_record,
-                    reason_code=reason_code,
-                    details=(f"ifd={ifd_score} < min_score={filter_config.min_score}"),
+                updated_record.dropped_by(
+                    self.name,
+                    reason_code,
+                    f"ifd={ifd_score} < min_score={filter_config.min_score}",
                 )
             )
             drop_reasons[reason_code] = drop_reasons.get(reason_code, 0) + 1
@@ -88,22 +86,6 @@ class IFDFilterStage(Stage):
         )
         return kept_records
 
-    def _drop_record(self, record: Record, reason_code: str, details: str) -> Record:
-        return record.model_copy(
-            update={
-                "stage_events": [
-                    *record.stage_events,
-                    StageEvent(
-                        stage=self.name,
-                        action="dropped",
-                        reason_code=reason_code,
-                        details=details,
-                        seq=len(record.stage_events) + 1,
-                    ),
-                ]
-            }
-        )
-
     def _write_artifacts(
         self,
         *,
@@ -114,21 +96,18 @@ class IFDFilterStage(Stage):
         drop_reasons: dict[str, int],
         scores: list[float],
     ) -> None:
-        ctx.work_dir.mkdir(parents=True, exist_ok=True)
-        self._output_writer.write_dropped_parquet(
-            records=dropped_records,
-            path=ctx.work_dir / "dropped.parquet",
+        StageArtifacts(ctx).write(
+            report=StageReport(
+                stage=self.name,
+                count_in=scored_count,
+                count_out=kept_count,
+                dropped_count=len(dropped_records),
+                drop_reasons=drop_reasons,
+                scored_count=scored_count,
+                ifd_distribution=ifd_distribution(scores),
+            ),
+            dropped=dropped_records,
         )
-        stats = {
-            "stage": self.name,
-            "count_in": scored_count,
-            "count_out": kept_count,
-            "scored_count": scored_count,
-            "dropped_count": len(dropped_records),
-            "drop_reasons": drop_reasons,
-            "ifd_distribution": ifd_distribution(scores),
-        }
-        (ctx.work_dir / "stats.json").write_text(json.dumps(stats, indent=2))
 
 
 def compute_ifd(conditioned: SequenceScore, unconditioned: SequenceScore) -> float:

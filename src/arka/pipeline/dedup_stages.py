@@ -7,10 +7,10 @@ from typing import Any
 
 import polars as pl
 
+from arka.pipeline.artifacts import StageArtifacts, StageReport
 from arka.pipeline.models import StageContext
-from arka.pipeline.output import OutputWriter
 from arka.pipeline.stages import Stage
-from arka.records.models import ConversationRecord, Record, StageEvent
+from arka.records.models import ConversationRecord, Record
 
 
 class ExactDedupStage(Stage):
@@ -18,7 +18,7 @@ class ExactDedupStage(Stage):
     stage_action = "deduplicated"
 
     def __init__(self) -> None:
-        self._output_writer = OutputWriter()
+        pass
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
         # Stage is only instantiated when present in config list;
@@ -45,10 +45,10 @@ class ExactDedupStage(Stage):
 
             cluster_members[record.content_hash].append(record)
             dropped_records.append(
-                self._drop_record(
-                    record=record,
-                    reason_code="exact_duplicate",
-                    details=f"duplicate_of={representative.id}",
+                record.dropped_by(
+                    self.name,
+                    "exact_duplicate",
+                    f"duplicate_of={representative.id}",
                 )
             )
             drop_reasons["exact_duplicate"] = drop_reasons.get("exact_duplicate", 0) + 1
@@ -70,7 +70,6 @@ class ExactDedupStage(Stage):
 
         _write_artifacts(
             stage_name=self.name,
-            output_writer=self._output_writer,
             ctx=ctx,
             dropped_records=dropped_records,
             clusters=clusters,
@@ -80,29 +79,13 @@ class ExactDedupStage(Stage):
         )
         return kept_records
 
-    def _drop_record(self, record: Record, reason_code: str, details: str) -> Record:
-        return record.model_copy(
-            update={
-                "stage_events": [
-                    *record.stage_events,
-                    StageEvent(
-                        stage=self.name,
-                        action="dropped",
-                        reason_code=reason_code,
-                        details=details,
-                        seq=len(record.stage_events) + 1,
-                    ),
-                ]
-            }
-        )
-
 
 class NearDedupStage(Stage):
     name = "02d_near_dedup"
     stage_action = "deduplicated"
 
     def __init__(self) -> None:
-        self._output_writer = OutputWriter()
+        pass
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
         # Stage is only instantiated when present in config list;
@@ -184,10 +167,10 @@ class NearDedupStage(Stage):
             representative = representatives[matched_cluster_id]
             cluster_members[matched_cluster_id].append(record)
             dropped_records.append(
-                self._drop_record(
-                    record=record,
-                    reason_code=matched_reason,
-                    details=f"duplicate_of={representative.id}",
+                record.dropped_by(
+                    self.name,
+                    matched_reason,
+                    f"duplicate_of={representative.id}",
                 )
             )
             drop_reasons[matched_reason] = drop_reasons.get(matched_reason, 0) + 1
@@ -209,7 +192,6 @@ class NearDedupStage(Stage):
 
         _write_artifacts(
             stage_name=self.name,
-            output_writer=self._output_writer,
             ctx=ctx,
             dropped_records=dropped_records,
             clusters=clusters,
@@ -232,27 +214,10 @@ class NearDedupStage(Stage):
     def _cluster_id(self, instruction: str) -> str:
         return hashlib.sha256(instruction.strip().encode("utf-8")).hexdigest()
 
-    def _drop_record(self, record: Record, reason_code: str, details: str) -> Record:
-        return record.model_copy(
-            update={
-                "stage_events": [
-                    *record.stage_events,
-                    StageEvent(
-                        stage=self.name,
-                        action="dropped",
-                        reason_code=reason_code,
-                        details=details,
-                        seq=len(record.stage_events) + 1,
-                    ),
-                ]
-            }
-        )
-
 
 def _write_artifacts(
     *,
     stage_name: str,
-    output_writer: OutputWriter,
     ctx: StageContext,
     dropped_records: list[Record],
     clusters: list[dict[str, Any]],
@@ -260,12 +225,7 @@ def _write_artifacts(
     count_out: int,
     drop_reasons: dict[str, int],
 ) -> None:
-    ctx.work_dir.mkdir(parents=True, exist_ok=True)
-    output_writer.write_dropped_parquet(
-        records=dropped_records,
-        path=ctx.work_dir / "dropped.parquet",
-    )
-    pl.DataFrame(
+    clusters_df = pl.DataFrame(
         clusters,
         schema={
             "cluster_id": pl.String,
@@ -273,16 +233,19 @@ def _write_artifacts(
             "member_count": pl.Int64,
             "member_ids_json": pl.String,
         },
-    ).write_parquet(ctx.work_dir / "clusters.parquet")
-    stats = {
-        "stage": stage_name,
-        "count_in": count_in,
-        "count_out": count_out,
-        "dropped_count": len(dropped_records),
-        "drop_reasons": drop_reasons,
-        "cluster_count": len(clusters),
-    }
-    (ctx.work_dir / "stats.json").write_text(json.dumps(stats, indent=2))
+    )
+    StageArtifacts(ctx).write(
+        report=StageReport(
+            stage=stage_name,
+            count_in=count_in,
+            count_out=count_out,
+            dropped_count=len(dropped_records),
+            drop_reasons=drop_reasons,
+            cluster_count=len(clusters),
+        ),
+        dropped=dropped_records,
+        extras={"clusters.parquet": clusters_df},
+    )
 
 
 _TOKEN_PATTERN = re.compile(r"\w+", re.UNICODE)

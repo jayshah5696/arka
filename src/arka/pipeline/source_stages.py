@@ -11,6 +11,7 @@ from pypdf.errors import PdfReadError
 
 from arka.pipeline.models import StageContext
 from arka.pipeline.stages import Stage
+from arka.records.identity import config_hash, content_hash, file_hash, record_id
 from arka.records.models import (
     ConversationPayload,
     ConversationRecord,
@@ -43,11 +44,15 @@ class SeedSourceStage(Stage):
         # SECURITY: Enforce max seed file size (50MB) to prevent OOM DOS
         if source_path.stat().st_size > 50 * 1024 * 1024:
             raise ValueError("Seed file exceeds maximum allowed size of 50MB")
-        config_hash = self._config_hash(ctx)
+        config_hash_value = config_hash(ctx.config)
         if source_path.suffix == ".jsonl":
-            return self._read_jsonl(source_path=source_path, config_hash=config_hash)
+            return self._read_jsonl(
+                source_path=source_path, config_hash=config_hash_value
+            )
         if source_path.suffix == ".csv":
-            return self._read_csv(source_path=source_path, config_hash=config_hash)
+            return self._read_csv(
+                source_path=source_path, config_hash=config_hash_value
+            )
         raise ValueError(f"Unsupported seed source format: {source_path.suffix}")
 
     def _read_jsonl(
@@ -98,52 +103,20 @@ class SeedSourceStage(Stage):
             instruction=normalized_instruction,
             response=normalized_response,
         )
-        content_hash = self._content_hash(payload)
-        record_id = self._record_id(payload)
+        rid = record_id(payload)
         return ConversationRecord(
-            id=record_id,
-            content_hash=content_hash,
+            id=rid,
+            content_hash=content_hash(payload),
             source=RecordSource(
                 type="seed",
-                seed_file_hash=self._file_hash(source_path),
+                seed_file_hash=file_hash(source_path),
             ),
-            lineage=RecordLineage(root_id=record_id, parent_ids=[]),
+            lineage=RecordLineage(root_id=rid, parent_ids=[]),
             payload=payload,
             scores=RecordScores(),
             config_hash=config_hash,
             created_at=datetime.now(UTC).isoformat(),
         )
-
-    def _content_hash(self, payload: ConversationPayload) -> str:
-        return hashlib.sha256(
-            payload.model_dump_json(exclude_none=True).encode("utf-8")
-        ).hexdigest()
-
-    def _record_id(self, payload: ConversationPayload) -> str:
-        identity_payload = {
-            "payload": payload.model_dump(mode="json", exclude_none=True),
-            "lineage": {
-                "parent_ids": [],
-                "operator": None,
-                "round": None,
-                "depth": None,
-            },
-        }
-        return hashlib.sha256(
-            json.dumps(identity_payload, sort_keys=True, separators=(",", ":")).encode(
-                "utf-8"
-            )
-        ).hexdigest()
-
-    def _file_hash(self, source_path: Path) -> str:
-        return hashlib.sha256(source_path.read_bytes()).hexdigest()
-
-    def _config_hash(self, ctx: StageContext) -> str:
-        return hashlib.sha256(
-            json.dumps(ctx.config.model_dump(mode="json"), sort_keys=True).encode(
-                "utf-8"
-            )
-        ).hexdigest()
 
 
 class PDFSourceStage(Stage):
@@ -185,8 +158,8 @@ class PDFSourceStage(Stage):
                 "PDF extraction produced no text; scanned or empty PDFs are not supported"
             )
 
-        config_hash = self._config_hash(ctx)
-        source_hash = hashlib.sha256(source_path.read_bytes()).hexdigest()
+        config_hash_value = config_hash(ctx.config)
+        source_hash = file_hash(source_path)
         doc_id = source_path.stem
         chunk_size = ctx.config.data_source.chunk_size_chars or 3000
         overlap = ctx.config.data_source.chunk_overlap_chars or 300
@@ -211,12 +184,15 @@ class PDFSourceStage(Stage):
                 word_count=len(text.split()),
                 chunk_strategy=ctx.config.data_source.chunk_strategy or "fixed",
             )
-            record_id = hashlib.sha256(
+            # NOTE: PDF chunk ids historically use sha256(payload_json) directly,
+            # not the (payload, lineage) record_id helper. Preserved for stable
+            # ids across runs.
+            chunk_id_hash = hashlib.sha256(
                 payload.model_dump_json(exclude_none=True).encode("utf-8")
             ).hexdigest()
             chunks.append(
                 GroundedChunkRecord(
-                    id=record_id,
+                    id=chunk_id_hash,
                     content_hash=hashlib.sha256(text.encode("utf-8")).hexdigest(),
                     source=RecordSource(
                         type="pdf_chunk",
@@ -228,18 +204,11 @@ class PDFSourceStage(Stage):
                         char_end=char_end,
                         source_hash=source_hash,
                     ),
-                    lineage=RecordLineage(root_id=record_id, parent_ids=[]),
+                    lineage=RecordLineage(root_id=chunk_id_hash, parent_ids=[]),
                     payload=payload,
                     scores=RecordScores(),
-                    config_hash=config_hash,
+                    config_hash=config_hash_value,
                     created_at=datetime.now(UTC).isoformat(),
                 )
             )
         return chunks
-
-    def _config_hash(self, ctx: StageContext) -> str:
-        return hashlib.sha256(
-            json.dumps(ctx.config.model_dump(mode="json"), sort_keys=True).encode(
-                "utf-8"
-            )
-        ).hexdigest()

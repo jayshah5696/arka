@@ -4,9 +4,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from arka.config.models import ResolvedConfig
+from pydantic import BaseModel, ConfigDict, Field
+
+from arka.config.models import ResolvedConfig, StageLLMOverride
 
 if TYPE_CHECKING:
+    from arka.llm.client import LLMClient
+    from arka.llm.factory import LLMClientFactory
     from arka.pipeline.checkpoint import CheckpointManager
 
 
@@ -19,6 +23,26 @@ class StageContext:
     executor_mode: str
     max_workers: int
     checkpoint_manager: CheckpointManager | None = None
+    # Optional injected factory used by the StageContext.llm_client() seam.
+    # Tests can pass a fake; production runs leave it None and the seam
+    # falls back to llm.factory.default_factory.
+    llm_client_factory: LLMClientFactory | None = field(default=None)
+
+    def llm_client(self, *, override: StageLLMOverride | None = None) -> LLMClient:
+        """Build an LLMClient for the current Run, applying any per-Stage override.
+
+        The single seam Stages should use instead of constructing
+        ``LLMClient(config=ctx.config.llm)`` themselves. Resolves the override
+        against ``self.config.llm`` and delegates to the injected factory
+        (or the default factory). See ``arka.llm.factory`` for the rationale.
+        """
+        from arka.llm.factory import build_client
+
+        return build_client(
+            base_config=self.config.llm,
+            override=override,
+            factory=self.llm_client_factory,
+        )
 
 
 @dataclass(frozen=True)
@@ -30,21 +54,37 @@ class RunResult:
     output_path: Path
 
 
-@dataclass(frozen=True)
-class StageErrorInfo:
+class StageErrorInfo(BaseModel):
+    """A typed error captured when a Stage raises during a Run.
+
+    Promoted to Pydantic alongside ``StageStat`` per ADR-0001's deferred
+    cleanup item: report aggregation has grown enough that boundary-style
+    typing buys more than a frozen dataclass does.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
     type: str
     message: str
 
 
-@dataclass(frozen=True)
-class StageStat:
+class StageStat(BaseModel):
+    """Per-Stage row aggregated by the runner across one Run.
+
+    Combines the typed StageReport that the Stage wrote to ``stats.json``
+    with the runner's view of resume/error/status. Exposed in the Manifest's
+    ``stage_stats`` and in the run report's ``stage_yields``.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
     stage: str
     count_in: int
     count_out: int
     status: str
     resumed: bool
     dropped_count: int = 0
-    drop_reasons: dict[str, int] = field(default_factory=dict)
+    drop_reasons: dict[str, int] = Field(default_factory=dict)
     quality_distribution: dict[str, float] | None = None
     error: StageErrorInfo | None = None
     cost_usd: float | None = None

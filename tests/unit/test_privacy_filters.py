@@ -121,7 +121,7 @@ def test_semantic_similarity_filter_drops_high_similarity(
     seed_vec = np.array([1.0, 0.0, 0.0])
     diff_vec = np.array([0.0, 1.0, 0.0])
 
-    def fake_embed(self, *, config, texts, checkpoint_manager=None):
+    def fake_embed(self, texts, *, checkpoint_manager=None):
         vecs = []
         for text in texts:
             if "Rust" in text:
@@ -130,10 +130,10 @@ def test_semantic_similarity_filter_drops_high_similarity(
                 vecs.append(seed_vec)
         return np.array(vecs)
 
-    # The stage imports PipelineRunner lazily; mock at the class level
-    from arka.pipeline.runner import PipelineRunner
+    # Patch the new Embedder seam (lifted out of PipelineRunner).
+    from arka.embeddings import Embedder
 
-    monkeypatch.setattr(PipelineRunner, "_embed_texts", fake_embed)
+    monkeypatch.setattr(Embedder, "embed", fake_embed)
 
     records = [seed, gen_similar, gen_different]
     result = SemanticSimilarityFilterStage().run(records, ctx)

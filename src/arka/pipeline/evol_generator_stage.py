@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 from datetime import UTC, datetime
@@ -10,8 +9,8 @@ from typing import Any
 from pydantic import ValidationError
 
 from arka.common.models import StrictModel
-from arka.llm.client import LLMClient
 from arka.llm.models import TokenUsage
+from arka.pipeline.artifacts import StageArtifacts, StageReport
 from arka.pipeline.evol_instruct import (
     build_evol_messages,
     build_response_messages,
@@ -22,6 +21,15 @@ from arka.pipeline.evol_instruct import (
 from arka.pipeline.models import StageContext
 from arka.pipeline.output import OutputWriter
 from arka.pipeline.stages import Stage
+from arka.records.identity import (
+    config_hash as compute_config_hash,
+)
+from arka.records.identity import (
+    content_hash as compute_content_hash,
+)
+from arka.records.identity import (
+    record_id as compute_record_id,
+)
 from arka.records.models import (
     ConversationPayload,
     ConversationRecord,
@@ -29,7 +37,6 @@ from arka.records.models import (
     RecordLineage,
     RecordScores,
     RecordSource,
-    StageEvent,
 )
 
 logger = logging.getLogger(__name__)
@@ -87,7 +94,7 @@ class EvolInstructRoundStage(Stage):
             )
             return records
 
-        llm_client = self._llm_client or LLMClient(config=ctx.config.llm)
+        llm_client = self._llm_client or ctx.llm_client()
         operators = ctx.config.generator.operators
         branching_factor = ctx.config.generator.branching_factor or 1
         config_hash = self._config_hash(ctx)
@@ -131,13 +138,11 @@ class EvolInstructRoundStage(Stage):
                             )
                         )
                         dropped_records.append(
-                            self._drop_record(
-                                record=parent,
-                                reason_code=rejection_reason,
-                                details=(
-                                    f"operator={operator}; round={self.round_number}; "
-                                    f"candidate_instruction={evolved_instruction}"
-                                ),
+                            parent.dropped_by(
+                                self.name,
+                                rejection_reason,
+                                f"operator={operator}; round={self.round_number}; "
+                                f"candidate_instruction={evolved_instruction}",
                             )
                         )
                         drop_reasons[rejection_reason] = (
@@ -166,10 +171,10 @@ class EvolInstructRoundStage(Stage):
                         )
                     )
                     dropped_records.append(
-                        self._drop_record(
-                            record=parent,
-                            reason_code=reason_code,
-                            details=f"operator={operator}; round={self.round_number}",
+                        parent.dropped_by(
+                            self.name,
+                            reason_code,
+                            f"operator={operator}; round={self.round_number}",
                         )
                     )
                     drop_reasons[reason_code] = drop_reasons.get(reason_code, 0) + 1
@@ -294,7 +299,6 @@ class EvolInstructRoundStage(Stage):
             instruction=instruction,
             response=response,
         )
-        content_hash = self._content_hash(payload)
         lineage = RecordLineage(
             root_id=parent.lineage.root_id,
             parent_ids=[parent.id],
@@ -303,8 +307,8 @@ class EvolInstructRoundStage(Stage):
             depth=self.round_number,
         )
         return ConversationRecord(
-            id=self._record_id(payload, lineage),
-            content_hash=content_hash,
+            id=compute_record_id(payload, lineage),
+            content_hash=compute_content_hash(payload),
             source=RecordSource(
                 type="evolved",
                 doc_id=parent.source.doc_id,
@@ -321,22 +325,6 @@ class EvolInstructRoundStage(Stage):
             scores=RecordScores(),
             config_hash=config_hash,
             created_at=datetime.now(UTC).isoformat(),
-        )
-
-    def _drop_record(self, record: Record, reason_code: str, details: str) -> Record:
-        return record.model_copy(
-            update={
-                "stage_events": [
-                    *record.stage_events,
-                    StageEvent(
-                        stage=self.name,
-                        action="dropped",
-                        reason_code=reason_code,
-                        details=details,
-                        seq=len(record.stage_events) + 1,
-                    ),
-                ]
-            }
         )
 
     def _write_artifacts(
@@ -360,45 +348,24 @@ class EvolInstructRoundStage(Stage):
             ),
             encoding="utf-8",
         )
-        self._output_writer.write_dropped_parquet(
-            records=dropped_records,
-            path=ctx.work_dir / "dropped.parquet",
-        )
         costs: list[float] = []
         for row in raw_rows:
             for usage in (row.usage_instruction, row.usage_response):
                 if usage is not None and usage.cost_usd is not None:
                     costs.append(usage.cost_usd)
-        stats = {
+        report_kwargs: dict[str, Any] = {
             "stage": self.name,
             "count_in": frontier_count,
             "count_out": total_out_count,
-            "generated_count": len(generated_records),
             "dropped_count": len(dropped_records),
             "drop_reasons": drop_reasons,
+            "generated_count": len(generated_records),
             "cost_usd": round(sum(costs), 6) if costs else None,
         }
-        (ctx.work_dir / "stats.json").write_text(json.dumps(stats, indent=2))
-
-    def _content_hash(self, payload: ConversationPayload) -> str:
-        return hashlib.sha256(
-            payload.model_dump_json(exclude_none=True).encode("utf-8")
-        ).hexdigest()
-
-    def _record_id(self, payload: ConversationPayload, lineage: RecordLineage) -> str:
-        identity_payload = {
-            "payload": payload.model_dump(mode="json", exclude_none=True),
-            "lineage": lineage.model_dump(mode="json", exclude_none=True),
-        }
-        return hashlib.sha256(
-            json.dumps(identity_payload, sort_keys=True, separators=(",", ":")).encode(
-                "utf-8"
-            )
-        ).hexdigest()
+        StageArtifacts(ctx, writer=self._output_writer).write(
+            report=StageReport(**report_kwargs),
+            dropped=dropped_records,
+        )
 
     def _config_hash(self, ctx: StageContext) -> str:
-        return hashlib.sha256(
-            json.dumps(ctx.config.model_dump(mode="json"), sort_keys=True).encode(
-                "utf-8"
-            )
-        ).hexdigest()
+        return compute_config_hash(ctx.config)
