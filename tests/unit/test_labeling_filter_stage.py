@@ -73,7 +73,6 @@ BASE_CONFIG = {
         "target_count": 2,
         "generation_multiplier": 1,
     },
-    
     "filters": {
         "target_count": 2,
         "stages": [

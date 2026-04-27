@@ -179,7 +179,6 @@ def test_load_config_accepts_transform_generator_config() -> None:
                 "prompt_template": "Rewrite this text:\n{input_text}",
                 "preserve_original": True,
             },
-            
             "filters": {"target_count": 2},
             "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
         }
@@ -209,7 +208,6 @@ def test_load_config_rejects_transform_generator_missing_fields() -> None:
                     "output_field": "payload.response",
                     "prompt_template": "Rewrite this text:\n{input_text}",
                 },
-                
                 "filters": {"target_count": 2},
                 "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
             }
@@ -241,7 +239,6 @@ def test_load_config_accepts_valid_evol_instruct_config() -> None:
                     "breadth_mutation",
                 ],
             },
-            
             "filters": {"target_count": 2},
             "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
         }
@@ -273,7 +270,6 @@ def test_load_config_rejects_unknown_evol_operator() -> None:
                     "branching_factor": 1,
                     "operators": ["unknown_operator"],
                 },
-                
                 "filters": {"target_count": 2},
                 "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
             }
@@ -301,7 +297,6 @@ def test_load_config_rejects_zero_evol_rounds_or_branching() -> None:
                     "branching_factor": 1,
                     "operators": ["deepen"],
                 },
-                
                 "filters": {"target_count": 2},
                 "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
             }
@@ -327,7 +322,6 @@ def test_load_config_rejects_zero_evol_rounds_or_branching() -> None:
                     "branching_factor": 0,
                     "operators": ["deepen"],
                 },
-                
                 "filters": {"target_count": 2},
                 "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
             }
@@ -355,7 +349,6 @@ def test_load_config_accepts_transform_with_llm_override() -> None:
                     "model": "qwen/qwen3.5-9b",
                 },
             },
-            
             "filters": {"target_count": 2},
             "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
         }
