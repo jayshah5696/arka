@@ -71,8 +71,10 @@ def _ctx(tmp_path: Path) -> StageContext:
                 "target_count": 2,
                 "generation_multiplier": 1,
             },
-            
-            "filters": {"target_count": 2, "stages": [{"type": "ifd", "min_score": 0.2}]},
+            "filters": {
+                "target_count": 2,
+                "stages": [{"type": "ifd", "min_score": 0.2}],
+            },
             "embeddings": {"provider": "huggingface", "model": "all-MiniLM-L6-v2"},
             "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
         }

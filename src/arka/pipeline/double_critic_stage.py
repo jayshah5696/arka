@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 
 from arka.config.models import resolve_llm_override
 from arka.llm.client import LLMClient, LLMClientError
-from arka.pipeline.filter_stages import _drop_record, _write_filter_artifacts
+from arka.pipeline.filter_stages import _write_filter_artifacts
 from arka.pipeline.models import StageContext
 from arka.pipeline.output import OutputWriter
 from arka.pipeline.stages import Stage
@@ -117,13 +117,12 @@ class DoubleCriticFilterStage(Stage):
 
         if not conversation_records:
             _write_filter_artifacts(
-                self._output_writer,
                 ctx,
                 self.name,
-                count_in=len(records),
-                count_out=len(records),
-                dropped=[],
-                drop_reasons={},
+                len(records),
+                len(records),
+                [],
+                {},
             )
             return list(records)
 
@@ -181,7 +180,7 @@ class DoubleCriticFilterStage(Stage):
             if isinstance(yes_r, LLMClientError) or isinstance(no_r, LLMClientError):
                 reason = "double_critic_llm_error"
                 details = str(yes_r if isinstance(yes_r, LLMClientError) else no_r)
-                dropped.append(_drop_record(record, self.name, reason, details))
+                dropped.append(record.dropped_by(self.name, reason, details))
                 drop_reasons[reason] = drop_reasons.get(reason, 0) + 1
                 continue
 
@@ -210,8 +209,7 @@ class DoubleCriticFilterStage(Stage):
             else:
                 reason = "double_critic_disagreement"
                 dropped.append(
-                    _drop_record(
-                        updated,
+                    updated.dropped_by(
                         self.name,
                         reason,
                         f"yes={yes_r.verdict} no={no_r.verdict}",
@@ -220,12 +218,11 @@ class DoubleCriticFilterStage(Stage):
                 drop_reasons[reason] = drop_reasons.get(reason, 0) + 1
 
         _write_filter_artifacts(
-            self._output_writer,
             ctx,
             self.name,
-            count_in=len(records),
-            count_out=len(kept),
-            dropped=dropped,
-            drop_reasons=drop_reasons,
+            len(records),
+            len(kept),
+            dropped,
+            drop_reasons,
         )
         return kept
