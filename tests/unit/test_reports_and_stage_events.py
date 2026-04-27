@@ -268,10 +268,12 @@ def test_run_report_includes_samples_diversity_and_canaries_when_available(
     tmp_path: Path, monkeypatch
 ) -> None:
     runner = PipelineRunner(project_root=tmp_path)
+    from arka.embeddings.embedder import Embedder
+
     monkeypatch.setattr(
-        PipelineRunner,
-        "_embed_texts_huggingface",
-        lambda self, *, config, texts: np.array([[1.0, 0.0], [0.0, 1.0]]),
+        Embedder,
+        "_embed_huggingface",
+        lambda self, texts: np.array([[1.0, 0.0], [0.0, 1.0]]),
     )
     report_dir = tmp_path / "runs" / "run-rich-report" / "report"
     report_dir.mkdir(parents=True, exist_ok=True)

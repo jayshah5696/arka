@@ -235,8 +235,8 @@ def test_supported_source_output_and_executor_matrix_runs_end_to_end(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setattr(
-        "arka.pipeline.runner.PipelineRunner._embed_texts_huggingface",
-        lambda self, *, config, texts: None,
+        "arka.embeddings.embedder.Embedder._embed_huggingface",
+        lambda self, texts: None,
     )
     seed_path = _write_seed_file(tmp_path, seed_format)
     config_path = tmp_path / "config.yaml"
@@ -354,8 +354,8 @@ def test_supported_dedup_matrix_runs_and_records_expected_drop_reasons(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setattr(
-        "arka.pipeline.runner.PipelineRunner._embed_texts_huggingface",
-        lambda self, *, config, texts: None,
+        "arka.embeddings.embedder.Embedder._embed_huggingface",
+        lambda self, texts: None,
     )
     seed_path = _write_seed_file(tmp_path, "jsonl")
     config_path = tmp_path / "config.yaml"
@@ -422,8 +422,8 @@ def test_generation_quality_gate_run_writes_expected_report_and_filtered_dataset
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setattr(
-        "arka.pipeline.runner.PipelineRunner._embed_texts_huggingface",
-        lambda self, *, config, texts: np.array([[1.0, 0.0], [0.0, 1.0]]),
+        "arka.embeddings.embedder.Embedder._embed_huggingface",
+        lambda self, texts: np.array([[1.0, 0.0], [0.0, 1.0]]),
     )
     seed_path = _write_seed_file(tmp_path, "jsonl")
     _write_rubric(tmp_path / "rubrics" / "sft_quality.yaml")

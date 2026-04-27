@@ -6,6 +6,7 @@ from typing import Any
 
 import numpy as np
 
+from arka.embeddings import Embedder
 from arka.labeling.engine import LabelingEngine
 from arka.labeling.rubric import RubricLoader
 from arka.llm.client import (
@@ -100,23 +101,17 @@ class SemanticSimilarityFilterStage(Stage):
         if not seeds or not generated:
             return records
 
-        from arka.pipeline.runner import PipelineRunner
-
-        runner = PipelineRunner(project_root=ctx.work_dir)
+        embedder = Embedder(ctx.config)
         gen_texts = [
             f"{r.payload.instruction}\n{r.payload.response}" for r in generated
         ]
         seed_texts = [f"{r.payload.instruction}\n{r.payload.response}" for r in seeds]
 
-        gen_emb = runner._embed_texts(
-            config=ctx.config,
-            texts=gen_texts,
-            checkpoint_manager=ctx.checkpoint_manager,
+        gen_emb = embedder.embed(
+            gen_texts, checkpoint_manager=ctx.checkpoint_manager
         )
-        seed_emb = runner._embed_texts(
-            config=ctx.config,
-            texts=seed_texts,
-            checkpoint_manager=ctx.checkpoint_manager,
+        seed_emb = embedder.embed(
+            seed_texts, checkpoint_manager=ctx.checkpoint_manager
         )
 
         if gen_emb is None or seed_emb is None:

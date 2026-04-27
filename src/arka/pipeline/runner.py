@@ -1,23 +1,20 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
-import math
 import random
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import yaml
 
 from arka.config.loader import ConfigLoader
-from arka.config.models import LLMConfig, ResolvedConfig
+from arka.config.models import ResolvedConfig
 from arka.core.paths import RunPaths
+from arka.embeddings import Embedder
 from arka.labeling.rubric import RubricLoader
-from arka.llm.openai_client import build_openai_client
 from arka.pipeline.artifacts import StageArtifacts, get_extra
 from arka.pipeline.checkpoint import CheckpointManager
 from arka.pipeline.models import RunResult, StageContext, StageErrorInfo, StageStat
@@ -544,177 +541,10 @@ class PipelineRunner:
         config: ResolvedConfig,
         checkpoint_manager: CheckpointManager | None = None,
     ) -> float | None:
-        instructions = [
-            text
-            for record in records
-            if (text := record.text_for_diversity()) is not None
-        ]
-        if len(instructions) < 2:
-            return None
-
-        embeddings = self._embed_texts(
-            config=config,
-            texts=instructions,
+        return Embedder(config).compute_diversity_score(
+            records=records,
             checkpoint_manager=checkpoint_manager,
         )
-        if embeddings is None or len(embeddings) < 2:
-            return None
-
-        cluster_count = min(50, len(embeddings))
-        if cluster_count < 2:
-            return None
-        labels = self._kmeans_labels(embeddings, cluster_count=cluster_count)
-        counts = np.bincount(labels, minlength=cluster_count)
-        probabilities = counts / counts.sum()
-        entropy = -np.sum(probabilities * np.log(probabilities + 1e-10))
-        score = float(entropy / math.log(cluster_count))
-        return round(score, 4)
-
-    def _embed_texts(
-        self,
-        *,
-        config: ResolvedConfig,
-        texts: list[str],
-        checkpoint_manager: CheckpointManager | None = None,
-    ) -> np.ndarray | None:
-        if not texts:
-            return None
-
-        # PERF: Cache embedding vectors to avoid recompute on --resume runs. Expected impact: Saves minutes of CPU/API time by fetching cached embeddings from SQLite.
-
-        vectors: list[np.ndarray | None] = [None] * len(texts)
-        texts_to_embed: list[tuple[int, str, str]] = []
-
-        model_key = f"{config.embeddings.provider}:{config.embeddings.model}:"
-
-        for i, text in enumerate(texts):
-            text_hash = model_key + hashlib.sha256(text.encode("utf-8")).hexdigest()
-            cached = (
-                checkpoint_manager.load_embedding(text_hash)
-                if checkpoint_manager
-                else None
-            )
-            if cached is not None:
-                vectors[i] = np.frombuffer(cached, dtype=float)
-            else:
-                texts_to_embed.append((i, text_hash, text))
-
-        if texts_to_embed:
-            new_texts = [item[2] for item in texts_to_embed]
-            if config.embeddings.provider == "huggingface":
-                new_vectors = self._embed_texts_huggingface(
-                    config=config, texts=new_texts
-                )
-            else:
-                new_vectors = self._embed_texts_openai(config=config, texts=new_texts)
-
-            if new_vectors is not None and len(new_vectors) == len(new_texts):
-                for (idx, text_hash, _), vec in zip(
-                    texts_to_embed, new_vectors, strict=True
-                ):
-                    vectors[idx] = vec
-                    if checkpoint_manager is not None:
-                        checkpoint_manager.save_embedding(
-                            text_hash, vec.astype(float).tobytes()
-                        )
-
-        if any(v is None for v in vectors):
-            return None
-        return np.array(vectors, dtype=float)
-
-    def _embed_texts_huggingface(
-        self,
-        *,
-        config: ResolvedConfig,
-        texts: list[str],
-    ) -> np.ndarray | None:
-        model_name = self._resolved_huggingface_embedding_model(config.embeddings.model)
-        try:
-            from fastembed import TextEmbedding
-
-            embedding_model = TextEmbedding(model_name=model_name)
-            vectors = list(embedding_model.embed(texts))
-        except Exception:
-            return None
-        if not vectors:
-            return None
-        return np.array(vectors, dtype=float)
-
-    def _resolved_huggingface_embedding_model(self, model: str) -> str:
-        if "/" in model:
-            return model
-        return f"sentence-transformers/{model}"
-
-    def _embed_texts_openai(
-        self,
-        *,
-        config: ResolvedConfig,
-        texts: list[str],
-    ) -> np.ndarray | None:
-        llm_config = self._embedding_llm_config(config)
-        client = build_openai_client(llm_config)
-        try:
-            response = client.embeddings.create(
-                model=config.embeddings.model,
-                input=texts,
-            )
-        except Exception:
-            return None
-        vectors = [item.embedding for item in response.data]
-        if not vectors:
-            return None
-        return np.array(vectors, dtype=float)
-
-    def _embedding_llm_config(self, config: ResolvedConfig) -> LLMConfig:
-        embedding_cfg = config.embeddings
-        api_key = embedding_cfg.api_key or config.llm.api_key
-        base_url = embedding_cfg.base_url or config.llm.base_url
-        timeout_seconds = (
-            embedding_cfg.timeout_seconds
-            if embedding_cfg.timeout_seconds is not None
-            else config.llm.timeout_seconds
-        )
-        max_retries = (
-            embedding_cfg.max_retries
-            if embedding_cfg.max_retries is not None
-            else config.llm.max_retries
-        )
-        openai_compatible = (
-            embedding_cfg.openai_compatible or config.llm.openai_compatible
-        )
-        return LLMConfig(
-            provider="openai",
-            model=embedding_cfg.model,
-            api_key=api_key,
-            base_url=base_url,
-            timeout_seconds=timeout_seconds,
-            max_retries=max_retries,
-            openai_compatible=openai_compatible,
-        )
-
-    def _kmeans_labels(self, embeddings: np.ndarray, cluster_count: int) -> np.ndarray:
-        rng = np.random.default_rng(0)
-        indices = rng.choice(len(embeddings), size=cluster_count, replace=False)
-        centroids = embeddings[indices].copy()
-        labels = np.zeros(len(embeddings), dtype=int)
-
-        for _ in range(20):
-            distances = np.linalg.norm(
-                embeddings[:, np.newaxis, :] - centroids[np.newaxis, :, :], axis=2
-            )
-            new_labels = np.argmin(distances, axis=1)
-            if np.array_equal(labels, new_labels):
-                break
-            labels = new_labels
-            for cluster_index in range(cluster_count):
-                members = embeddings[labels == cluster_index]
-                if len(members) == 0:
-                    centroids[cluster_index] = embeddings[
-                        rng.integers(0, len(embeddings))
-                    ]
-                else:
-                    centroids[cluster_index] = members.mean(axis=0)
-        return labels
 
     def _serialize_error(
         self, stage_name: str | None, error: StageErrorInfo | None
