@@ -36,7 +36,7 @@ def test_smoke_pipeline_runs_end_to_end(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     monkeypatch.setattr(
-        "arka.pipeline.generator_stages.LLMClient", FakeGeneratorLLMClient
+        "arka.llm.factory.LLMClient", FakeGeneratorLLMClient
     )
 
     (tmp_path / "seeds.jsonl").write_text(

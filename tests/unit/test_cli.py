@@ -70,9 +70,7 @@ def test_cli_auto_generates_run_id_when_not_provided(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
-    monkeypatch.setattr(
-        "arka.pipeline.generator_stages.LLMClient", FakeGeneratorLLMClient
-    )
+    monkeypatch.setattr("arka.llm.factory.LLMClient", FakeGeneratorLLMClient)
     (tmp_path / "seeds.jsonl").write_text('{"instruction":"Hello?","response":"Hi."}\n')
     (tmp_path / "config.yaml").write_text(CONFIG_TEXT)
 
@@ -115,9 +113,7 @@ def test_cli_supports_explicit_config_run_id_and_resume(
     config_path.write_text(CONFIG_TEXT)
     (tmp_path / "seeds.jsonl").write_text('{"instruction":"Hello?","response":"Hi."}\n')
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
-    monkeypatch.setattr(
-        "arka.pipeline.generator_stages.LLMClient", FakeGeneratorLLMClient
-    )
+    monkeypatch.setattr("arka.llm.factory.LLMClient", FakeGeneratorLLMClient)
 
     main(["--config", str(config_path), "--run-id", "custom-run"])
 

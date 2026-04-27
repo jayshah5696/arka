@@ -13,8 +13,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from arka.common.models import StrictModel
-from arka.config.models import GeneratorConfig, LLMConfig, resolve_llm_override
-from arka.llm.client import LLMClient
+from arka.config.models import GeneratorConfig, LLMConfig
 from arka.llm.models import LLMOutput, TokenUsage
 from arka.pipeline.artifacts import StageArtifacts, StageReport
 from arka.pipeline.checkpoint import CheckpointManager
@@ -180,7 +179,7 @@ class PromptBasedGeneratorStage(Stage):
             status="running",
         )
 
-        llm_client = self._llm_client or LLMClient(config=ctx.config.llm)
+        llm_client = self._llm_client or ctx.llm_client()
         responses_path.parent.mkdir(parents=True, exist_ok=True)
 
         written_count = len(existing_rows)
@@ -496,10 +495,9 @@ class TransformGeneratorStage(Stage):
             self._write_artifacts(ctx=ctx, dropped_records=[], costs=[])
             return []
 
-        effective_llm_config = resolve_llm_override(
-            ctx.config.llm, ctx.config.generator.llm_override
+        llm_client = self._llm_client or ctx.llm_client(
+            override=ctx.config.generator.llm_override
         )
-        llm_client = self._llm_client or LLMClient(config=effective_llm_config)
         transformed_records: list[Record] = []
         costs: list[float] = []
 

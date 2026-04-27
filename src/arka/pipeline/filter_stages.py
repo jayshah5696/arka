@@ -9,7 +9,6 @@ import numpy as np
 from arka.labeling.engine import LabelingEngine
 from arka.labeling.rubric import RubricLoader
 from arka.llm.client import (
-    LLMClient,
     LLMClientError,
     provider_supports_sequence_scoring,
 )
@@ -203,7 +202,7 @@ class LabelingQualityFilterStage(Stage):
                 "filters.labeling_engine.rubric_path points to a missing file: "
                 f"{rubric_path}"
             ) from exc
-        llm_client = self._llm_client or LLMClient(config=ctx.config.llm)
+        llm_client = self._llm_client or ctx.llm_client()
         engine = LabelingEngine(llm_client=llm_client)
 
         conversation_records: list[ConversationRecord] = [

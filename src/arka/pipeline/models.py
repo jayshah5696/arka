@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from arka.config.models import ResolvedConfig
+from arka.config.models import ResolvedConfig, StageLLMOverride
 
 if TYPE_CHECKING:
+    from arka.llm.client import LLMClient
+    from arka.llm.factory import LLMClientFactory
     from arka.pipeline.checkpoint import CheckpointManager
 
 
@@ -21,6 +23,26 @@ class StageContext:
     executor_mode: str
     max_workers: int
     checkpoint_manager: CheckpointManager | None = None
+    # Optional injected factory used by the StageContext.llm_client() seam.
+    # Tests can pass a fake; production runs leave it None and the seam
+    # falls back to llm.factory.default_factory.
+    llm_client_factory: LLMClientFactory | None = field(default=None)
+
+    def llm_client(self, *, override: StageLLMOverride | None = None) -> LLMClient:
+        """Build an LLMClient for the current Run, applying any per-Stage override.
+
+        The single seam Stages should use instead of constructing
+        ``LLMClient(config=ctx.config.llm)`` themselves. Resolves the override
+        against ``self.config.llm`` and delegates to the injected factory
+        (or the default factory). See ``arka.llm.factory`` for the rationale.
+        """
+        from arka.llm.factory import build_client
+
+        return build_client(
+            base_config=self.config.llm,
+            override=override,
+            factory=self.llm_client_factory,
+        )
 
 
 @dataclass(frozen=True)

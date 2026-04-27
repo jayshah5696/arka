@@ -9,7 +9,6 @@ from typing import Any
 from pydantic import ValidationError
 
 from arka.common.models import StrictModel
-from arka.llm.client import LLMClient
 from arka.llm.models import TokenUsage
 from arka.pipeline.artifacts import StageArtifacts, StageReport
 from arka.pipeline.evol_instruct import (
@@ -95,7 +94,7 @@ class EvolInstructRoundStage(Stage):
             )
             return records
 
-        llm_client = self._llm_client or LLMClient(config=ctx.config.llm)
+        llm_client = self._llm_client or ctx.llm_client()
         operators = ctx.config.generator.operators
         branching_factor = ctx.config.generator.branching_factor or 1
         config_hash = self._config_hash(ctx)

@@ -53,8 +53,7 @@ def _install_fake_llm(
                 error=None,
             )
 
-    monkeypatch.setattr("arka.pipeline.generator_stages.LLMClient", FakeLLMClient)
-    monkeypatch.setattr("arka.pipeline.filter_stages.LLMClient", FakeLLMClient)
+    monkeypatch.setattr("arka.llm.factory.LLMClient", FakeLLMClient)
 
 
 def _write_seed_file(tmp_path: Path, seed_format: str) -> Path:

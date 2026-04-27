@@ -6,10 +6,8 @@ import statistics
 from pathlib import Path
 from typing import Any
 
-from arka.config.models import resolve_llm_override
 from arka.labeling.engine import LabelingEngine
 from arka.labeling.rubric import RubricLoader
-from arka.llm.client import LLMClient
 from arka.pipeline.artifacts import StageArtifacts, StageReport
 from arka.pipeline.models import StageContext
 from arka.pipeline.stages import Stage
@@ -43,7 +41,7 @@ class LabelingScoreStage(Stage):
                 f"{rubric_path}"
             )
         rubric = RubricLoader().load(rubric_path)
-        llm_client = self._llm_client or LLMClient(config=ctx.config.llm)
+        llm_client = self._llm_client or ctx.llm_client()
         engine = LabelingEngine(llm_client=llm_client)
 
         conversation_records: list[ConversationRecord] = [
@@ -147,10 +145,9 @@ class RewardModelScoringStage(Stage):
         if reward_config is None:
             return records
 
-        effective_llm_config = resolve_llm_override(
-            ctx.config.llm, reward_config.llm_override
+        llm_client = self._llm_client or ctx.llm_client(
+            override=reward_config.llm_override
         )
-        llm_client = self._llm_client or LLMClient(config=effective_llm_config)
 
         kept_records: list[Record] = []
         dropped_records: list[Record] = []

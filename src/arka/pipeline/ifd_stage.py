@@ -4,7 +4,7 @@ import statistics
 from pathlib import Path
 from typing import Any
 
-from arka.llm.client import LLMClient, LLMClientError
+from arka.llm.client import LLMClientError
 from arka.llm.models import SequenceScore
 from arka.pipeline.artifacts import StageArtifacts, StageReport
 from arka.pipeline.stages import Stage
@@ -24,7 +24,7 @@ class IFDFilterStage(Stage):
         if filter_config is None:
             return records
 
-        llm_client = self._llm_client or LLMClient(config=ctx.config.llm)
+        llm_client = self._llm_client or ctx.llm_client()
         if not llm_client.supports_sequence_scoring():
             raise ValueError(
                 "IFD requires provider/model response-scoring capability; "
