@@ -317,5 +317,3 @@ class PipelineRunner:
         if not isinstance(payload, int | float):
             return None
         return float(payload)
-
-

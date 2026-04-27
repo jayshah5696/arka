@@ -188,9 +188,7 @@ def _embedding_llm_config(config: ResolvedConfig) -> LLMConfig:
         if embedding_cfg.max_retries is not None
         else config.llm.max_retries
     )
-    openai_compatible = (
-        embedding_cfg.openai_compatible or config.llm.openai_compatible
-    )
+    openai_compatible = embedding_cfg.openai_compatible or config.llm.openai_compatible
     return LLMConfig(
         provider="openai",
         model=embedding_cfg.model,
@@ -225,9 +223,7 @@ def _kmeans_labels(embeddings: np.ndarray, cluster_count: int) -> np.ndarray:
         for cluster_index in range(cluster_count):
             members = embeddings[labels == cluster_index]
             if len(members) == 0:
-                centroids[cluster_index] = embeddings[
-                    rng.integers(0, len(embeddings))
-                ]
+                centroids[cluster_index] = embeddings[rng.integers(0, len(embeddings))]
             else:
                 centroids[cluster_index] = members.mean(axis=0)
     return labels

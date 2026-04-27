@@ -173,9 +173,7 @@ class RunReporter:
 
     # --- Aggregations across StageStat list ---
 
-    def _aggregate_drop_reasons(
-        self, stage_stats: list[StageStat]
-    ) -> dict[str, int]:
+    def _aggregate_drop_reasons(self, stage_stats: list[StageStat]) -> dict[str, int]:
         totals: Counter[str] = Counter()
         for stage_stat in stage_stats:
             totals.update(stage_stat.drop_reasons)
@@ -279,8 +277,6 @@ class RunReporter:
         return payload
 
     @staticmethod
-    def _weighted_score(
-        scores: dict[str, int], weights: dict[str, float]
-    ) -> float:
+    def _weighted_score(scores: dict[str, int], weights: dict[str, float]) -> float:
         total = sum(scores[name] * weights[name] for name in weights)
         return round(float(total), 4)
