@@ -28,7 +28,6 @@ from arka.records.models import (
     RecordLineage,
     RecordScores,
     RecordSource,
-    StageEvent,
 )
 
 __all__ = [
@@ -315,10 +314,10 @@ class PromptBasedGeneratorStage(Stage):
                     exc,
                 )
                 dropped_records.append(
-                    self._drop_record(
-                        record=item.seed_record,
-                        reason_code=reason_code,
-                        details=details,
+                    item.seed_record.dropped_by(
+                        self.name,
+                        reason_code,
+                        details,
                     )
                 )
                 continue
@@ -413,27 +412,6 @@ class PromptBasedGeneratorStage(Stage):
             scores=RecordScores(),
             config_hash=config_hash,
             created_at=datetime.now(UTC).isoformat(),
-        )
-
-    def _drop_record(
-        self,
-        record: Record,
-        reason_code: str,
-        details: str,
-    ) -> Record:
-        return record.model_copy(
-            update={
-                "stage_events": [
-                    *record.stage_events,
-                    StageEvent(
-                        stage=self.name,
-                        action="dropped",
-                        reason_code=reason_code,
-                        details=details,
-                        seq=len(record.stage_events) + 1,
-                    ),
-                ]
-            }
         )
 
     def _write_parse_artifacts(

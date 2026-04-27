@@ -21,7 +21,6 @@ from arka.records.models import (
     ConversationRecord,
     Record,
     RecordScores,
-    StageEvent,
 )
 
 
@@ -56,8 +55,8 @@ class CanaryFilterStage(Stage):
             else:
                 reason = "canary_leak"
                 dropped.append(
-                    _drop_record(
-                        record, self.name, reason, f"Matched canary phrase: {matched}"
+                    record.dropped_by(
+                        self.name, reason, f"Matched canary phrase: {matched}"
                     )
                 )
                 drop_reasons[reason] = drop_reasons.get(reason, 0) + 1
@@ -144,8 +143,7 @@ class SemanticSimilarityFilterStage(Stage):
             if max_sim > filter_config.threshold:
                 reason = "high_semantic_similarity"
                 dropped.append(
-                    _drop_record(
-                        record,
+                    record.dropped_by(
                         self.name,
                         reason,
                         f"Max cosine similarity {max_sim:.4f} > {filter_config.threshold}",
@@ -165,25 +163,6 @@ class SemanticSimilarityFilterStage(Stage):
             drop_reasons,
         )
         return kept
-
-
-def _drop_record(
-    record: Record, stage_name: str, reason_code: str, details: str
-) -> Record:
-    return record.model_copy(
-        update={
-            "stage_events": [
-                *record.stage_events,
-                StageEvent(
-                    stage=stage_name,
-                    action="dropped",
-                    reason_code=reason_code,
-                    details=details,
-                    seq=len(record.stage_events) + 1,
-                ),
-            ]
-        }
-    )
 
 
 def _write_filter_artifacts(
@@ -265,10 +244,10 @@ class LabelingQualityFilterStage(Stage):
             ]
             for record in conversation_records:
                 dropped_records.append(
-                    self._drop_record(
-                        record=record,
-                        reason_code=reason_code,
-                        details=exc.message,
+                    record.dropped_by(
+                        self.name,
+                        reason_code,
+                        exc.message,
                     )
                 )
             drop_reasons[reason_code] = len(conversation_records)
@@ -312,13 +291,10 @@ class LabelingQualityFilterStage(Stage):
 
             reason_code = "low_quality_score"
             dropped_records.append(
-                self._drop_record(
-                    record=updated_record,
-                    reason_code=reason_code,
-                    details=(
-                        f"overall_score={result.overall} < "
-                        f"min_overall_score={min_overall}"
-                    ),
+                updated_record.dropped_by(
+                    self.name,
+                    reason_code,
+                    f"overall_score={result.overall} < min_overall_score={min_overall}",
                 )
             )
             drop_reasons[reason_code] = drop_reasons.get(reason_code, 0) + 1
@@ -360,27 +336,6 @@ class LabelingQualityFilterStage(Stage):
 
     def _write_dropped_records(self, dropped_records: list[Record], path: Path) -> None:
         self._output_writer.write_dropped_parquet(records=dropped_records, path=path)
-
-    def _drop_record(
-        self,
-        record: Record,
-        reason_code: str,
-        details: str,
-    ) -> Record:
-        return record.model_copy(
-            update={
-                "stage_events": [
-                    *record.stage_events,
-                    StageEvent(
-                        stage=self.name,
-                        action="dropped",
-                        reason_code=reason_code,
-                        details=details,
-                        seq=len(record.stage_events) + 1,
-                    ),
-                ]
-            }
-        )
 
     def _reason_code_for_label_error(self, error: LLMClientError) -> str:
         if error.code == "auth_error":

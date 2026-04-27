@@ -14,7 +14,7 @@ from arka.llm.client import LLMClient
 from arka.pipeline.models import StageContext
 from arka.pipeline.output import OutputWriter
 from arka.pipeline.stages import Stage
-from arka.records.models import ConversationRecord, Record, RecordScores, StageEvent
+from arka.records.models import ConversationRecord, Record, RecordScores
 
 
 class LabelingScoreStage(Stage):
@@ -186,13 +186,10 @@ class RewardModelScoringStage(Stage):
             if reward_config.min_score is not None and score < reward_config.min_score:
                 reason_code = "low_reward_score"
                 dropped_records.append(
-                    self._drop_record(
-                        record=updated_record,
-                        reason_code=reason_code,
-                        details=(
-                            f"reward_model={score} < "
-                            f"min_score={reward_config.min_score}"
-                        ),
+                    updated_record.dropped_by(
+                        self.name,
+                        reason_code,
+                        f"reward_model={score} < min_score={reward_config.min_score}",
                     )
                 )
                 drop_reasons[reason_code] = drop_reasons.get(reason_code, 0) + 1
@@ -208,22 +205,6 @@ class RewardModelScoringStage(Stage):
             scores=scores,
         )
         return kept_records
-
-    def _drop_record(self, record: Record, reason_code: str, details: str) -> Record:
-        return record.model_copy(
-            update={
-                "stage_events": [
-                    *record.stage_events,
-                    StageEvent(
-                        stage=self.name,
-                        action="dropped",
-                        reason_code=reason_code,
-                        details=details,
-                        seq=len(record.stage_events) + 1,
-                    ),
-                ]
-            }
-        )
 
     def _write_artifacts(
         self,
@@ -318,8 +299,8 @@ class PairDeltaFilterStage(Stage):
                     if ratio > pair_config.length_ratio_max:
                         reason = "length_ratio_exceeded"
                         dropped_records.append(
-                            self._drop_record(
-                                record,
+                            record.dropped_by(
+                                self.name,
                                 reason,
                                 f"ratio={ratio:.2f} > max={pair_config.length_ratio_max}",
                             )
@@ -332,8 +313,8 @@ class PairDeltaFilterStage(Stage):
             if delta < pair_config.min_delta:
                 reason = "insufficient_delta"
                 dropped_records.append(
-                    self._drop_record(
-                        record,
+                    record.dropped_by(
+                        self.name,
                         reason,
                         f"delta={delta:.4f} < min_delta={pair_config.min_delta}",
                     )
@@ -366,22 +347,6 @@ class PairDeltaFilterStage(Stage):
         if isinstance(record, ConversationRecord):
             return len(record.payload.response)
         return 0
-
-    def _drop_record(self, record: Record, reason_code: str, details: str) -> Record:
-        return record.model_copy(
-            update={
-                "stage_events": [
-                    *record.stage_events,
-                    StageEvent(
-                        stage=self.name,
-                        action="dropped",
-                        reason_code=reason_code,
-                        details=details,
-                        seq=len(record.stage_events) + 1,
-                    ),
-                ]
-            }
-        )
 
     def _write_artifacts(
         self,
@@ -442,8 +407,8 @@ class CompositeSelectStage(Stage):
         kept = [record for _, record in scored_pairs[:target_count]]
 
         dropped_with_events = [
-            self._drop_record(
-                record,
+            record.dropped_by(
+                self.name,
                 "composite_select",
                 f"rank={i + target_count + 1} exceeds target_count={target_count}",
             )
@@ -466,22 +431,6 @@ class CompositeSelectStage(Stage):
                 value = 0.0
             total += float(value) * weight
         return total
-
-    def _drop_record(self, record: Record, reason_code: str, details: str) -> Record:
-        return record.model_copy(
-            update={
-                "stage_events": [
-                    *record.stage_events,
-                    StageEvent(
-                        stage=self.name,
-                        action="dropped",
-                        reason_code=reason_code,
-                        details=details,
-                        seq=len(record.stage_events) + 1,
-                    ),
-                ]
-            }
-        )
 
     def _write_artifacts(
         self,

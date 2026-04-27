@@ -29,7 +29,6 @@ from arka.records.models import (
     RecordLineage,
     RecordScores,
     RecordSource,
-    StageEvent,
 )
 
 logger = logging.getLogger(__name__)
@@ -131,13 +130,11 @@ class EvolInstructRoundStage(Stage):
                             )
                         )
                         dropped_records.append(
-                            self._drop_record(
-                                record=parent,
-                                reason_code=rejection_reason,
-                                details=(
-                                    f"operator={operator}; round={self.round_number}; "
-                                    f"candidate_instruction={evolved_instruction}"
-                                ),
+                            parent.dropped_by(
+                                self.name,
+                                rejection_reason,
+                                f"operator={operator}; round={self.round_number}; "
+                                f"candidate_instruction={evolved_instruction}",
                             )
                         )
                         drop_reasons[rejection_reason] = (
@@ -166,10 +163,10 @@ class EvolInstructRoundStage(Stage):
                         )
                     )
                     dropped_records.append(
-                        self._drop_record(
-                            record=parent,
-                            reason_code=reason_code,
-                            details=f"operator={operator}; round={self.round_number}",
+                        parent.dropped_by(
+                            self.name,
+                            reason_code,
+                            f"operator={operator}; round={self.round_number}",
                         )
                     )
                     drop_reasons[reason_code] = drop_reasons.get(reason_code, 0) + 1
@@ -321,22 +318,6 @@ class EvolInstructRoundStage(Stage):
             scores=RecordScores(),
             config_hash=config_hash,
             created_at=datetime.now(UTC).isoformat(),
-        )
-
-    def _drop_record(self, record: Record, reason_code: str, details: str) -> Record:
-        return record.model_copy(
-            update={
-                "stage_events": [
-                    *record.stage_events,
-                    StageEvent(
-                        stage=self.name,
-                        action="dropped",
-                        reason_code=reason_code,
-                        details=details,
-                        seq=len(record.stage_events) + 1,
-                    ),
-                ]
-            }
         )
 
     def _write_artifacts(

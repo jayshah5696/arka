@@ -9,7 +9,7 @@ from arka.llm.client import LLMClient, LLMClientError
 from arka.llm.models import SequenceScore
 from arka.pipeline.output import OutputWriter
 from arka.pipeline.stages import Stage
-from arka.records.models import ConversationRecord, Record, StageEvent
+from arka.records.models import ConversationRecord, Record
 
 
 class IFDFilterStage(Stage):
@@ -70,10 +70,10 @@ class IFDFilterStage(Stage):
 
             reason_code = "low_ifd"
             dropped_records.append(
-                self._drop_record(
-                    record=updated_record,
-                    reason_code=reason_code,
-                    details=(f"ifd={ifd_score} < min_score={filter_config.min_score}"),
+                updated_record.dropped_by(
+                    self.name,
+                    reason_code,
+                    f"ifd={ifd_score} < min_score={filter_config.min_score}",
                 )
             )
             drop_reasons[reason_code] = drop_reasons.get(reason_code, 0) + 1
@@ -87,22 +87,6 @@ class IFDFilterStage(Stage):
             scores=scores,
         )
         return kept_records
-
-    def _drop_record(self, record: Record, reason_code: str, details: str) -> Record:
-        return record.model_copy(
-            update={
-                "stage_events": [
-                    *record.stage_events,
-                    StageEvent(
-                        stage=self.name,
-                        action="dropped",
-                        reason_code=reason_code,
-                        details=details,
-                        seq=len(record.stage_events) + 1,
-                    ),
-                ]
-            }
-        )
 
     def _write_artifacts(
         self,

@@ -71,6 +71,47 @@ class Record(StrictModel):
     def text_for_diversity(self) -> str | None:
         return None
 
+    def with_event(
+        self,
+        *,
+        stage: str,
+        action: str,
+        reason_code: str | None = None,
+        details: str | None = None,
+    ) -> Record:
+        """Return a copy of this Record with one StageEvent appended.
+
+        Centralises the StageEvent invariants (monotonic ``seq``, immutable
+        copy, ``action`` vocabulary) so individual stages do not re-implement
+        them. See ``dropped_by`` for the canonical drop helper.
+        """
+        event = StageEvent(
+            stage=stage,
+            action=action,
+            reason_code=reason_code,
+            details=details,
+            seq=len(self.stage_events) + 1,
+        )
+        return self.model_copy(update={"stage_events": [*self.stage_events, event]})
+
+    def dropped_by(
+        self,
+        stage: str,
+        reason_code: str,
+        details: str | None = None,
+    ) -> Record:
+        """Return a copy of this Record marked as dropped by ``stage``.
+
+        Equivalent to ``with_event(stage=stage, action="dropped", ...)`` --
+        the canonical way a Stage records a Drop Reason on a Record.
+        """
+        return self.with_event(
+            stage=stage,
+            action="dropped",
+            reason_code=reason_code,
+            details=details,
+        )
+
 
 class ConversationPayload(StrictModel):
     instruction: str
