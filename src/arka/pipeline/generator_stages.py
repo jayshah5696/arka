@@ -16,6 +16,7 @@ from arka.common.models import StrictModel
 from arka.config.models import GeneratorConfig, LLMConfig, resolve_llm_override
 from arka.llm.client import LLMClient
 from arka.llm.models import LLMOutput, TokenUsage
+from arka.pipeline.artifacts import StageArtifacts, StageReport
 from arka.pipeline.checkpoint import CheckpointManager
 from arka.pipeline.models import StageContext
 from arka.pipeline.output import OutputWriter
@@ -424,24 +425,21 @@ class PromptBasedGeneratorStage(Stage):
         dropped_records: list[Record],
         drop_reasons: dict[str, int],
     ) -> None:
-        ctx.work_dir.mkdir(parents=True, exist_ok=True)
-        self._output_writer.write_dropped_parquet(
-            records=dropped_records,
-            path=ctx.work_dir / "dropped.parquet",
-        )
         costs = [
             row.usage.cost_usd for row in raw_rows if row.usage.cost_usd is not None
         ]
         total_cost = round(sum(costs), 6) if costs else None
-        stats = {
-            "stage": self.name,
-            "count_in": attempted_count,
-            "count_out": len(generated_records),
-            "dropped_count": len(dropped_records),
-            "drop_reasons": drop_reasons,
-            "cost_usd": total_cost,
-        }
-        (ctx.work_dir / "stats.json").write_text(json.dumps(stats, indent=2))
+        StageArtifacts(ctx, writer=self._output_writer).write(
+            report=StageReport(
+                stage=self.name,
+                count_in=attempted_count,
+                count_out=len(generated_records),
+                dropped_count=len(dropped_records),
+                drop_reasons=drop_reasons,
+                cost_usd=total_cost,
+            ),
+            dropped=dropped_records,
+        )
 
     def _content_hash(self, payload: ConversationPayload) -> str:
         return hashlib.sha256(
@@ -652,18 +650,15 @@ class TransformGeneratorStage(Stage):
         dropped_records: list[Record],
         costs: list[float],
     ) -> None:
-        ctx.work_dir.mkdir(parents=True, exist_ok=True)
-        self._output_writer.write_dropped_parquet(
-            records=dropped_records,
-            path=ctx.work_dir / "dropped.parquet",
-        )
         total_cost = round(sum(costs), 6) if costs else None
-        stats = {
-            "stage": self.name,
-            "count_in": len(costs) if costs else 0,
-            "count_out": len(costs) if costs else 0,
-            "dropped_count": len(dropped_records),
-            "drop_reasons": {},
-            "cost_usd": total_cost,
-        }
-        (ctx.work_dir / "stats.json").write_text(json.dumps(stats, indent=2))
+        StageArtifacts(ctx, writer=self._output_writer).write(
+            report=StageReport(
+                stage=self.name,
+                count_in=len(costs) if costs else 0,
+                count_out=len(costs) if costs else 0,
+                dropped_count=len(dropped_records),
+                drop_reasons={},
+                cost_usd=total_cost,
+            ),
+            dropped=dropped_records,
+        )

@@ -18,6 +18,7 @@ from arka.config.models import LLMConfig, ResolvedConfig
 from arka.core.paths import RunPaths
 from arka.labeling.rubric import RubricLoader
 from arka.llm.openai_client import build_openai_client
+from arka.pipeline.artifacts import StageArtifacts, get_extra
 from arka.pipeline.checkpoint import CheckpointManager
 from arka.pipeline.models import RunResult, StageContext, StageErrorInfo, StageStat
 from arka.pipeline.output import OutputWriter
@@ -265,29 +266,21 @@ class PipelineRunner:
         stats_path: Path,
         error: StageErrorInfo | None = None,
     ) -> StageStat:
-        stats_payload = self._load_stage_stats(stats_path)
+        report = StageArtifacts.load_report(stats_path)
         return StageStat(
             stage=stage_name,
             count_in=count_in,
             count_out=count_out,
             status=status,
             resumed=resumed,
-            dropped_count=int(stats_payload.get("dropped_count", 0)),
-            drop_reasons={
-                str(key): int(value)
-                for key, value in dict(stats_payload.get("drop_reasons", {})).items()
-            },
+            dropped_count=report.dropped_count if report else 0,
+            drop_reasons=dict(report.drop_reasons) if report else {},
             quality_distribution=self._normalize_quality_distribution(
-                stats_payload.get("quality_distribution")
+                get_extra(report, "quality_distribution")
             ),
             error=error,
-            cost_usd=self._normalize_cost_usd(stats_payload.get("cost_usd")),
+            cost_usd=self._normalize_cost_usd(get_extra(report, "cost_usd")),
         )
-
-    def _load_stage_stats(self, path: Path) -> dict[str, Any]:
-        if not path.exists():
-            return {}
-        return json.loads(path.read_text())
 
     def _should_resume_stage(
         self,
@@ -467,9 +460,8 @@ class PipelineRunner:
 
         filter_cfg = config.filters.get_stage_config("labeling_engine")
         rubric_path_value = (
-            (filter_cfg.rubric_path if filter_cfg is not None else None)
-            or config.labeling_engine.rubric_path
-        )
+            filter_cfg.rubric_path if filter_cfg is not None else None
+        ) or config.labeling_engine.rubric_path
         if filter_cfg is None or rubric_path_value is None:
             payload = {
                 "known_good": [],

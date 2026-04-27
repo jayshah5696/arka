@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 import statistics
 
+from arka.pipeline.artifacts import StageArtifacts, StageReport
 from arka.pipeline.models import StageContext
-from arka.pipeline.output import OutputWriter
 from arka.pipeline.stages import Stage
 from arka.records.models import ConversationRecord, Record
 
@@ -24,17 +23,16 @@ def write_filter_artifacts(
     count_out: int,
     drop_reasons: dict[str, int],
 ) -> None:
-    ctx.work_dir.mkdir(parents=True, exist_ok=True)
-    writer = OutputWriter()
-    writer.write_dropped_parquet(records=dropped, path=ctx.work_dir / "dropped.parquet")
-    stats = {
-        "stage": stage_name,
-        "count_in": count_in,
-        "count_out": count_out,
-        "dropped_count": len(dropped),
-        "drop_reasons": drop_reasons,
-    }
-    (ctx.work_dir / "stats.json").write_text(json.dumps(stats, indent=2))
+    StageArtifacts(ctx).write(
+        report=StageReport(
+            stage=stage_name,
+            count_in=count_in,
+            count_out=count_out,
+            dropped_count=len(dropped),
+            drop_reasons=drop_reasons,
+        ),
+        dropped=dropped,
+    )
 
 
 class LengthFilterStage(Stage):

@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from arka.common.models import StrictModel
 from arka.llm.client import LLMClient
 from arka.llm.models import TokenUsage
+from arka.pipeline.artifacts import StageArtifacts, StageReport
 from arka.pipeline.evol_instruct import (
     build_evol_messages,
     build_response_messages,
@@ -341,25 +342,24 @@ class EvolInstructRoundStage(Stage):
             ),
             encoding="utf-8",
         )
-        self._output_writer.write_dropped_parquet(
-            records=dropped_records,
-            path=ctx.work_dir / "dropped.parquet",
-        )
         costs: list[float] = []
         for row in raw_rows:
             for usage in (row.usage_instruction, row.usage_response):
                 if usage is not None and usage.cost_usd is not None:
                     costs.append(usage.cost_usd)
-        stats = {
+        report_kwargs: dict[str, Any] = {
             "stage": self.name,
             "count_in": frontier_count,
             "count_out": total_out_count,
-            "generated_count": len(generated_records),
             "dropped_count": len(dropped_records),
             "drop_reasons": drop_reasons,
+            "generated_count": len(generated_records),
             "cost_usd": round(sum(costs), 6) if costs else None,
         }
-        (ctx.work_dir / "stats.json").write_text(json.dumps(stats, indent=2))
+        StageArtifacts(ctx, writer=self._output_writer).write(
+            report=StageReport(**report_kwargs),
+            dropped=dropped_records,
+        )
 
     def _content_hash(self, payload: ConversationPayload) -> str:
         return hashlib.sha256(

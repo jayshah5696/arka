@@ -7,8 +7,8 @@ from typing import Any
 
 import polars as pl
 
+from arka.pipeline.artifacts import StageArtifacts, StageReport
 from arka.pipeline.models import StageContext
-from arka.pipeline.output import OutputWriter
 from arka.pipeline.stages import Stage
 from arka.records.models import ConversationRecord, Record
 
@@ -18,7 +18,7 @@ class ExactDedupStage(Stage):
     stage_action = "deduplicated"
 
     def __init__(self) -> None:
-        self._output_writer = OutputWriter()
+        pass
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
         # Stage is only instantiated when present in config list;
@@ -70,7 +70,6 @@ class ExactDedupStage(Stage):
 
         _write_artifacts(
             stage_name=self.name,
-            output_writer=self._output_writer,
             ctx=ctx,
             dropped_records=dropped_records,
             clusters=clusters,
@@ -86,7 +85,7 @@ class NearDedupStage(Stage):
     stage_action = "deduplicated"
 
     def __init__(self) -> None:
-        self._output_writer = OutputWriter()
+        pass
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
         # Stage is only instantiated when present in config list;
@@ -193,7 +192,6 @@ class NearDedupStage(Stage):
 
         _write_artifacts(
             stage_name=self.name,
-            output_writer=self._output_writer,
             ctx=ctx,
             dropped_records=dropped_records,
             clusters=clusters,
@@ -220,7 +218,6 @@ class NearDedupStage(Stage):
 def _write_artifacts(
     *,
     stage_name: str,
-    output_writer: OutputWriter,
     ctx: StageContext,
     dropped_records: list[Record],
     clusters: list[dict[str, Any]],
@@ -228,12 +225,7 @@ def _write_artifacts(
     count_out: int,
     drop_reasons: dict[str, int],
 ) -> None:
-    ctx.work_dir.mkdir(parents=True, exist_ok=True)
-    output_writer.write_dropped_parquet(
-        records=dropped_records,
-        path=ctx.work_dir / "dropped.parquet",
-    )
-    pl.DataFrame(
+    clusters_df = pl.DataFrame(
         clusters,
         schema={
             "cluster_id": pl.String,
@@ -241,16 +233,19 @@ def _write_artifacts(
             "member_count": pl.Int64,
             "member_ids_json": pl.String,
         },
-    ).write_parquet(ctx.work_dir / "clusters.parquet")
-    stats = {
-        "stage": stage_name,
-        "count_in": count_in,
-        "count_out": count_out,
-        "dropped_count": len(dropped_records),
-        "drop_reasons": drop_reasons,
-        "cluster_count": len(clusters),
-    }
-    (ctx.work_dir / "stats.json").write_text(json.dumps(stats, indent=2))
+    )
+    StageArtifacts(ctx).write(
+        report=StageReport(
+            stage=stage_name,
+            count_in=count_in,
+            count_out=count_out,
+            dropped_count=len(dropped_records),
+            drop_reasons=drop_reasons,
+            cluster_count=len(clusters),
+        ),
+        dropped=dropped_records,
+        extras={"clusters.parquet": clusters_df},
+    )
 
 
 _TOKEN_PATTERN = re.compile(r"\w+", re.UNICODE)

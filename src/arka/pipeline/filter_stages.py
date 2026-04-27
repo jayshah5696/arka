@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import statistics
 from pathlib import Path
 from typing import Any
@@ -14,8 +13,8 @@ from arka.llm.client import (
     LLMClientError,
     provider_supports_sequence_scoring,
 )
+from arka.pipeline.artifacts import StageArtifacts, StageReport
 from arka.pipeline.models import StageContext
-from arka.pipeline.output import OutputWriter
 from arka.pipeline.stages import Stage
 from arka.records.models import (
     ConversationRecord,
@@ -31,7 +30,7 @@ class CanaryFilterStage(Stage):
     stage_action = "filtered"
 
     def __init__(self) -> None:
-        self._output_writer = OutputWriter()
+        pass
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
         filter_config = ctx.config.filters.get_stage_config("canary")
@@ -62,7 +61,6 @@ class CanaryFilterStage(Stage):
                 drop_reasons[reason] = drop_reasons.get(reason, 0) + 1
 
         _write_filter_artifacts(
-            self._output_writer,
             ctx,
             self.name,
             len(records),
@@ -80,7 +78,7 @@ class SemanticSimilarityFilterStage(Stage):
     stage_action = "filtered"
 
     def __init__(self) -> None:
-        self._output_writer = OutputWriter()
+        pass
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
         filter_config = ctx.config.filters.get_stage_config("semantic_similarity")
@@ -154,7 +152,6 @@ class SemanticSimilarityFilterStage(Stage):
                 kept.append(record)
 
         _write_filter_artifacts(
-            self._output_writer,
             ctx,
             self.name,
             len(records),
@@ -166,7 +163,6 @@ class SemanticSimilarityFilterStage(Stage):
 
 
 def _write_filter_artifacts(
-    writer: OutputWriter,
     ctx: StageContext,
     stage_name: str,
     count_in: int,
@@ -174,19 +170,17 @@ def _write_filter_artifacts(
     dropped: list[Record],
     drop_reasons: dict[str, int],
 ) -> None:
-    ctx.work_dir.mkdir(parents=True, exist_ok=True)
-    if dropped:
-        writer.write_dropped_parquet(
-            records=dropped, path=ctx.work_dir / "dropped.parquet"
-        )
-    stats = {
-        "stage": stage_name,
-        "count_in": count_in,
-        "count_out": count_out,
-        "dropped_count": len(dropped),
-        "drop_reasons": drop_reasons,
-    }
-    (ctx.work_dir / "stats.json").write_text(json.dumps(stats, indent=2))
+    StageArtifacts(ctx).write(
+        report=StageReport(
+            stage=stage_name,
+            count_in=count_in,
+            count_out=count_out,
+            dropped_count=len(dropped),
+            drop_reasons=drop_reasons,
+        ),
+        # Preserve historical behaviour: skip dropped.parquet when empty.
+        dropped=dropped if dropped else None,
+    )
 
 
 class LabelingQualityFilterStage(Stage):
@@ -196,7 +190,6 @@ class LabelingQualityFilterStage(Stage):
     def __init__(self, project_root: Path, llm_client: Any | None = None) -> None:
         self.project_root = project_root
         self._llm_client = llm_client
-        self._output_writer = OutputWriter()
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
         filter_config = ctx.config.filters.get_stage_config("labeling_engine")
@@ -320,22 +313,18 @@ class LabelingQualityFilterStage(Stage):
         drop_reasons: dict[str, int],
         scored_overall: list[float],
     ) -> None:
-        ctx.work_dir.mkdir(parents=True, exist_ok=True)
-        dropped_path = ctx.work_dir / "dropped.parquet"
-        self._write_dropped_records(dropped_records=dropped_records, path=dropped_path)
-        stats = {
-            "stage": self.name,
-            "count_in": scored_count,
-            "count_out": kept_count,
-            "scored_count": scored_count,
-            "dropped_count": dropped_count,
-            "drop_reasons": drop_reasons,
-            "quality_distribution": self._quality_distribution(scored_overall),
-        }
-        (ctx.work_dir / "stats.json").write_text(json.dumps(stats, indent=2))
-
-    def _write_dropped_records(self, dropped_records: list[Record], path: Path) -> None:
-        self._output_writer.write_dropped_parquet(records=dropped_records, path=path)
+        StageArtifacts(ctx).write(
+            report=StageReport(
+                stage=self.name,
+                count_in=scored_count,
+                count_out=kept_count,
+                dropped_count=dropped_count,
+                drop_reasons=drop_reasons,
+                scored_count=scored_count,
+                quality_distribution=self._quality_distribution(scored_overall),
+            ),
+            dropped=dropped_records,
+        )
 
     def _reason_code_for_label_error(self, error: LLMClientError) -> str:
         if error.code == "auth_error":
