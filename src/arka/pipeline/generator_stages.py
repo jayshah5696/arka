@@ -21,6 +21,15 @@ from arka.pipeline.checkpoint import CheckpointManager
 from arka.pipeline.models import StageContext
 from arka.pipeline.output import OutputWriter
 from arka.pipeline.stages import Stage
+from arka.records.identity import (
+    config_hash as compute_config_hash,
+)
+from arka.records.identity import (
+    content_hash as compute_content_hash,
+)
+from arka.records.identity import (
+    record_id as compute_record_id,
+)
 from arka.records.models import (
     ConversationPayload,
     ConversationRecord,
@@ -382,7 +391,6 @@ class PromptBasedGeneratorStage(Stage):
             instruction=payload.instruction,
             response=payload.response,
         )
-        content_hash = self._content_hash(conversation_payload)
         lineage = RecordLineage(
             root_id=parent.lineage.root_id,
             parent_ids=[parent.id],
@@ -403,10 +411,9 @@ class PromptBasedGeneratorStage(Stage):
         )
         if isinstance(parent, GroundedChunkRecord):
             source.type = "generated"
-        record_id = self._record_id(conversation_payload, lineage)
         return ConversationRecord(
-            id=record_id,
-            content_hash=content_hash,
+            id=compute_record_id(conversation_payload, lineage),
+            content_hash=compute_content_hash(conversation_payload),
             source=source,
             lineage=lineage,
             payload=conversation_payload,
@@ -441,28 +448,8 @@ class PromptBasedGeneratorStage(Stage):
             dropped=dropped_records,
         )
 
-    def _content_hash(self, payload: ConversationPayload) -> str:
-        return hashlib.sha256(
-            payload.model_dump_json(exclude_none=True).encode("utf-8")
-        ).hexdigest()
-
-    def _record_id(self, payload: ConversationPayload, lineage: RecordLineage) -> str:
-        identity_payload = {
-            "payload": payload.model_dump(mode="json", exclude_none=True),
-            "lineage": lineage.model_dump(mode="json", exclude_none=True),
-        }
-        return hashlib.sha256(
-            json.dumps(identity_payload, sort_keys=True, separators=(",", ":")).encode(
-                "utf-8"
-            )
-        ).hexdigest()
-
     def _config_hash(self, ctx: StageContext) -> str:
-        return hashlib.sha256(
-            json.dumps(ctx.config.model_dump(mode="json"), sort_keys=True).encode(
-                "utf-8"
-            )
-        ).hexdigest()
+        return compute_config_hash(ctx.config)
 
     def _checkpoint_manager(self, ctx: StageContext) -> CheckpointManager:
         if self._checkpoint is not None:
@@ -584,10 +571,9 @@ class TransformGeneratorStage(Stage):
             round=(record.lineage.round or 0) + 1,
             depth=(record.lineage.depth or 0) + 1,
         )
-        record_id = self._record_id(payload, lineage)
         return ConversationRecord(
-            id=record_id,
-            content_hash=self._content_hash(payload),
+            id=compute_record_id(payload, lineage),
+            content_hash=compute_content_hash(payload),
             source=record.source.model_copy(deep=True),
             lineage=lineage,
             payload=payload,
@@ -620,28 +606,8 @@ class TransformGeneratorStage(Stage):
             return payload.model_copy(update={"system": value})
         raise ValueError(f"Unsupported transform field path: {field_path}")
 
-    def _content_hash(self, payload: ConversationPayload) -> str:
-        return hashlib.sha256(
-            payload.model_dump_json(exclude_none=True).encode("utf-8")
-        ).hexdigest()
-
-    def _record_id(self, payload: ConversationPayload, lineage: RecordLineage) -> str:
-        identity_payload = {
-            "payload": payload.model_dump(mode="json", exclude_none=True),
-            "lineage": lineage.model_dump(mode="json", exclude_none=True),
-        }
-        return hashlib.sha256(
-            json.dumps(identity_payload, sort_keys=True, separators=(",", ":")).encode(
-                "utf-8"
-            )
-        ).hexdigest()
-
     def _config_hash(self, ctx: StageContext) -> str:
-        return hashlib.sha256(
-            json.dumps(ctx.config.model_dump(mode="json"), sort_keys=True).encode(
-                "utf-8"
-            )
-        ).hexdigest()
+        return compute_config_hash(ctx.config)
 
     def _write_artifacts(
         self,

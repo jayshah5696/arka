@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 from datetime import UTC, datetime
@@ -23,6 +22,15 @@ from arka.pipeline.evol_instruct import (
 from arka.pipeline.models import StageContext
 from arka.pipeline.output import OutputWriter
 from arka.pipeline.stages import Stage
+from arka.records.identity import (
+    config_hash as compute_config_hash,
+)
+from arka.records.identity import (
+    content_hash as compute_content_hash,
+)
+from arka.records.identity import (
+    record_id as compute_record_id,
+)
 from arka.records.models import (
     ConversationPayload,
     ConversationRecord,
@@ -292,7 +300,6 @@ class EvolInstructRoundStage(Stage):
             instruction=instruction,
             response=response,
         )
-        content_hash = self._content_hash(payload)
         lineage = RecordLineage(
             root_id=parent.lineage.root_id,
             parent_ids=[parent.id],
@@ -301,8 +308,8 @@ class EvolInstructRoundStage(Stage):
             depth=self.round_number,
         )
         return ConversationRecord(
-            id=self._record_id(payload, lineage),
-            content_hash=content_hash,
+            id=compute_record_id(payload, lineage),
+            content_hash=compute_content_hash(payload),
             source=RecordSource(
                 type="evolved",
                 doc_id=parent.source.doc_id,
@@ -361,25 +368,5 @@ class EvolInstructRoundStage(Stage):
             dropped=dropped_records,
         )
 
-    def _content_hash(self, payload: ConversationPayload) -> str:
-        return hashlib.sha256(
-            payload.model_dump_json(exclude_none=True).encode("utf-8")
-        ).hexdigest()
-
-    def _record_id(self, payload: ConversationPayload, lineage: RecordLineage) -> str:
-        identity_payload = {
-            "payload": payload.model_dump(mode="json", exclude_none=True),
-            "lineage": lineage.model_dump(mode="json", exclude_none=True),
-        }
-        return hashlib.sha256(
-            json.dumps(identity_payload, sort_keys=True, separators=(",", ":")).encode(
-                "utf-8"
-            )
-        ).hexdigest()
-
     def _config_hash(self, ctx: StageContext) -> str:
-        return hashlib.sha256(
-            json.dumps(ctx.config.model_dump(mode="json"), sort_keys=True).encode(
-                "utf-8"
-            )
-        ).hexdigest()
+        return compute_config_hash(ctx.config)

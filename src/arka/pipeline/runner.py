@@ -230,8 +230,9 @@ class PipelineRunner:
         return self.config_loader.load_dict(config)
 
     def _config_hash(self, config: ResolvedConfig) -> str:
-        payload = json.dumps(config.model_dump(mode="json"), sort_keys=True)
-        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        from arka.records.identity import config_hash
+
+        return config_hash(config)
 
     def _write_resolved_config(self, config: ResolvedConfig, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -580,7 +581,6 @@ class PipelineRunner:
             return None
 
         # PERF: Cache embedding vectors to avoid recompute on --resume runs. Expected impact: Saves minutes of CPU/API time by fetching cached embeddings from SQLite.
-        import hashlib
 
         vectors: list[np.ndarray | None] = [None] * len(texts)
         texts_to_embed: list[tuple[int, str, str]] = []
