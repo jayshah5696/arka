@@ -121,8 +121,8 @@ def test_config_validation_error_is_human_readable(
         ConfigLoader().load(config_path)
 
     message = str(exc_info.value)
-    assert "  - llm: " in message
-    assert "  - filters: " in message
+    assert "  - Missing required field: 'llm'" in message
+    assert "  - Missing required field: 'filters'" in message
 
 
 def test_load_config_requires_declared_env_vars(

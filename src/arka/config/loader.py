@@ -38,11 +38,18 @@ class ConfigLoader:
 
     @staticmethod
     def _format_validation_error(exc: ValidationError) -> str:
+        # DX: Make pydantic errors more human-readable and actionable
         lines = ["Configuration is invalid:"]
         for error in exc.errors():
             path = ".".join(str(loc) for loc in error["loc"])
             msg = error["msg"]
-            lines.append(f"  - {path}: {msg}")
+            err_type = error["type"]
+            if err_type == "missing":
+                lines.append(f"  - Missing required field: '{path}'")
+            elif err_type == "extra_forbidden":
+                lines.append(f"  - Unknown field: '{path}' (this key is not allowed here)")
+            else:
+                lines.append(f"  - Invalid value for '{path}': {msg}")
         return "\n".join(lines)
 
     def _resolve_env_vars(self, text: str) -> str:
