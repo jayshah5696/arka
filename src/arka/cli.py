@@ -85,6 +85,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Load config and preview stages without executing the pipeline",
     )
+    # DX: Add --list-stages flag to preview what stages will run without running the pipeline
+    parser.add_argument(
+        "--list-stages",
+        action="store_true",
+        help="Alias for --dry-run: Load config and preview stages without executing the pipeline",
+    )
     return parser
 
 
@@ -117,7 +123,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     run_id = _resolve_run_id(args.run_id, config.run_id)
     stages = StageBuilder(config=config, project_root=project_root).build()
 
-    if args.dry_run:
+    if args.dry_run or args.list_stages:
         print(f"Dry run enabled. Loaded config: {config_path}")
         print(f"Resolved run ID: {run_id}")
         print("Stages to execute:")

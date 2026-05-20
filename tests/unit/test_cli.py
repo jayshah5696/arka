@@ -220,3 +220,26 @@ def test_cli_prints_duration_in_summary(tmp_path: Path, monkeypatch, capsys) -> 
     out, _ = capsys.readouterr()
     assert "--- Pipeline Summary" in out
     assert "Duration: " in out
+
+
+def test_cli_supports_list_stages(tmp_path: Path, monkeypatch, capsys) -> None:
+    config_path = tmp_path / "custom-config.yaml"
+    config_path.write_text(CONFIG_TEXT)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    main(
+        ["--config", str(config_path), "--run-id", "test-list-stages", "--list-stages"]
+    )
+
+    captured = capsys.readouterr()
+    stdout = captured.out
+
+    assert "Dry run enabled. Loaded config: " in stdout
+    assert "Resolved run ID: test-list-stages" in stdout
+    assert "Stages to execute:" in stdout
+    assert "1. 01_source" in stdout
+    assert "2. 02_normalize" in stdout
+    assert "3. 02_generate" in stdout
+
+    # Pipeline output should not exist since it's a dry run
+    assert not (tmp_path / "runs" / "test-list-stages" / "manifest.json").exists()
