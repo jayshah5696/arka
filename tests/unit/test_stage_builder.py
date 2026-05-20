@@ -109,10 +109,8 @@ def test_pdf_source_skips_normalize_and_uses_pdf_source_stage(tmp_path: Path) ->
 
 
 def test_unsupported_data_source_type_raises(tmp_path: Path) -> None:
-    config = _base_config(data_source={"type": "unknown_type"})
-
     with pytest.raises(ValueError, match="Unsupported data_source.type"):
-        StageBuilder(config=config, project_root=tmp_path).build()
+        _base_config(data_source={"type": "unknown_type"})
 
 
 def test_transform_generator_builds_transform_stage(tmp_path: Path) -> None:
@@ -133,16 +131,14 @@ def test_transform_generator_builds_transform_stage(tmp_path: Path) -> None:
 
 
 def test_unsupported_generator_type_raises(tmp_path: Path) -> None:
-    config = _base_config(
-        generator={
-            "type": "unknown_type",
-            "target_count": 2,
-            "generation_multiplier": 1,
-        }
-    )
-
     with pytest.raises(ValueError, match="Unsupported generator.type"):
-        StageBuilder(config=config, project_root=tmp_path).build()
+        _base_config(
+            generator={
+                "type": "unknown_type",
+                "target_count": 2,
+                "generation_multiplier": 1,
+            }
+        )
 
 
 def test_project_root_propagated_to_stages(tmp_path: Path) -> None:
@@ -293,7 +289,7 @@ def test_ifd_stage_position_when_capability_check_is_stubbed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "arka.pipeline.stage_builder.validate_ifd_capability", lambda ctx: None
+        "arka.pipeline.stage_builder.validate_ifd_capability", lambda cfg, ctx: None
     )
     config = _base_config(
         filters={

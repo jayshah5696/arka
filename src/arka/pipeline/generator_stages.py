@@ -13,7 +13,12 @@ from typing import Any
 from pydantic import ValidationError
 
 from arka.common.models import StrictModel
-from arka.config.models import GeneratorConfig, LLMConfig
+from arka.config.models import (
+    GeneratorConfig,
+    LLMConfig,
+    PromptBasedGeneratorConfig,
+    TransformGeneratorConfig,
+)
 from arka.llm.models import LLMOutput, TokenUsage
 from arka.pipeline.artifacts import StageArtifacts, StageReport
 from arka.pipeline.checkpoint import CheckpointManager
@@ -84,7 +89,10 @@ class GenerationPlanItem:
     seed_record: ConversationRecord | GroundedChunkRecord
 
 
-def compute_prompt_hash(generator: GeneratorConfig, llm: LLMConfig) -> str:
+def compute_prompt_hash(
+    generator: PromptBasedGeneratorConfig | TransformGeneratorConfig | GeneratorConfig,
+    llm: LLMConfig,
+) -> str:
     prompt_identity = {
         "generator": generator.model_dump(mode="json", exclude_none=True),
         "llm": {
@@ -107,13 +115,25 @@ class PromptBasedGeneratorStage(Stage):
         checkpoint_manager: CheckpointManager | None = None,
         output_writer: OutputWriter | None = None,
         project_root: Path | None = None,
+        config: PromptBasedGeneratorConfig | None = None,
     ) -> None:
         self._llm_client = llm_client
         self._checkpoint = checkpoint_manager
         self._output_writer = output_writer or OutputWriter()
         self._project_root = project_root
+        self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
+        if self.config is None:
+            if ctx.config:
+                self.config = ctx.config.generator
+            if self.config is None and ctx.config and hasattr(ctx.config, "pipeline"):
+                for stage_cfg in ctx.config.pipeline:
+                    if isinstance(stage_cfg, PromptBasedGeneratorConfig):
+                        self.config = stage_cfg
+                        break
+        if self.config is None:
+            self.config = PromptBasedGeneratorConfig()
         seed_records = [
             record
             for record in records
@@ -122,11 +142,11 @@ class PromptBasedGeneratorStage(Stage):
         if not seed_records:
             return []
 
-        generation_plan = self._generation_plan(seed_records, ctx.config.generator)
+        generation_plan = self._generation_plan(seed_records, self.config)
         if not generation_plan:
             return []
 
-        prompt_hash = compute_prompt_hash(ctx.config.generator, ctx.config.llm)
+        prompt_hash = compute_prompt_hash(self.config, ctx.config.llm)
         responses_path = ctx.work_dir / "raw_responses.jsonl"
         records_path = ctx.work_dir / "data.parquet"
 
@@ -228,12 +248,12 @@ class PromptBasedGeneratorStage(Stage):
         seed_record: ConversationRecord | GroundedChunkRecord,
         ctx: StageContext,
     ) -> LLMOutput:
-        messages = self._messages_for_seed(seed_record, ctx.config.generator)
+        messages = self._messages_for_seed(seed_record, self.config)
         kwargs = {
             "messages": messages,
             "schema": GeneratedConversation,
-            "temperature": ctx.config.generator.temperature,
-            "max_tokens": ctx.config.generator.max_tokens,
+            "temperature": self.config.temperature,
+            "max_tokens": self.config.max_tokens,
         }
         try:
             return llm_client.complete_structured(**kwargs)
@@ -247,7 +267,7 @@ class PromptBasedGeneratorStage(Stage):
     def _messages_for_seed(
         self,
         seed_record: ConversationRecord | GroundedChunkRecord,
-        config: GeneratorConfig,
+        config: PromptBasedGeneratorConfig | GeneratorConfig,
     ) -> list[dict[str, str]]:
         if isinstance(seed_record, ConversationRecord):
             content = config.prompt_template.format(
@@ -482,12 +502,26 @@ class TransformGeneratorStage(Stage):
         llm_client: Any | None = None,
         output_writer: OutputWriter | None = None,
         project_root: Path | None = None,
+        config: TransformGeneratorConfig | None = None,
     ) -> None:
         self._llm_client = llm_client
         self._output_writer = output_writer or OutputWriter()
         self._project_root = project_root
+        self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
+        if self.config is None:
+            if ctx.config:
+                self.config = ctx.config.generator
+            if self.config is None and ctx.config and hasattr(ctx.config, "pipeline"):
+                for stage_cfg in ctx.config.pipeline:
+                    if isinstance(stage_cfg, TransformGeneratorConfig):
+                        self.config = stage_cfg
+                        break
+        if self.config is None:
+            self.config = TransformGeneratorConfig(
+                input_field="payload.instruction", output_field="payload.response"
+            )
         transformable_records = [
             record for record in records if isinstance(record, ConversationRecord)
         ]
@@ -496,18 +530,18 @@ class TransformGeneratorStage(Stage):
             return []
 
         llm_client = self._llm_client or ctx.llm_client(
-            override=ctx.config.generator.llm_override
+            override=self.config.llm_override
         )
         transformed_records: list[Record] = []
         costs: list[float] = []
 
         for record in transformable_records:
-            input_text = self._field_value(record, ctx.config.generator.input_field)
+            input_text = self._field_value(record, self.config.input_field)
             output = llm_client.complete_structured(
-                messages=self._messages_for_input(input_text, ctx.config.generator),
+                messages=self._messages_for_input(input_text, self.config),
                 schema=TransformResponse,
-                temperature=ctx.config.generator.temperature,
-                max_tokens=ctx.config.generator.max_tokens,
+                temperature=self.config.temperature,
+                max_tokens=self.config.max_tokens,
             )
             parsed = output.parsed
             if not isinstance(parsed, TransformResponse):
@@ -521,7 +555,7 @@ class TransformGeneratorStage(Stage):
                     record=record,
                     transformed_text=parsed.text.strip(),
                     config_hash=self._config_hash(ctx),
-                    generator_config=ctx.config.generator,
+                    generator_config=self.config,
                 )
             )
 
@@ -531,7 +565,7 @@ class TransformGeneratorStage(Stage):
     def _messages_for_input(
         self,
         input_text: str,
-        generator_config: GeneratorConfig,
+        generator_config: TransformGeneratorConfig,
     ) -> list[dict[str, str]]:
         content = generator_config.prompt_template.format(input_text=input_text)
         return [{"role": "user", "content": content}]
@@ -542,7 +576,7 @@ class TransformGeneratorStage(Stage):
         record: ConversationRecord,
         transformed_text: str,
         config_hash: str,
-        generator_config: GeneratorConfig,
+        generator_config: TransformGeneratorConfig,
     ) -> ConversationRecord:
         payload = record.payload.model_copy(deep=True)
         original_text = self._field_value(record, generator_config.output_field)

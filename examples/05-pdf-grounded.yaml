@@ -23,31 +23,27 @@ executor:
   mode: threadpool
   max_workers: 4
 
-data_source:
-  type: pdf
-  path: ./pdfs/sample.pdf
-  chunk_strategy: fixed
-  chunk_size_chars: 3000
-  chunk_overlap_chars: 300
+pipeline:
+  - type: pdf_source
+    path: ./pdfs/sample.pdf
+    chunk_strategy: fixed
+    chunk_size_chars: 3000
+    chunk_overlap_chars: 300
 
-generator:
-  type: prompt_based
-  target_count: 10
-  generation_multiplier: 1
+  - type: prompt_based_generator
+    target_count: 10
+    generation_multiplier: 1
 
-dedup:
   - type: exact
 
-filters:
-  target_count: 10
-  stages:
-    - type: length
-      min_instruction_chars: 10
-      max_instruction_chars: 4096
-      min_response_chars: 10
-      max_response_chars: 16384
-    - type: language
-      allowed: [en]
+  - type: length
+    min_instruction_chars: 10
+    max_instruction_chars: 4096
+    min_response_chars: 10
+    max_response_chars: 16384
+
+  - type: language
+    allowed: [en]
 
 embeddings:
   provider: huggingface

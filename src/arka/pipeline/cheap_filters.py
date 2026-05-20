@@ -6,6 +6,11 @@ import logging
 import re
 import statistics
 
+from arka.config.models import (
+    LanguageFilterConfig,
+    LengthFilterConfig,
+    SentenceVarianceFilterConfig,
+)
 from arka.pipeline.artifacts import StageArtifacts, StageReport
 from arka.pipeline.models import StageContext
 from arka.pipeline.stages import Stage
@@ -41,8 +46,13 @@ class LengthFilterStage(Stage):
     name = "02a_length_filter"
     stage_action = "filtered"
 
+    def __init__(self, config: LengthFilterConfig | None = None) -> None:
+        self.config = config
+
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        cfg = ctx.config.filters.get_stage_config("length")
+        cfg = self.config
+        if cfg is None:
+            cfg = ctx.config.filters.get_stage_config("length")
         if cfg is None:
             return records
 
@@ -99,11 +109,15 @@ class LanguageFilterStage(Stage):
     name = "02b_language_filter"
     stage_action = "filtered"
 
+    def __init__(self, config: LanguageFilterConfig | None = None) -> None:
+        self.config = config
+
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        cfg = ctx.config.filters.get_stage_config("language")
+        cfg = self.config
+        if cfg is None:
+            cfg = ctx.config.filters.get_stage_config("language")
         if cfg is None:
             return records
-
         self._warn_if_no_heuristic_available(cfg.allowed)
 
         kept: list[Record] = []
@@ -182,8 +196,13 @@ class SentenceVarianceFilterStage(Stage):
     name = "02f_sentence_variance"
     stage_action = "filtered"
 
+    def __init__(self, config: SentenceVarianceFilterConfig | None = None) -> None:
+        self.config = config
+
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        cfg = ctx.config.filters.get_stage_config("sentence_variance")
+        cfg = self.config
+        if cfg is None:
+            cfg = ctx.config.filters.get_stage_config("sentence_variance")
         if cfg is None:
             return records
 

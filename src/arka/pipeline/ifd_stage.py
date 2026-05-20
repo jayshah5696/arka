@@ -4,6 +4,7 @@ import statistics
 from pathlib import Path
 from typing import Any
 
+from arka.config.models import IFDFilterConfig
 from arka.llm.client import LLMClientError
 from arka.llm.models import SequenceScore
 from arka.pipeline.artifacts import StageArtifacts, StageReport
@@ -15,14 +16,21 @@ class IFDFilterStage(Stage):
     name = "02e_ifd_filter"
     stage_action = "filtered"
 
-    def __init__(self, *, project_root: Path, llm_client: Any | None = None) -> None:
+    def __init__(
+        self,
+        config: IFDFilterConfig | None = None,
+        *,
+        project_root: Path,
+        llm_client: Any | None = None,
+    ) -> None:
+        self.config = config
         self.project_root = project_root
         self._llm_client = llm_client
 
     def run(self, records: list[Record], ctx) -> list[Record]:
-        filter_config = ctx.config.filters.get_stage_config("ifd")
-        if filter_config is None:
-            return records
+        if self.config is None:
+            self.config = ctx.config.get_stage_config("ifd_filter") or IFDFilterConfig()
+        filter_config = self.config
 
         llm_client = self._llm_client or ctx.llm_client()
         if not llm_client.supports_sequence_scoring():

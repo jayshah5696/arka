@@ -50,9 +50,11 @@ def render(metrics: list[dict[str, Any]]) -> str:
     _row("final_count", lambda m: m.get("final_count"))
     _row(
         "avg_pairwise_cosine_distance",
-        lambda m: f"{m.get('avg_pairwise_cosine_distance', 0):.4f}"
-        if m.get("avg_pairwise_cosine_distance") is not None
-        else "n/a",
+        lambda m: (
+            f"{m.get('avg_pairwise_cosine_distance', 0):.4f}"
+            if m.get("avg_pairwise_cosine_distance") is not None
+            else "n/a"
+        ),
     )
     _row("text_chars_median", lambda m: m.get("text_chars_median"))
     _row("text_chars_min", lambda m: m.get("text_chars_min"))
@@ -60,9 +62,7 @@ def render(metrics: list[dict[str, Any]]) -> str:
 
     # Per-stage yields
     lines.append("\n## Stage yields (count_in -> count_out [dropped])\n")
-    all_stages = sorted(
-        {s for m in metrics for s in (m.get("stage_counts") or {})}
-    )
+    all_stages = sorted({s for m in metrics for s in (m.get("stage_counts") or {})})
     headers = ["stage"] + [m["slice"] for m in metrics]
     lines.append("| " + " | ".join(headers) + " |")
     lines.append("|" + "|".join(["---"] * len(headers)) + "|")

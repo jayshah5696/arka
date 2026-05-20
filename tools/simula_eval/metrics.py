@@ -25,7 +25,9 @@ def _extract_text(rec: dict[str, Any]) -> str:
     msgs = rec.get("messages")
     if isinstance(msgs, list):
         return "\n".join(
-            f"{m.get('role', '?')}: {m.get('content', '')}" for m in msgs if isinstance(m, dict)
+            f"{m.get('role', '?')}: {m.get('content', '')}"
+            for m in msgs
+            if isinstance(m, dict)
         )
     instr = rec.get("instruction", "")
     resp = rec.get("response", "")
@@ -104,7 +106,11 @@ def _coverage_from_run(run_dir: Path, taxonomy_path: Path | None) -> dict | None
 
     # Find the last stage that wrote data.parquet.
     candidates = sorted(
-        (d for d in stages_root.iterdir() if d.is_dir() and (d / "data.parquet").exists()),
+        (
+            d
+            for d in stages_root.iterdir()
+            if d.is_dir() and (d / "data.parquet").exists()
+        ),
         key=lambda d: d.name,
     )
     if not candidates:
@@ -119,9 +125,7 @@ def _coverage_from_run(run_dir: Path, taxonomy_path: Path | None) -> dict | None
             sampled_per_record.append(None)
             continue
         scores = json.loads(scores_json)
-        sampled_per_record.append(
-            extract_sampled_from_record({"scores": scores})
-        )
+        sampled_per_record.append(extract_sampled_from_record({"scores": scores}))
 
     if not any(sampled_per_record):
         return None
@@ -136,9 +140,7 @@ def _coverage_from_run(run_dir: Path, taxonomy_path: Path | None) -> dict | None
         },
         "unknown_factors": sorted(report.unknown_factors),
         "unknown_node_count": len(report.unknown_nodes),
-        "records_with_taxonomy_assignment": sum(
-            1 for s in sampled_per_record if s
-        ),
+        "records_with_taxonomy_assignment": sum(1 for s in sampled_per_record if s),
         "records_total": len(sampled_per_record),
     }
 
@@ -182,7 +184,9 @@ def main() -> None:
     ap.add_argument("run_dir", type=Path)
     ap.add_argument("output_jsonl", type=Path)
     ap.add_argument("--name", required=True, help="Slice name, e.g. '00-baseline'")
-    ap.add_argument("--out", type=Path, default=None, help="Where to write metrics.json")
+    ap.add_argument(
+        "--out", type=Path, default=None, help="Where to write metrics.json"
+    )
     ap.add_argument(
         "--taxonomy",
         type=Path,

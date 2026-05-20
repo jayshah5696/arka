@@ -22,17 +22,15 @@ executor:
   mode: threadpool
   max_workers: 4
 
-data_source:
-  type: seeds
-  path: ../seeds/07-humanizer-rewrite.jsonl
+pipeline:
+  - type: seed_source
+    path: ../seeds/07-humanizer-rewrite.jsonl
 
-generator:
-  type: prompt_based
-  target_count: 10
-  generation_multiplier: 1
+  - type: normalize_conversation
 
-filters:
-  target_count: 10
+  - type: prompt_based_generator
+    target_count: 10
+    generation_multiplier: 1
 
 embeddings:
   provider: huggingface

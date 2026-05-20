@@ -1,11 +1,15 @@
-"""Score-only stages that annotate records without filtering."""
-
 from __future__ import annotations
 
 import statistics
 from pathlib import Path
 from typing import Any
 
+from arka.config.models import (
+    CompositeSelectConfig,
+    LabelingFilterConfig,
+    PairDeltaFilterConfig,
+    RewardModelFilterConfig,
+)
 from arka.labeling.engine import LabelingEngine
 from arka.labeling.rubric import RubricLoader
 from arka.pipeline.artifacts import StageArtifacts, StageReport
@@ -25,13 +29,26 @@ class LabelingScoreStage(Stage):
     name = "02s_label_score"
     stage_action = "scored"
 
-    def __init__(self, project_root: Path, llm_client: Any | None = None) -> None:
+    def __init__(
+        self,
+        config: LabelingFilterConfig | None = None,
+        *,
+        project_root: Path,
+        llm_client: Any | None = None,
+    ) -> None:
         self.project_root = project_root
         self._llm_client = llm_client
+        self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        filter_config = ctx.config.filters.get_stage_config("labeling_engine")
-        if filter_config is None or filter_config.rubric_path is None:
+        if self.config is None:
+            self.config = (
+                getattr(ctx.config, "labeling_engine", None)
+                or ctx.config.get_stage_config("labeling_engine")
+                or LabelingFilterConfig()
+            )
+        filter_config = self.config
+        if filter_config.rubric_path is None:
             return records
 
         rubric_path = self.project_root / filter_config.rubric_path
@@ -137,13 +154,20 @@ class RewardModelScoringStage(Stage):
     name = "02r_reward_score"
     stage_action = "scored"
 
-    def __init__(self, llm_client: Any | None = None) -> None:
+    def __init__(
+        self,
+        config: RewardModelFilterConfig | None = None,
+        llm_client: Any | None = None,
+    ) -> None:
+        self.config = config
         self._llm_client = llm_client
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        reward_config = ctx.config.filters.get_stage_config("reward_model")
-        if reward_config is None:
-            return records
+        if self.config is None:
+            self.config = (
+                ctx.config.get_stage_config("reward_model") or RewardModelFilterConfig()
+            )
+        reward_config = self.config
 
         llm_client = self._llm_client or ctx.llm_client(
             override=reward_config.llm_override
@@ -247,8 +271,8 @@ class PairDeltaFilterStage(Stage):
     name = "04_pair_delta"
     stage_action = "filtered"
 
-    def __init__(self) -> None:
-        pass
+    def __init__(self, config: PairDeltaFilterConfig | None = None) -> None:
+        self.config = config
 
     def run(
         self,
@@ -257,9 +281,11 @@ class PairDeltaFilterStage(Stage):
         *,
         parent_records: list[Record] | None = None,
     ) -> list[Record]:
-        pair_config = ctx.config.filters.get_stage_config("pair_delta")
-        if pair_config is None:
-            return records
+        if self.config is None:
+            self.config = (
+                ctx.config.get_stage_config("pair_delta") or PairDeltaFilterConfig()
+            )
+        pair_config = self.config
 
         parent_by_id: dict[str, Record] = {}
         if parent_records:
@@ -371,14 +397,23 @@ class CompositeSelectStage(Stage):
     name = "05_composite_select"
     stage_action = "selected"
 
-    def __init__(self) -> None:
-        pass
+    def __init__(self, config: CompositeSelectConfig | None = None) -> None:
+        self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        select_config = ctx.config.filters.get_stage_config("select")
-        if select_config is None:
-            return records
+        if self.config is None:
+            if ctx.config:
+                if hasattr(ctx.config, "filters"):
+                    self.config = ctx.config.filters.get_stage_config("select")
+                if self.config is None and hasattr(ctx.config, "pipeline"):
+                    for stage_cfg in ctx.config.pipeline:
+                        if isinstance(stage_cfg, CompositeSelectConfig):
+                            self.config = stage_cfg
+                            break
+        if self.config is None:
+            self.config = CompositeSelectConfig()
 
+        select_config = self.config
         weights = select_config.weights
         if not weights:
             return records
