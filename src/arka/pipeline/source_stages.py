@@ -9,6 +9,7 @@ from pathlib import Path
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
+from arka.config.models import PDFSourceConfig, SeedSourceConfig
 from arka.pipeline.models import StageContext
 from arka.pipeline.stages import Stage
 from arka.records.identity import config_hash, content_hash, file_hash, record_id
@@ -28,19 +29,32 @@ class SeedSourceStage(Stage):
     name = "01_source"
     stage_action = "sourced"
 
-    def __init__(self, project_root: Path) -> None:
+    def __init__(
+        self, project_root: Path, config: SeedSourceConfig | None = None
+    ) -> None:
         self.project_root = project_root
+        self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[ConversationRecord]:
+        if self.config is None:
+            if ctx.config:
+                self.config = ctx.config.data_source
+            if self.config is None and ctx.config and hasattr(ctx.config, "pipeline"):
+                for stage_cfg in ctx.config.pipeline:
+                    if isinstance(stage_cfg, SeedSourceConfig):
+                        self.config = stage_cfg
+                        break
+        if self.config is None:
+            self.config = SeedSourceConfig(path="")
         if records:
             return [
                 record for record in records if isinstance(record, ConversationRecord)
             ]
-        if ctx.config.data_source.path is None:
+        if not self.config.path:
             raise ValueError(
                 "data_source.path is required when data_source.type='seeds'"
             )
-        source_path = self.project_root / ctx.config.data_source.path
+        source_path = self.project_root / self.config.path
         # SECURITY: Enforce max seed file size (50MB) to prevent OOM DOS
         if source_path.stat().st_size > 50 * 1024 * 1024:
             raise ValueError("Seed file exceeds maximum allowed size of 50MB")
@@ -123,21 +137,34 @@ class PDFSourceStage(Stage):
     name = "01_source"
     stage_action = "sourced"
 
-    def __init__(self, project_root: Path) -> None:
+    def __init__(
+        self, project_root: Path, config: PDFSourceConfig | None = None
+    ) -> None:
         self.project_root = project_root
+        self.config = config
 
     def run(
         self,
         records: list[Record],
         ctx: StageContext,
     ) -> list[GroundedChunkRecord]:
+        if self.config is None:
+            if ctx.config:
+                self.config = ctx.config.data_source
+            if self.config is None and ctx.config and hasattr(ctx.config, "pipeline"):
+                for stage_cfg in ctx.config.pipeline:
+                    if isinstance(stage_cfg, PDFSourceConfig):
+                        self.config = stage_cfg
+                        break
+        if self.config is None:
+            self.config = PDFSourceConfig(path="")
         if records:
             return [
                 record for record in records if isinstance(record, GroundedChunkRecord)
             ]
-        if ctx.config.data_source.path is None:
+        if not self.config.path:
             raise ValueError("PDF source requires data_source.path")
-        source_path = self.project_root / ctx.config.data_source.path
+        source_path = self.project_root / self.config.path
         if not source_path.exists():
             raise ValueError(f"PDF source path does not exist: {source_path}")
 
@@ -161,8 +188,8 @@ class PDFSourceStage(Stage):
         config_hash_value = config_hash(ctx.config)
         source_hash = file_hash(source_path)
         doc_id = source_path.stem
-        chunk_size = ctx.config.data_source.chunk_size_chars or 3000
-        overlap = ctx.config.data_source.chunk_overlap_chars or 300
+        chunk_size = self.config.chunk_size_chars or 3000
+        overlap = self.config.chunk_overlap_chars or 300
         step = chunk_size - overlap
         chunks: list[GroundedChunkRecord] = []
 
@@ -182,7 +209,7 @@ class PDFSourceStage(Stage):
                 char_start=char_start,
                 char_end=char_end,
                 word_count=len(text.split()),
-                chunk_strategy=ctx.config.data_source.chunk_strategy or "fixed",
+                chunk_strategy=self.config.chunk_strategy or "fixed",
             )
             # NOTE: PDF chunk ids historically use sha256(payload_json) directly,
             # not the (payload, lineage) record_id helper. Preserved for stable

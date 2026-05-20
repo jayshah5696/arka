@@ -23,41 +23,39 @@ executor:
   mode: threadpool
   max_workers: 2
 
-data_source:
-  type: seeds
-  path: ./seeds/07-humanizer-rewrite.jsonl
+pipeline:
+  - type: seed_source
+    path: ./seeds/07-humanizer-rewrite.jsonl
 
-generator:
-  type: prompt_based
-  target_count: 10
-  generation_multiplier: 1
-  prompt_template: |
-    You are generating high-quality supervised fine-tuning examples for a writing assistant.
-    The assistant helps with proofreading, rewriting, shortening, formalizing, summarizing, and humanizing text.
+  - type: normalize_conversation
 
-    Produce one new example in the same spirit as the seed, but not a copy.
-    The output response must be valid JSON with exactly these keys:
-    - brief_rationale
-    - final_text
+  - type: prompt_based_generator
+    target_count: 10
+    generation_multiplier: 1
+    prompt_template: |
+      You are generating high-quality supervised fine-tuning examples for a writing assistant.
+      The assistant helps with proofreading, rewriting, shortening, formalizing, summarizing, and humanizing text.
 
-    Requirements for the generated task:
-    - The instruction must clearly state the rewrite task.
-    - The instruction must include the source text to rewrite.
-    - The instruction must explicitly ask to avoid AI-sounding phrasing and em dashes when appropriate.
-    - The response must include a short rationale followed by the rewritten text.
-    - Keep the rationale brief, concrete, and useful.
-    - The final_text should sound human, natural, and not overpolished.
+      Produce one new example in the same spirit as the seed, but not a copy.
+      The output response must be valid JSON with exactly these keys:
+      - brief_rationale
+      - final_text
 
-    Return only JSON with keys "instruction" and "response".
+      Requirements for the generated task:
+      - The instruction must clearly state the rewrite task.
+      - The instruction must include the source text to rewrite.
+      - The instruction must explicitly ask to avoid AI-sounding phrasing and em dashes when appropriate.
+      - The response must include a short rationale followed by the rewritten text.
+      - Keep the rationale brief, concrete, and useful.
+      - The final_text should sound human, natural, and not overpolished.
 
-    Seed instruction:
-    {seed_instruction}
+      Return only JSON with keys "instruction" and "response".
 
-    Seed response:
-    {seed_response}
+      Seed instruction:
+      {seed_instruction}
 
-filters:
-  target_count: 10
+      Seed response:
+      {seed_response}
 
 embeddings:
   provider: huggingface

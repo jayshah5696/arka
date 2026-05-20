@@ -1,12 +1,12 @@
 # Configuration Reference
 
-Arka is completely configuration-driven. The entirety of a generation run—from LLM credentials to strict filtering rules—is defined in a single YAML file. This document details the schema of the Arka configuration, corresponding to the `ResolvedConfig` Pydantic model.
+Arka is completely configuration-driven. The entirety of a generation run—from LLM credentials to sequential pipeline stages—is defined in a single YAML file. This document details the schema of the Arka configuration, corresponding to the `ResolvedConfig` Pydantic model.
 
 ---
 
 ## High-Level Anatomy
 
-A complete configuration file is composed of several logical blocks mapping to pipeline dependencies.
+A complete configuration file is composed of logical configuration blocks and a sequential list of stages executed in order.
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#ffffff', 'edgeLabelBackground':'#ffffff', 'tertiaryColor': '#f4f4f4'}}}%%
@@ -17,10 +17,7 @@ classDiagram
     }
     ResolvedConfig *-- LLMConfig : llm
     ResolvedConfig *-- ExecutorConfig : executor
-    ResolvedConfig *-- DataSourceConfig : data_source
-    ResolvedConfig *-- GeneratorConfig : generator
-    ResolvedConfig *-- "list[DedupStageConfig]" : dedup
-    ResolvedConfig *-- FiltersConfig : filters
+    ResolvedConfig *-- "list[PipelineStageConfig]" : pipeline
     ResolvedConfig *-- EmbeddingsConfig : embeddings
     ResolvedConfig *-- LabelingEngineConfig : labeling_engine
     ResolvedConfig *-- OutputConfig : output
@@ -33,10 +30,20 @@ version: "1"
 run_id: "optional-explicit-id"
 llm: {...}
 executor: {...}
-data_source: {...}
-generator: {...}
-dedup: [...]       # list of dedup stages (presence = enabled)
-filters: {...}     # includes stages: [...] list
+pipeline:
+  - type: seed_source
+    path: ./seeds.jsonl
+  - type: normalize_conversation
+  - type: prompt_based_generator
+    target_count: 100
+  - type: exact
+  - type: near
+    lsh_bands: 16
+  - type: length
+    min_response_chars: 50
+  - type: labeling_score
+    rubric_path: ./rubrics/quality.yaml
+    min_overall_score: 3.5
 embeddings: {...}
 labeling_engine: {...}
 output: {...}
@@ -55,7 +62,7 @@ output: {...}
 
 ## 2. LLM (`llm`)
 
-Defines the connection to the Language Model used for generation (and optionally, evaluation). Arka expects an OpenAI-compatible API endpoint.
+Defines the connection to the Language Model used for generation and evaluation.
 
 ```yaml
 llm:
@@ -69,14 +76,14 @@ llm:
 
 | Key | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `provider` | `Literal["openai"]` | **Required** | The provider protocol. Currently only `"openai"` is supported (works for OpenAI, OpenRouter, vLLM, etc.). |
+| `provider` | `Literal["openai"]` | **Required** | The provider protocol. Currently `"openai"` is supported. |
 | `model` | `str` | **Required** | The exact model ID expected by the provider. |
-| `api_key` | `str` | **Required** | The authentication token. **Best Practice:** Use environment variable substitution (e.g. `${MY_KEY}`). |
+| `api_key` | `str` | **Required** | The authentication token. **Best Practice:** Use environment variable substitution (e.g. `${OPENAI_API_KEY}`). |
 | `base_url` | `HttpUrl` | **Required** | The base URL for the API endpoints. |
 | `timeout_seconds` | `float` | `30.0` | Connection timeout in seconds. |
-| `max_retries` | `int` | `3` | Number of times to retry on transient errors (e.g., rate limits, 502s). |
-| `supports_json_schema`| `bool` | `None` | Override auto-detection for whether the provider natively supports JSON Schema structured outputs. |
-| `openai_compatible` | `Object` | `None` | Advanced settings for third-party endpoints. |
+| `max_retries` | `int` | `3` | Number of times to retry on transient errors. |
+| `supports_json_schema`| `bool` | `None` | Override auto-detection for whether the provider natively supports JSON Schema. |
+| `openai_compatible` | `Object` | `None` | Advanced settings for third-party endpoints (e.g. OpenRouter). |
 
 ### `openai_compatible` Object
 Used to send specific headers required by aggregators like OpenRouter.
@@ -97,43 +104,61 @@ executor:
 
 | Key | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `mode` | `Literal["threadpool", ...]` | `"threadpool"`| The execution strategy. |
-| `max_workers` | `int` | `4` | Maximum number of concurrent tasks (API requests) to run in parallel. Increase this based on your API rate limits. |
+| `mode` | `Literal["threadpool"]` | `"threadpool"`| The execution strategy. |
+| `max_workers` | `int` | `4` | Maximum number of concurrent tasks (API requests) to run in parallel. |
 
 ---
 
-## 4. Data Source (`data_source`)
+## 4. Pipeline Stages (`pipeline`)
 
-Defines where to load the initial seed data.
+The `pipeline` is an ordered list of stages that run sequentially to ingest, normalize, generate, deduplicate, and filter the dataset. Each stage is defined as an object in the list with a identifying `type` field.
 
+### Data Source Stages
+
+#### `seed_source`
+Loads seed data from a structured dataset.
 ```yaml
-data_source:
-  type: pdf
+- type: seed_source
+  path: ./seeds.jsonl
+```
+| Key | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `path` | `str` | **Required** | Path to the seeds file. Supports CSV and JSONL formats. |
+
+#### `pdf_source`
+Ingests raw text by chunking a PDF file.
+```yaml
+- type: pdf_source
   path: ./documents/manual.pdf
   chunk_strategy: fixed
   chunk_size_chars: 2000
   chunk_overlap_chars: 200
 ```
-
 | Key | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `type` | `str` | **Required** | The source format: `"seeds"` (JSONL), `"csv"`, or `"pdf"`. |
-| `path` | `str` | `None` | File system path to the source data. |
-| `chunk_strategy` | `str` | `"fixed"` | Used only for `type: "pdf"`. Strategy for breaking down large text. |
-| `chunk_size_chars` | `int` | `3000` | Used for `pdf`. Number of characters per chunk. |
-| `chunk_overlap_chars`| `int` | `300` | Used for `pdf`. Number of overlapping characters between chunks to preserve context. |
+| `path` | `str` | **Required** | Path to the PDF file. |
+| `chunk_strategy` | `str` | `"fixed"` | Strategy for breaking down text (e.g., `"fixed"`). |
+| `chunk_size_chars` | `int` | `3000` | Number of characters per chunk. |
+| `chunk_overlap_chars`| `int` | `300` | Number of overlapping characters between chunks. |
 
 ---
 
-## 5. Generator (`generator`)
+### Normalization Stages
 
-The core of the synthetic data generation logic.
-
-### Standard Prompt-Based Example
-
+#### `normalize_conversation`
+Normalizes incoming records into standard Conversation records.
 ```yaml
-generator:
-  type: prompt_based
+- type: normalize_conversation
+```
+
+---
+
+### Generator Stages
+
+#### `prompt_based_generator`
+Generates SFT pairs based on seed instructions using a customizable LLM prompt template.
+```yaml
+- type: prompt_based_generator
   target_count: 1000
   generation_multiplier: 2
   prompt_template: >
@@ -142,169 +167,145 @@ generator:
     Response: {seed_response}
   temperature: 0.8
 ```
+| Key | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `target_count` | `int` | **Required** | The desired number of items to generate. |
+| `generation_multiplier`| `int` | **Required** | Oversampling factor (e.g. `3` generates `3 * target_count`). |
+| `prompt_template` | `str` | *(Default)* | Jinja-style template with `{seed_instruction}` and `{seed_response}`. |
+| `temperature` | `float` | `0.7` | LLM sampling temperature. |
+| `max_tokens` | `int` | `512` | Maximum length of the generated response. |
 
-### Evol-Instruct Example
-
+#### `evol_instruct_generator`
+Performs multi-round Evol-Instruct mutations on instructions and generates responses.
 ```yaml
-generator:
-  type: evol_instruct
+- type: evol_instruct_generator
   target_count: 500
   generation_multiplier: 3
   rounds: 2
   branching_factor: 2
   operators: ["add_constraints", "deepen"]
 ```
-
 | Key | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `type` | `str` | **Required** | Strategy: `"prompt_based"` or `"evol_instruct"`. |
-| `target_count` | `int` | **Required** | The desired number of items to generate. |
-| `generation_multiplier`| `int` | **Required** | Oversampling factor. If set to `3` with a target of 100, Arka generates 300 items, anticipating that deduplication and filters will drop many. |
-| `prompt_template` | `str` | *(Default template)*| Jinja-style template. Supports `{seed_instruction}` and `{seed_response}`. |
-| `temperature` | `float` | `0.7` | LLM sampling temperature. |
-| `max_tokens` | `int` | `512` | Maximum length of the generated response. |
-| `rounds` | `int` | `None` | (Evol-Instruct only) Number of evolution rounds to perform. |
-| `branching_factor` | `int` | `None` | (Evol-Instruct only) Number of variations to create per seed, per round. |
-| `operators` | `list[str]` | `[]` | (Evol-Instruct only) Allowed mutation operators. |
-| `filter` | `Object` | *See below* | (Evol-Instruct only) Specific rules for dropping bad evolutions. |
-
-#### Evol Filter (`filter`)
-* `min_edit_distance_chars` (`int`, default: `20`): Discard if the evolved instruction is too similar to the parent.
-* `min_instruction_chars` (`int`, default: `20`): Discard if the evolved instruction is too short.
-* `refusal_keywords` (`list[str]`): Discard if the output contains phrases like `"I cannot"`, `"As an AI"`.
+| `target_count` | `int` | **Required** | Desired target size. |
+| `generation_multiplier`| `int` | **Required** | Oversampling factor. |
+| `rounds` | `int` | `2` | Number of evolution rounds to perform. |
+| `branching_factor` | `int` | `1` | Number of variations to create per seed, per round. |
+| `operators` | `list[str]` | `[]` | Allowed mutation operators (e.g., `"deepen"`, `"add_constraints"`, `"concretizing"`, `"breadth_mutation"`). |
 
 ---
 
-## 6. Deduplication (`dedup`)
+### Deduplication Stages
 
-A list of dedup stages. **Presence in the list = enabled.** Omit the section entirely to skip dedup.
-
+#### `exact`
+Fast content-hash exact deduplication.
 ```yaml
-# Both exact and near dedup:
-dedup:
-  - type: exact
-  - type: near
-    lsh_bands: 16
-    jaccard_threshold: 0.85
-
-# Just exact:
-dedup:
-  - type: exact
-
-# No dedup (omit the section entirely):
-# dedup:  # not present
+- type: exact
 ```
 
-### `exact` Dedup
-Fast byte-for-byte content hash dedup. No additional config needed.
-
+#### `near`
+MinHash/LSH fuzzy deduplication for identifying near-duplicate instructions.
+```yaml
+- type: near
+  shingle_size: 5
+  num_hashes: 128
+  lsh_bands: 16
+  jaccard_threshold: 0.70
+```
 | Key | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `type` | `Literal["exact"]` | **Required** | Discriminator field. |
-
-### `near` Dedup
-MinHash/LSH fuzzy deduplication.
-
-| Key | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `type` | `Literal["near"]` | **Required** | Discriminator field. |
-| `shingle_size` | `int` | `5` | Size of character/word n-grams for hashing. |
-| `num_hashes` | `int` | `128` | Resolution of the MinHash signature. |
-| `lsh_bands` | `int` | `16` | Number of LSH bands for bucketing. Records are only compared within matching bands, reducing dedup from O(n²) to O(n). |
-| `jaccard_threshold` | `float` | `0.7` | Similarity threshold (0.0 to 1.0). Higher means stricter matching. |
+| `shingle_size` | `int` | `5` | Word/char n-gram size for hashing. |
+| `num_hashes` | `int` | `128` | MinHash signature size. |
+| `lsh_bands` | `int` | `16` | Number of LSH bands for bucketing. |
+| `jaccard_threshold` | `float` | `0.7` | Jaccard similarity threshold for filtering. |
 
 ---
 
-## 7. Filters (`filters`)
-
-Defines the quality gates that generations must pass. **Presence in the `stages` list = enabled.** Order in the list = execution order.
-
-```yaml
-filters:
-  target_count: 500
-  stages:
-    - type: length
-      min_response_chars: 50
-    - type: language
-      allowed: ["en", "es"]
-    - type: canary
-      phrases: ["SECRET_PROJECT"]
-    - type: labeling_engine
-      rubric_path: ./rubrics/quality.yaml
-      min_overall_score: 3.5
-```
-
-| Key | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `target_count` | `int` | **Required** | The final target number of valid items after all filtering. |
-| `stages` | `list` | `[]` | Ordered list of filter stage configs. Each must have a `type` discriminator. |
-
-### Available Filter Stages
+### Filter & Scoring Stages
 
 #### `length`
-| Key | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `min_instruction_chars` | `int` | `10` | Minimum length for instructions. |
-| `max_instruction_chars` | `int` | `4096` | Maximum length for instructions. |
-| `min_response_chars` | `int` | `10` | Minimum length for responses. |
-| `max_response_chars` | `int` | `16384` | Maximum length for responses. |
+Filters out records whose instructions or responses are too short or too long.
+```yaml
+- type: length
+  min_instruction_chars: 10
+  max_instruction_chars: 4096
+  min_response_chars: 10
+  max_response_chars: 16384
+```
 
 #### `language`
-| Key | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `allowed` | `list[str]` | `["en"]` | List of allowed ISO language codes. |
-
-#### `ifd`
-| Key | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `min_score` | `float` | `0.2` | Minimum IFD score required to pass. |
-
-#### `labeling_engine`
-| Key | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `rubric_path` | `str` | `None` | Path to the YAML rubric definition file. |
-| `min_overall_score` | `float` | `None` | Threshold score to pass the judge. |
+Filters out records that do not match the allowed language.
+```yaml
+- type: language
+  allowed: ["en"]
+```
 
 #### `canary`
-| Key | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `phrases` | `list[str]` | `[]` | Drop records containing any of these phrases. |
+Filters out generations containing sensitive phrases or secrets.
+```yaml
+- type: canary
+  phrases: ["SECRET_TOKEN"]
+```
 
 #### `semantic_similarity`
-| Key | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `threshold` | `float` | `0.9` | Drop generated records with cosine similarity ≥ threshold to their seed. |
+Filters out generations that are too similar to their seed.
+```yaml
+- type: semantic_similarity
+  threshold: 0.90
+```
 
 #### `sentence_variance`
-| Key | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `min_cv` | `float` | `0.15` | Minimum coefficient of variation for sentence lengths. |
+Filters out responses with repetitive structures by checking sentence length variance.
+```yaml
+- type: sentence_variance
+  min_cv: 0.15
+```
 
-#### `reward_model`
-| Key | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `min_score` | `float` | `None` | Minimum reward model score to pass. |
-| `llm_override` | `Object` | `None` | Override LLM settings for the reward model. |
+#### `ifd`
+Calculates and filters by Instruction-Following Difficulty (IFD) score.
+```yaml
+- type: ifd
+  min_score: 0.20
+```
 
-#### `pair_delta`
-| Key | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `score_field` | `str` | `"quality"` | Which score field to compare. |
-| `min_delta` | `float` | `0.30` | Minimum improvement over parent. |
-| `length_ratio_max` | `float` | `None` | Max response length ratio vs parent. |
+#### `labeling_score`
+Rates instruction/response pairs using a custom rubric.
+```yaml
+- type: labeling_score
+  rubric_path: ./rubrics/sft_quality.yaml
+  min_overall_score: 3.5
+```
+
+#### `reward_model_scoring`
+Scores records with a designated reward model LLM.
+```yaml
+- type: reward_model_scoring
+  min_score: 0.0
+```
+
+#### `pair_delta_filter`
+Requires evolved pairs to improve over their parent by a minimum margin.
+```yaml
+- type: pair_delta_filter
+  score_field: "quality"
+  min_delta: 0.3
+```
 
 #### `select`
-| Key | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `target_count` | `int` | `None` | Number of records to select. |
-| `weights` | `dict[str, float]` | `{}` | Score weights for composite ranking. |
-| `strategy` | `str` | `"top_n"` | Selection strategy. |
+Ranks and selects top-N elements using composite scores.
+```yaml
+- type: select
+  target_count: 100
+  strategy: top_n
+  weights:
+    quality: 1.0
+```
 
 ---
 
-## 8. Embeddings (`embeddings`)
+## 5. Embeddings (`embeddings`)
 
-Configures how diversity embeddings are calculated for the dataset.
+Configures how diversity embeddings are calculated.
 
 ```yaml
 embeddings:
@@ -314,31 +315,29 @@ embeddings:
 
 | Key | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `provider` | `str` | `"huggingface"`| Provider to use. Either `"huggingface"` (local via FastEmbed) or `"openai"`. |
+| `provider` | `str` | `"huggingface"`| `"huggingface"` (local via FastEmbed) or `"openai"`. |
 | `model` | `str` | `"all-MiniLM-L6-v2"`| The embedding model identifier. |
-| `api_key` | `str` | `None` | Only required if using the `"openai"` provider. |
-| `base_url` | `HttpUrl` | `None` | Only required if using a custom endpoint for the `"openai"` provider. |
 
 ---
 
-## 9. Labeling Engine (`labeling_engine`)
+## 6. Labeling Engine (`labeling_engine`)
 
-Settings governing the LLM-as-a-judge system when the `labeling_engine` filter stage is present.
+Settings governing the LLM-as-a-judge system when running a `labeling_score` stage.
 
 ```yaml
 labeling_engine:
-  rubric_path: ./rubrics/helpfulness.yaml
+  rubric_path: ./rubrics/sft_quality.yaml
   mode: single
 ```
 
 | Key | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `rubric_path` | `str` | `None` | Path to the rubric definition. |
-| `mode` | `str` | `"single"` | Labeling mode. `"single"` for a single judge evaluation, `"multi"` for multi-judge consensus. |
+| `mode` | `str` | `"single"` | Labeling mode: `"single"` or `"multi"`. |
 
 ---
 
-## 10. Output (`output`)
+## 7. Output (`output`)
 
 Defines how and where the final fine-tuning dataset is written.
 
@@ -350,5 +349,5 @@ output:
 
 | Key | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `format` | `str` | **Required** | The target schema format. Supports `"jsonl"` (raw instruction/response pairs), `"chatml"`, or `"alpaca"`. |
-| `path` | `str` | **Required** | Path where the final file will be saved. |
+| `format` | `str` | **Required** | Output schema format: `"jsonl"`, `"chatml"`, or `"alpaca"`. |
+| `path` | `str` | **Required** | Target path where the dataset will be saved. |

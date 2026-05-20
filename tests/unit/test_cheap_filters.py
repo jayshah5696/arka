@@ -127,13 +127,15 @@ def test_length_filter_drops_long_response(tmp_path: Path) -> None:
 
 def test_length_filter_keeps_records_within_bounds(tmp_path: Path) -> None:
     config = _base_config(
-        stages=[{
-            "type": "length",
-            "min_instruction_chars": 5,
-            "max_instruction_chars": 100,
-            "min_response_chars": 5,
-            "max_response_chars": 100,
-        }]
+        stages=[
+            {
+                "type": "length",
+                "min_instruction_chars": 5,
+                "max_instruction_chars": 100,
+                "min_response_chars": 5,
+                "max_response_chars": 100,
+            }
+        ]
     )
     stage = LengthFilterStage()
     records = [_record("Explain gravity", "Gravity is a force.")]

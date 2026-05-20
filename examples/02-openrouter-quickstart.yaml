@@ -23,53 +23,52 @@ executor:
   mode: threadpool
   max_workers: 4
 
-data_source:
-  type: seeds
-  path: ./seeds/07-humanizer-rewrite.jsonl
+pipeline:
+  - type: seed_source
+    path: ./seeds/07-humanizer-rewrite.jsonl
 
-generator:
-  type: prompt_based
-  target_count: 10
-  generation_multiplier: 2
-  prompt_template: |
-    You are generating SFT examples for a rewrite assistant used for proofreading, rewriting, shortening, formalizing, summarizing, and humanizing text.
+  - type: normalize_conversation
 
-    Create one new instruction/response pair.
+  - type: prompt_based_generator
+    target_count: 10
+    generation_multiplier: 2
+    prompt_template: |
+      You are generating SFT examples for a rewrite assistant used for proofreading, rewriting, shortening, formalizing, summarizing, and humanizing text.
 
-    The instruction should:
-    - describe a realistic rewrite task
-    - include the raw source text to transform
-    - ask for a human-sounding result
-    - forbid em dashes
+      Create one new instruction/response pair.
 
-    The response should be valid JSON with keys:
-    - brief_rationale
-    - final_text
+      The instruction should:
+      - describe a realistic rewrite task
+      - include the raw source text to transform
+      - ask for a human-sounding result
+      - forbid em dashes
 
-    Style rules for final_text:
-    - natural rhythm
-    - no corporate fluff
-    - no AI-signature vocabulary
-    - no em dashes
+      The response should be valid JSON with keys:
+      - brief_rationale
+      - final_text
 
-    Return only JSON with keys "instruction" and "response".
+      Style rules for final_text:
+      - natural rhythm
+      - no corporate fluff
+      - no AI-signature vocabulary
+      - no em dashes
 
-    Seed instruction:
-    {seed_instruction}
+      Return only JSON with keys "instruction" and "response".
 
-    Seed response:
-    {seed_response}
+      Seed instruction:
+      {seed_instruction}
 
-filters:
-  target_count: 10
-  stages:
-    - type: length
-      min_instruction_chars: 40
-      max_instruction_chars: 4096
-      min_response_chars: 40
-      max_response_chars: 16384
-    - type: language
-      allowed: [en]
+      Seed response:
+      {seed_response}
+
+  - type: length
+    min_instruction_chars: 40
+    max_instruction_chars: 4096
+    min_response_chars: 40
+    max_response_chars: 16384
+
+  - type: language
+    allowed: [en]
 
 embeddings:
   provider: huggingface

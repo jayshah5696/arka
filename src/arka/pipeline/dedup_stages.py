@@ -7,6 +7,7 @@ from typing import Any
 
 import polars as pl
 
+from arka.config.models import ExactDedupConfig, NearDedupConfig
 from arka.pipeline.artifacts import StageArtifacts, StageReport
 from arka.pipeline.models import StageContext
 from arka.pipeline.stages import Stage
@@ -17,8 +18,8 @@ class ExactDedupStage(Stage):
     name = "02c_exact_dedup"
     stage_action = "deduplicated"
 
-    def __init__(self) -> None:
-        pass
+    def __init__(self, config: ExactDedupConfig | None = None) -> None:
+        self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
         # Stage is only instantiated when present in config list;
@@ -84,13 +85,15 @@ class NearDedupStage(Stage):
     name = "02d_near_dedup"
     stage_action = "deduplicated"
 
-    def __init__(self) -> None:
-        pass
+    def __init__(self, config: NearDedupConfig | None = None) -> None:
+        self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
         # Stage is only instantiated when present in config list;
-        # look up the near dedup config from the list.
-        near_cfg = self._get_near_config(ctx)
+        # look up the near dedup config from self.config.
+        if self.config is None:
+            self.config = ctx.config.get_stage_config("near_dedup") or NearDedupConfig()
+        near_cfg = self.config
 
         kept_records: list[Record] = []
         dropped_records: list[Record] = []
@@ -200,16 +203,6 @@ class NearDedupStage(Stage):
             drop_reasons=drop_reasons,
         )
         return kept_records
-
-    @staticmethod
-    def _get_near_config(ctx: StageContext):
-        """Look up the NearDedupConfig from the dedup list."""
-        from arka.config.models import NearDedupConfig
-
-        for cfg in ctx.config.dedup:
-            if isinstance(cfg, NearDedupConfig):
-                return cfg
-        return NearDedupConfig()  # fallback to defaults
 
     def _cluster_id(self, instruction: str) -> str:
         return hashlib.sha256(instruction.strip().encode("utf-8")).hexdigest()

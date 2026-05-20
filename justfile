@@ -26,6 +26,15 @@ matrix:
 validate-examples:
     uv run python scripts/validate_examples.py
 
+dry-run-examples:
+    uv run python scripts/dry_run_examples.py
+
+run-examples:
+    uv run python scripts/run_all_examples.py
+
+schema:
+    uv run python scripts/generate_schema.py
+
 run:
     uv run arka
 

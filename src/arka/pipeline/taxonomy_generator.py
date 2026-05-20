@@ -29,6 +29,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from arka.config.models import TaxonomyGeneratorConfig
 from arka.llm.client import LLMClient
 from arka.pipeline.models import StageContext
 from arka.pipeline.output import OutputWriter
@@ -88,6 +89,7 @@ class TaxonomyGeneratorStage(Stage):
 
     def __init__(
         self,
+        config: TaxonomyGeneratorConfig | None = None,
         llm_client: Any | None = None,
         seed: int = 0,
         project_root: Path | None = None,
@@ -96,9 +98,15 @@ class TaxonomyGeneratorStage(Stage):
         self._rng = random.Random(seed)
         self._output_writer = OutputWriter()
         self._project_root = project_root
+        self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        gen_cfg = ctx.config.generator
+        if self.config is None:
+            self.config = (
+                ctx.config.get_stage_config("taxonomy_generator")
+                or TaxonomyGeneratorConfig()
+            )
+        gen_cfg = self.config
         target = gen_cfg.target_count * gen_cfg.generation_multiplier
         if target <= 0:
             return list(records)
@@ -178,8 +186,8 @@ class TaxonomyGeneratorStage(Stage):
         kwargs = {
             "messages": [{"role": "user", "content": prompt}],
             "schema": _GeneratedConversation,
-            "temperature": ctx.config.generator.temperature,
-            "max_tokens": ctx.config.generator.max_tokens,
+            "temperature": self.config.temperature,
+            "max_tokens": self.config.max_tokens,
         }
         try:
             output = client.complete_structured(**kwargs)

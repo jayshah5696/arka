@@ -430,56 +430,44 @@ version: "1"
 run_id: null                      # auto-generated if null
 
 llm:
-  provider: openai                # openai | anthropic (v0)
-                                  # gemini: roadmap v1, config rejects it in v0
+  provider: openai                # openai | anthropic
   model: gpt-4o-mini
   api_key: ${OPENAI_API_KEY}
 
 executor:
-  mode: threadpool                # realtime | threadpool | provider_batch (stub)
+  mode: threadpool                # realtime | threadpool
   max_workers: 10
 
-data_source:
-  type: seeds                     # seeds | pdf | hf_dataset
-  # NOTE: seedless is NOT a standalone Tier A source type.
-  # Use omit data_source + set generator.use_taxonomy_only: true for
-  # prompt-based generation without per-example seeds.
-  # Magpie (Tier C) is the only true seedless generator.
-  path: ./seeds.jsonl
-  # pdf options:
-  # chunk_strategy: fixed | semantic
-  # chunk_size_tokens: 512
-  # chunk_overlap_tokens: 64
+pipeline:
+  - type: seed_source
+    path: ./seeds.jsonl
+    # pdf options:
+    # type: pdf_source
+    # path: ./document.pdf
+    # chunk_strategy: fixed | semantic
+    # chunk_size_chars: 1000
+    # chunk_overlap_chars: 100
 
-generator:
-  type: prompt_based              # current implementation: prompt_based only
-  target_count: 10000
-  generation_multiplier: 5        # generate 5x, filter down
+  - type: normalize_conversation
 
-  # planned later:
-  # persona_conditioning: true
-  # persona_pool_path: ./personas.jsonl
-  # topic_taxonomy_path: ./taxonomy.yaml
-  # rounds: 4
-  # branching_factor: 2
-  # operators: [add_constraints, deepen, increase_reasoning_steps, breadth_mutation]
+  - type: prompt_based_generator
+    target_count: 10000
+    generation_multiplier: 5        # generate 5x, filter down
 
-dedup:
   - type: exact
 
-filters:
-  target_count: 10000
-  stages:
-    - type: length
-      min_instruction_chars: 10
-      max_instruction_chars: 4096
-      min_response_chars: 10
-      max_response_chars: 16384
-    - type: language
-      allowed: [en]
-    - type: labeling_engine
-      rubric_path: ./rubrics/sft_quality.yaml
-      min_overall_score: 3.5
+  - type: length
+    min_instruction_chars: 10
+    max_instruction_chars: 4096
+    min_response_chars: 10
+    max_response_chars: 16384
+
+  - type: language
+    allowed: [en]
+
+  - type: labeling_score
+    rubric_path: ./rubrics/sft_quality.yaml
+    min_overall_score: 3.5
 
 contamination:
   enabled: true   # contamination is a separate future feature, not part of filters
@@ -491,15 +479,6 @@ contamination:
 labeling_engine:
   rubric_path: ./rubrics/sft_quality.yaml
   mode: single                    # single | multi
-  # multi options:
-  # judges:
-  #   - provider: openai
-  #     model: gpt-4o
-  #     weight: 0.7
-  #   - provider: anthropic
-  #     model: claude-sonnet-4.5
-  #     weight: 0.3
-  # conflict_std_threshold: 1.0
 
 output:
   format: chatml                  # chatml | alpaca | dpo | triplet

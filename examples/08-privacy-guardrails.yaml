@@ -9,41 +9,44 @@ version: "1"
 
 llm:
   provider: openai
-  model: gpt-4o-mini
-  api_key: ${OPENAI_API_KEY}
-  base_url: https://api.openai.com/v1
+  model: google/gemini-3.1-flash-lite-preview
+  api_key: ${OPENROUTER_API_KEY}
+  base_url: https://openrouter.ai/api/v1
   timeout_seconds: 30
+  max_retries: 3
+  openai_compatible:
+    referer: https://example.com
+    title: arka
 
 executor:
   mode: threadpool
   max_workers: 1
 
-data_source:
-  type: seeds
-  path: ./seeds/08-privacy-seeds.jsonl
+pipeline:
+  - type: seed_source
+    path: ./seeds/08-privacy-seeds.jsonl
 
-generator:
-  type: prompt_based
-  target_count: 5
-  generation_multiplier: 1
-  prompt_template: |
-    Rewrite this instruction and response to be more concise.
-    Return only JSON with keys "instruction" and "response".
+  - type: normalize_conversation
 
-    Seed instruction:
-    {seed_instruction}
+  - type: prompt_based_generator
+    target_count: 5
+    generation_multiplier: 1
+    prompt_template: |
+      Rewrite this instruction and response to be more concise.
+      Return only JSON with keys "instruction" and "response".
 
-    Seed response:
-    {seed_response}
+      Seed instruction:
+      {seed_instruction}
 
-filters:
-  target_count: 5
-  stages:
-    - type: semantic_similarity
-      threshold: 0.95
-    - type: canary
-      phrases:
-        - "SUPER_SECRET_PROJECT_X"
+      Seed response:
+      {seed_response}
+
+  - type: semantic_similarity
+    threshold: 0.95
+
+  - type: canary
+    phrases:
+      - "SUPER_SECRET_PROJECT_X"
 
 embeddings:
   provider: huggingface

@@ -25,7 +25,6 @@ def build_config(data_source_path: str) -> dict:
             "target_count": 2,
             "generation_multiplier": 1,
         },
-        
         "filters": {"target_count": 2},
         "embeddings": {"provider": "huggingface", "model": "all-MiniLM-L6-v2"},
         "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},

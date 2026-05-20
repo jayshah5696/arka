@@ -1,0 +1,1189 @@
+{
+  "$defs": {
+    "CanaryFilterConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "canary",
+          "default": "canary",
+          "title": "Type",
+          "type": "string"
+        },
+        "phrases": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Phrases",
+          "type": "array"
+        }
+      },
+      "title": "CanaryFilterConfig",
+      "type": "object"
+    },
+    "ComplexityEloFilterConfig": {
+      "additionalProperties": false,
+      "description": "Slice 5 \u2014 Simula \u00a72.3 batch-Elo complexity scoring.\n\nAnnotates each ConversationRecord with a comparable `complexity_elo` and\ndoes NOT drop. Filter or select stages downstream can consume the score.",
+      "properties": {
+        "type": {
+          "const": "complexity_elo",
+          "default": "complexity_elo",
+          "title": "Type",
+          "type": "string"
+        },
+        "batch_size": {
+          "default": 5,
+          "title": "Batch Size",
+          "type": "integer"
+        },
+        "samples_per_record": {
+          "default": 4,
+          "title": "Samples Per Record",
+          "type": "integer"
+        },
+        "k_factor": {
+          "default": 32.0,
+          "title": "K Factor",
+          "type": "number"
+        },
+        "llm_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StageLLMOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "ComplexityEloFilterConfig",
+      "type": "object"
+    },
+    "CompositeSelectConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "select",
+          "default": "select",
+          "title": "Type",
+          "type": "string"
+        },
+        "target_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Count"
+        },
+        "weights": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Weights",
+          "type": "object"
+        },
+        "strategy": {
+          "default": "top_n",
+          "title": "Strategy",
+          "type": "string"
+        }
+      },
+      "title": "CompositeSelectConfig",
+      "type": "object"
+    },
+    "DoubleCriticFilterConfig": {
+      "additionalProperties": false,
+      "description": "Simula \u00a72.2 double-critic. Two independent yes/no critic calls per record.\n\nNo tunable knobs in slice 1 \u2014 the inverse-prompt property is preserved by\nconstruction. Future fields (alternate prompts, majority-of-N, llm_override)\nland here without breaking the YAML schema.",
+      "properties": {
+        "type": {
+          "const": "double_critic",
+          "default": "double_critic",
+          "title": "Type",
+          "type": "string"
+        },
+        "llm_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StageLLMOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "DoubleCriticFilterConfig",
+      "type": "object"
+    },
+    "EmbeddingsConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "default": "huggingface",
+          "enum": [
+            "huggingface",
+            "openai"
+          ],
+          "title": "Provider",
+          "type": "string"
+        },
+        "model": {
+          "default": "all-MiniLM-L6-v2",
+          "title": "Model",
+          "type": "string"
+        },
+        "api_key": {
+          "anyOf": [
+            {
+              "format": "password",
+              "type": "string",
+              "writeOnly": true
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Api Key"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "maxLength": 2083,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base Url"
+        },
+        "timeout_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeout Seconds"
+        },
+        "max_retries": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Retries"
+        },
+        "openai_compatible": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OpenAICompatibleConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "EmbeddingsConfig",
+      "type": "object"
+    },
+    "EvolFilterConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "min_edit_distance_chars": {
+          "default": 20,
+          "title": "Min Edit Distance Chars",
+          "type": "integer"
+        },
+        "min_instruction_chars": {
+          "default": 20,
+          "title": "Min Instruction Chars",
+          "type": "integer"
+        },
+        "refusal_keywords": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Refusal Keywords",
+          "type": "array"
+        }
+      },
+      "title": "EvolFilterConfig",
+      "type": "object"
+    },
+    "EvolInstructGeneratorConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "evol_instruct_generator",
+          "default": "evol_instruct_generator",
+          "title": "Type",
+          "type": "string"
+        },
+        "target_count": {
+          "default": 1,
+          "title": "Target Count",
+          "type": "integer"
+        },
+        "generation_multiplier": {
+          "default": 1,
+          "title": "Generation Multiplier",
+          "type": "integer"
+        },
+        "rounds": {
+          "minimum": 1,
+          "title": "Rounds",
+          "type": "integer"
+        },
+        "branching_factor": {
+          "minimum": 1,
+          "title": "Branching Factor",
+          "type": "integer"
+        },
+        "operators": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Operators",
+          "type": "array"
+        },
+        "filter": {
+          "$ref": "#/$defs/EvolFilterConfig"
+        },
+        "temperature": {
+          "default": 0.7,
+          "title": "Temperature",
+          "type": "number"
+        },
+        "max_tokens": {
+          "default": 512,
+          "title": "Max Tokens",
+          "type": "integer"
+        },
+        "llm_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StageLLMOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "rounds",
+        "branching_factor",
+        "operators"
+      ],
+      "title": "EvolInstructGeneratorConfig",
+      "type": "object"
+    },
+    "ExactDedupConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "exact",
+          "default": "exact",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "title": "ExactDedupConfig",
+      "type": "object"
+    },
+    "ExecutorConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "default": "threadpool",
+          "enum": [
+            "threadpool",
+            "realtime",
+            "provider_batch"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "max_workers": {
+          "default": 4,
+          "title": "Max Workers",
+          "type": "integer"
+        }
+      },
+      "title": "ExecutorConfig",
+      "type": "object"
+    },
+    "IFDFilterConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "ifd",
+          "default": "ifd",
+          "title": "Type",
+          "type": "string"
+        },
+        "min_score": {
+          "default": 0.2,
+          "title": "Min Score",
+          "type": "number"
+        }
+      },
+      "title": "IFDFilterConfig",
+      "type": "object"
+    },
+    "LLMConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "const": "openai",
+          "title": "Provider",
+          "type": "string"
+        },
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "api_key": {
+          "format": "password",
+          "title": "Api Key",
+          "type": "string",
+          "writeOnly": true
+        },
+        "base_url": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Base Url",
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "default": 30.0,
+          "title": "Timeout Seconds",
+          "type": "number"
+        },
+        "max_retries": {
+          "default": 3,
+          "title": "Max Retries",
+          "type": "integer"
+        },
+        "supports_json_schema": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Supports Json Schema"
+        },
+        "openai_compatible": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OpenAICompatibleConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "provider",
+        "model",
+        "api_key",
+        "base_url"
+      ],
+      "title": "LLMConfig",
+      "type": "object"
+    },
+    "LabelingEngineConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "rubric_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rubric Path"
+        },
+        "mode": {
+          "default": "single",
+          "enum": [
+            "single",
+            "multi"
+          ],
+          "title": "Mode",
+          "type": "string"
+        }
+      },
+      "title": "LabelingEngineConfig",
+      "type": "object"
+    },
+    "LabelingFilterConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "labeling_engine",
+          "default": "labeling_engine",
+          "title": "Type",
+          "type": "string"
+        },
+        "rubric_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rubric Path"
+        },
+        "min_overall_score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Overall Score"
+        }
+      },
+      "title": "LabelingFilterConfig",
+      "type": "object"
+    },
+    "LanguageFilterConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "language",
+          "default": "language",
+          "title": "Type",
+          "type": "string"
+        },
+        "allowed": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed",
+          "type": "array"
+        }
+      },
+      "title": "LanguageFilterConfig",
+      "type": "object"
+    },
+    "LengthFilterConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "length",
+          "default": "length",
+          "title": "Type",
+          "type": "string"
+        },
+        "min_instruction_chars": {
+          "default": 10,
+          "title": "Min Instruction Chars",
+          "type": "integer"
+        },
+        "max_instruction_chars": {
+          "default": 4096,
+          "title": "Max Instruction Chars",
+          "type": "integer"
+        },
+        "min_response_chars": {
+          "default": 10,
+          "title": "Min Response Chars",
+          "type": "integer"
+        },
+        "max_response_chars": {
+          "default": 16384,
+          "title": "Max Response Chars",
+          "type": "integer"
+        }
+      },
+      "title": "LengthFilterConfig",
+      "type": "object"
+    },
+    "NearDedupConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "near",
+          "default": "near",
+          "title": "Type",
+          "type": "string"
+        },
+        "shingle_size": {
+          "default": 5,
+          "title": "Shingle Size",
+          "type": "integer"
+        },
+        "num_hashes": {
+          "default": 128,
+          "title": "Num Hashes",
+          "type": "integer"
+        },
+        "lsh_bands": {
+          "default": 16,
+          "title": "Lsh Bands",
+          "type": "integer"
+        },
+        "jaccard_threshold": {
+          "default": 0.7,
+          "title": "Jaccard Threshold",
+          "type": "number"
+        }
+      },
+      "title": "NearDedupConfig",
+      "type": "object"
+    },
+    "NormalizeConversationConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "normalize_conversation",
+          "default": "normalize_conversation",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "title": "NormalizeConversationConfig",
+      "type": "object"
+    },
+    "OpenAICompatibleConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "referer": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "maxLength": 2083,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Referer"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        }
+      },
+      "title": "OpenAICompatibleConfig",
+      "type": "object"
+    },
+    "OutputConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "enum": [
+            "jsonl",
+            "chatml",
+            "alpaca"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "format",
+        "path"
+      ],
+      "title": "OutputConfig",
+      "type": "object"
+    },
+    "PDFSourceConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "pdf_source",
+          "default": "pdf_source",
+          "title": "Type",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "chunk_strategy": {
+          "const": "fixed",
+          "default": "fixed",
+          "title": "Chunk Strategy",
+          "type": "string"
+        },
+        "chunk_size_chars": {
+          "default": 3000,
+          "title": "Chunk Size Chars",
+          "type": "integer"
+        },
+        "chunk_overlap_chars": {
+          "default": 300,
+          "title": "Chunk Overlap Chars",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "PDFSourceConfig",
+      "type": "object"
+    },
+    "PairDeltaFilterConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "pair_delta",
+          "default": "pair_delta",
+          "title": "Type",
+          "type": "string"
+        },
+        "score_field": {
+          "default": "quality",
+          "title": "Score Field",
+          "type": "string"
+        },
+        "min_delta": {
+          "default": 0.3,
+          "title": "Min Delta",
+          "type": "number"
+        },
+        "length_ratio_max": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Length Ratio Max"
+        }
+      },
+      "title": "PairDeltaFilterConfig",
+      "type": "object"
+    },
+    "PromptBasedGeneratorConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "prompt_based_generator",
+          "default": "prompt_based_generator",
+          "title": "Type",
+          "type": "string"
+        },
+        "target_count": {
+          "default": 1,
+          "title": "Target Count",
+          "type": "integer"
+        },
+        "generation_multiplier": {
+          "default": 1,
+          "title": "Generation Multiplier",
+          "type": "integer"
+        },
+        "prompt_template": {
+          "default": "You generate synthetic instruction-response pairs for supervised fine-tuning.\nCreate one new instruction and one strong response inspired by the seed example.\nThe new pair must be self-contained, specific, and meaningfully different from the seed.\nReturn only JSON with keys \"instruction\" and \"response\".\n\nSeed instruction:\n{seed_instruction}\n\nSeed response:\n{seed_response}\n",
+          "title": "Prompt Template",
+          "type": "string"
+        },
+        "temperature": {
+          "default": 0.7,
+          "title": "Temperature",
+          "type": "number"
+        },
+        "max_tokens": {
+          "default": 512,
+          "title": "Max Tokens",
+          "type": "integer"
+        },
+        "llm_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StageLLMOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "PromptBasedGeneratorConfig",
+      "type": "object"
+    },
+    "RewardModelFilterConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "reward_model",
+          "default": "reward_model",
+          "title": "Type",
+          "type": "string"
+        },
+        "min_score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Score"
+        },
+        "llm_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StageLLMOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "RewardModelFilterConfig",
+      "type": "object"
+    },
+    "SeedSourceConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "seed_source",
+          "default": "seed_source",
+          "title": "Type",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "SeedSourceConfig",
+      "type": "object"
+    },
+    "SemanticSimilarityFilterConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "semantic_similarity",
+          "default": "semantic_similarity",
+          "title": "Type",
+          "type": "string"
+        },
+        "threshold": {
+          "default": 0.9,
+          "title": "Threshold",
+          "type": "number"
+        }
+      },
+      "title": "SemanticSimilarityFilterConfig",
+      "type": "object"
+    },
+    "SentenceVarianceFilterConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "sentence_variance",
+          "default": "sentence_variance",
+          "title": "Type",
+          "type": "string"
+        },
+        "min_cv": {
+          "default": 0.15,
+          "title": "Min Cv",
+          "type": "number"
+        }
+      },
+      "title": "SentenceVarianceFilterConfig",
+      "type": "object"
+    },
+    "StageLLMOverride": {
+      "additionalProperties": false,
+      "description": "Override top-level LLM settings for a specific stage.",
+      "properties": {
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "maxLength": 2083,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base Url"
+        },
+        "api_key": {
+          "anyOf": [
+            {
+              "format": "password",
+              "type": "string",
+              "writeOnly": true
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Api Key"
+        },
+        "temperature": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Temperature"
+        },
+        "max_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Tokens"
+        }
+      },
+      "title": "StageLLMOverride",
+      "type": "object"
+    },
+    "TaxonomyGeneratorConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "taxonomy_generator",
+          "default": "taxonomy_generator",
+          "title": "Type",
+          "type": "string"
+        },
+        "target_count": {
+          "default": 1,
+          "title": "Target Count",
+          "type": "integer"
+        },
+        "generation_multiplier": {
+          "default": 1,
+          "title": "Generation Multiplier",
+          "type": "integer"
+        },
+        "taxonomy_path": {
+          "title": "Taxonomy Path",
+          "type": "string"
+        },
+        "temperature": {
+          "default": 0.7,
+          "title": "Temperature",
+          "type": "number"
+        },
+        "max_tokens": {
+          "default": 512,
+          "title": "Max Tokens",
+          "type": "integer"
+        },
+        "llm_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StageLLMOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "taxonomy_path"
+      ],
+      "title": "TaxonomyGeneratorConfig",
+      "type": "object"
+    },
+    "TransformGeneratorConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "transform_generator",
+          "default": "transform_generator",
+          "title": "Type",
+          "type": "string"
+        },
+        "target_count": {
+          "default": 1,
+          "title": "Target Count",
+          "type": "integer"
+        },
+        "generation_multiplier": {
+          "default": 1,
+          "title": "Generation Multiplier",
+          "type": "integer"
+        },
+        "input_field": {
+          "title": "Input Field",
+          "type": "string"
+        },
+        "output_field": {
+          "title": "Output Field",
+          "type": "string"
+        },
+        "preserve_original": {
+          "default": false,
+          "title": "Preserve Original",
+          "type": "boolean"
+        },
+        "prompt_template": {
+          "default": "You generate synthetic instruction-response pairs for supervised fine-tuning.\nCreate one new instruction and one strong response inspired by the seed example.\nThe new pair must be self-contained, specific, and meaningfully different from the seed.\nReturn only JSON with keys \"instruction\" and \"response\".\n\nSeed instruction:\n{seed_instruction}\n\nSeed response:\n{seed_response}\n",
+          "title": "Prompt Template",
+          "type": "string"
+        },
+        "temperature": {
+          "default": 0.7,
+          "title": "Temperature",
+          "type": "number"
+        },
+        "max_tokens": {
+          "default": 512,
+          "title": "Max Tokens",
+          "type": "integer"
+        },
+        "llm_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StageLLMOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "input_field",
+        "output_field"
+      ],
+      "title": "TransformGeneratorConfig",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "title": "Version",
+      "type": "string"
+    },
+    "run_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Run Id"
+    },
+    "llm": {
+      "$ref": "#/$defs/LLMConfig"
+    },
+    "executor": {
+      "$ref": "#/$defs/ExecutorConfig"
+    },
+    "pipeline": {
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "canary": "#/$defs/CanaryFilterConfig",
+            "complexity_elo": "#/$defs/ComplexityEloFilterConfig",
+            "double_critic": "#/$defs/DoubleCriticFilterConfig",
+            "evol_instruct_generator": "#/$defs/EvolInstructGeneratorConfig",
+            "exact": "#/$defs/ExactDedupConfig",
+            "ifd": "#/$defs/IFDFilterConfig",
+            "labeling_engine": "#/$defs/LabelingFilterConfig",
+            "language": "#/$defs/LanguageFilterConfig",
+            "length": "#/$defs/LengthFilterConfig",
+            "near": "#/$defs/NearDedupConfig",
+            "normalize_conversation": "#/$defs/NormalizeConversationConfig",
+            "pair_delta": "#/$defs/PairDeltaFilterConfig",
+            "pdf_source": "#/$defs/PDFSourceConfig",
+            "prompt_based_generator": "#/$defs/PromptBasedGeneratorConfig",
+            "reward_model": "#/$defs/RewardModelFilterConfig",
+            "seed_source": "#/$defs/SeedSourceConfig",
+            "select": "#/$defs/CompositeSelectConfig",
+            "semantic_similarity": "#/$defs/SemanticSimilarityFilterConfig",
+            "sentence_variance": "#/$defs/SentenceVarianceFilterConfig",
+            "taxonomy_generator": "#/$defs/TaxonomyGeneratorConfig",
+            "transform_generator": "#/$defs/TransformGeneratorConfig"
+          },
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/SeedSourceConfig"
+          },
+          {
+            "$ref": "#/$defs/PDFSourceConfig"
+          },
+          {
+            "$ref": "#/$defs/NormalizeConversationConfig"
+          },
+          {
+            "$ref": "#/$defs/PromptBasedGeneratorConfig"
+          },
+          {
+            "$ref": "#/$defs/TransformGeneratorConfig"
+          },
+          {
+            "$ref": "#/$defs/EvolInstructGeneratorConfig"
+          },
+          {
+            "$ref": "#/$defs/TaxonomyGeneratorConfig"
+          },
+          {
+            "$ref": "#/$defs/ExactDedupConfig"
+          },
+          {
+            "$ref": "#/$defs/NearDedupConfig"
+          },
+          {
+            "$ref": "#/$defs/LengthFilterConfig"
+          },
+          {
+            "$ref": "#/$defs/LanguageFilterConfig"
+          },
+          {
+            "$ref": "#/$defs/SentenceVarianceFilterConfig"
+          },
+          {
+            "$ref": "#/$defs/IFDFilterConfig"
+          },
+          {
+            "$ref": "#/$defs/LabelingFilterConfig"
+          },
+          {
+            "$ref": "#/$defs/RewardModelFilterConfig"
+          },
+          {
+            "$ref": "#/$defs/PairDeltaFilterConfig"
+          },
+          {
+            "$ref": "#/$defs/CompositeSelectConfig"
+          },
+          {
+            "$ref": "#/$defs/SemanticSimilarityFilterConfig"
+          },
+          {
+            "$ref": "#/$defs/CanaryFilterConfig"
+          },
+          {
+            "$ref": "#/$defs/DoubleCriticFilterConfig"
+          },
+          {
+            "$ref": "#/$defs/ComplexityEloFilterConfig"
+          }
+        ]
+      },
+      "title": "Pipeline",
+      "type": "array"
+    },
+    "embeddings": {
+      "$ref": "#/$defs/EmbeddingsConfig"
+    },
+    "labeling_engine": {
+      "$ref": "#/$defs/LabelingEngineConfig"
+    },
+    "output": {
+      "$ref": "#/$defs/OutputConfig"
+    }
+  },
+  "required": [
+    "version",
+    "llm",
+    "executor",
+    "output"
+  ],
+  "title": "ResolvedConfig",
+  "type": "object"
+}

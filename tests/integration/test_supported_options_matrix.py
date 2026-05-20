@@ -159,8 +159,8 @@ def _write_config(
             "generation_multiplier": generation_multiplier,
         },
         "dedup": [
-            *([ {"type": "exact"} ] if exact_dedup else []),
-            *([ {"type": "near"} ] if near_dedup else []),
+            *([{"type": "exact"}] if exact_dedup else []),
+            *([{"type": "near"}] if near_dedup else []),
         ],
         "filters": {
             "target_count": target_count,
@@ -176,11 +176,13 @@ def _write_config(
     }
 
     if quality_filter:
-        config["filters"].setdefault("stages", []).append({
-            "type": "labeling_engine",
-            "rubric_path": "./rubrics/sft_quality.yaml",
-            "min_overall_score": 3.5,
-        })
+        config["filters"].setdefault("stages", []).append(
+            {
+                "type": "labeling_engine",
+                "rubric_path": "./rubrics/sft_quality.yaml",
+                "min_overall_score": 3.5,
+            }
+        )
         config["labeling_engine"] = {
             "rubric_path": "./rubrics/sft_quality.yaml",
             "mode": "single",

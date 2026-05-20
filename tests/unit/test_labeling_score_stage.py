@@ -70,7 +70,6 @@ def _ctx(tmp_path: Path) -> StageContext:
                 "target_count": 2,
                 "generation_multiplier": 1,
             },
-            
             "filters": {
                 "target_count": 2,
                 "stages": [

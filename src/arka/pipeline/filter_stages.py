@@ -6,6 +6,12 @@ from typing import Any
 
 import numpy as np
 
+from arka.config.models import (
+    CanaryFilterConfig,
+    IFDFilterConfig,
+    LabelingFilterConfig,
+    SemanticSimilarityFilterConfig,
+)
 from arka.embeddings import Embedder
 from arka.labeling.engine import LabelingEngine
 from arka.labeling.rubric import RubricLoader
@@ -29,12 +35,23 @@ class CanaryFilterStage(Stage):
     name = "02g_canary_filter"
     stage_action = "filtered"
 
-    def __init__(self) -> None:
-        pass
+    def __init__(self, config: CanaryFilterConfig | None = None) -> None:
+        self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        filter_config = ctx.config.filters.get_stage_config("canary")
-        if filter_config is None or not filter_config.phrases:
+        if self.config is None:
+            if ctx.config:
+                if hasattr(ctx.config, "filters"):
+                    self.config = ctx.config.filters.get_stage_config("canary")
+                if self.config is None and hasattr(ctx.config, "pipeline"):
+                    for stage_cfg in ctx.config.pipeline:
+                        if isinstance(stage_cfg, CanaryFilterConfig):
+                            self.config = stage_cfg
+                            break
+        if self.config is None:
+            self.config = CanaryFilterConfig()
+        filter_config = self.config
+        if not filter_config.phrases:
             return records
 
         kept: list[Record] = []
@@ -77,13 +94,24 @@ class SemanticSimilarityFilterStage(Stage):
     name = "02h_semantic_similarity_filter"
     stage_action = "filtered"
 
-    def __init__(self) -> None:
-        pass
+    def __init__(self, config: SemanticSimilarityFilterConfig | None = None) -> None:
+        self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        filter_config = ctx.config.filters.get_stage_config("semantic_similarity")
-        if filter_config is None:
+        if self.config is None:
+            if ctx.config:
+                if hasattr(ctx.config, "filters"):
+                    self.config = ctx.config.filters.get_stage_config(
+                        "semantic_similarity"
+                    )
+                if self.config is None and hasattr(ctx.config, "pipeline"):
+                    for stage_cfg in ctx.config.pipeline:
+                        if isinstance(stage_cfg, SemanticSimilarityFilterConfig):
+                            self.config = stage_cfg
+                            break
+        if self.config is None:
             return records
+        filter_config = self.config
 
         generated: list[ConversationRecord] = []
         seeds: list[ConversationRecord] = []
@@ -107,12 +135,8 @@ class SemanticSimilarityFilterStage(Stage):
         ]
         seed_texts = [f"{r.payload.instruction}\n{r.payload.response}" for r in seeds]
 
-        gen_emb = embedder.embed(
-            gen_texts, checkpoint_manager=ctx.checkpoint_manager
-        )
-        seed_emb = embedder.embed(
-            seed_texts, checkpoint_manager=ctx.checkpoint_manager
-        )
+        gen_emb = embedder.embed(gen_texts, checkpoint_manager=ctx.checkpoint_manager)
+        seed_emb = embedder.embed(seed_texts, checkpoint_manager=ctx.checkpoint_manager)
 
         if gen_emb is None or seed_emb is None:
             return records
@@ -181,14 +205,30 @@ class LabelingQualityFilterStage(Stage):
     name = "03_label_quality"
     stage_action = "filtered"
 
-    def __init__(self, project_root: Path, llm_client: Any | None = None) -> None:
+    def __init__(
+        self,
+        config: LabelingFilterConfig | None = None,
+        *,
+        project_root: Path,
+        llm_client: Any | None = None,
+    ) -> None:
         self.project_root = project_root
         self._llm_client = llm_client
+        self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        filter_config = ctx.config.filters.get_stage_config("labeling_engine")
-        if filter_config is None or filter_config.rubric_path is None:
+        if self.config is None:
+            if ctx.config:
+                if hasattr(ctx.config, "filters"):
+                    self.config = ctx.config.filters.get_stage_config("labeling_engine")
+                if self.config is None and hasattr(ctx.config, "pipeline"):
+                    for stage_cfg in ctx.config.pipeline:
+                        if isinstance(stage_cfg, LabelingFilterConfig):
+                            self.config = stage_cfg
+                            break
+        if self.config is None or self.config.rubric_path is None:
             return records
+        filter_config = self.config
         rubric_path = self.project_root / filter_config.rubric_path
         try:
             rubric = RubricLoader().load(rubric_path)
@@ -342,10 +382,7 @@ class LabelingQualityFilterStage(Stage):
         }
 
 
-def validate_ifd_capability(ctx: StageContext) -> None:
-    filter_config = ctx.config.filters.get_stage_config("ifd")
-    if filter_config is None:
-        return
+def validate_ifd_capability(config: IFDFilterConfig, ctx: StageContext) -> None:
     if not provider_supports_sequence_scoring(ctx.config.llm):
         raise ValueError(
             "IFD requires provider/model response-scoring capability; "

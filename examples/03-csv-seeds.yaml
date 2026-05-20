@@ -23,17 +23,15 @@ executor:
   mode: threadpool
   max_workers: 2
 
-data_source:
-  type: seeds
-  path: ./seeds/03-python-qa.csv
+pipeline:
+  - type: seed_source
+    path: ./seeds/03-python-qa.csv
 
-generator:
-  type: prompt_based
-  target_count: 5
-  generation_multiplier: 1
+  - type: normalize_conversation
 
-filters:
-  target_count: 5
+  - type: prompt_based_generator
+    target_count: 5
+    generation_multiplier: 1
 
 embeddings:
   provider: huggingface

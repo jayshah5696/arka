@@ -2,7 +2,7 @@
 
 Config-driven synthetic data generation for supervised fine-tuning.
 
-![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue) ![License](https://img.shields.io/badge/license-MIT-green) ![Tests](https://img.shields.io/badge/tests-238%20passed-brightgreen) ![Coverage](https://img.shields.io/badge/coverage-90%25-brightgreen)
+![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue) ![License](https://img.shields.io/badge/license-MIT-green) ![Tests](https://img.shields.io/badge/tests-325%20passed-brightgreen) ![Coverage](https://img.shields.io/badge/coverage-90%25-brightgreen)
 
 ## Why arka
 
@@ -46,21 +46,23 @@ llm:
   model: google/gemini-3.1-flash-lite-preview
   api_key: ${OPENROUTER_API_KEY}
   base_url: https://openrouter.ai/api/v1
-data_source:
-  type: seeds
-  path: ./seeds.jsonl
-generator:
-  type: prompt_based
-  target_count: 100
-  generation_multiplier: 2
-dedup:
+
+pipeline:
+  - type: seed_source
+    path: ./seeds.jsonl
+
+  - type: normalize_conversation
+
+  - type: prompt_based_generator
+    target_count: 100
+    generation_multiplier: 2
+
   - type: near
     lsh_bands: 16
-filters:
-  target_count: 100
-  stages:
-    - type: canary
-      phrases: ["SECRET_TOKEN"]
+
+  - type: canary
+    phrases: ["SECRET_TOKEN"]
+
 output:
   format: chatml
   path: ./output/dataset.jsonl
@@ -75,7 +77,7 @@ output:
 ## Development
 
 ```bash
-just check   # ruff lint + format check + pytest (238 tests, 90% coverage)
+just check   # ruff lint + format check + pytest (325 tests)
 just test    # pytest only
 ```
 

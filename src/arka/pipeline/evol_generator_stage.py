@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from arka.common.models import StrictModel
+from arka.config.models import EvolInstructGeneratorConfig
 from arka.llm.models import TokenUsage
 from arka.pipeline.artifacts import StageArtifacts, StageReport
 from arka.pipeline.evol_instruct import (
@@ -73,14 +74,28 @@ class EvolInstructRoundStage(Stage):
         llm_client: Any | None = None,
         output_writer: OutputWriter | None = None,
         project_root: Path | None = None,
+        config: EvolInstructGeneratorConfig | None = None,
     ) -> None:
         self.round_number = round_number
         self.name = f"{round_number + 2:02d}_evol_round_{round_number:02d}"
         self._llm_client = llm_client
         self._output_writer = output_writer or OutputWriter()
         self._project_root = project_root
+        self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
+        if self.config is None:
+            if ctx.config:
+                self.config = ctx.config.generator
+            if self.config is None and ctx.config and hasattr(ctx.config, "pipeline"):
+                for stage_cfg in ctx.config.pipeline:
+                    if isinstance(stage_cfg, EvolInstructGeneratorConfig):
+                        self.config = stage_cfg
+                        break
+        if self.config is None:
+            self.config = EvolInstructGeneratorConfig(
+                rounds=1, branching_factor=1, operators=["deepen"]
+            )
         frontier = self._frontier_records(records)
         if not frontier:
             self._write_artifacts(
@@ -95,8 +110,8 @@ class EvolInstructRoundStage(Stage):
             return records
 
         llm_client = self._llm_client or ctx.llm_client()
-        operators = ctx.config.generator.operators
-        branching_factor = ctx.config.generator.branching_factor or 1
+        operators = self.config.operators
+        branching_factor = self.config.branching_factor or 1
         config_hash = self._config_hash(ctx)
 
         generated_records: list[Record] = []
@@ -113,8 +128,8 @@ class EvolInstructRoundStage(Stage):
                     instruction_output = llm_client.complete_structured(
                         messages=build_evol_messages(parent, operator=operator),
                         schema=EvolvedInstruction,
-                        temperature=ctx.config.generator.temperature,
-                        max_tokens=ctx.config.generator.max_tokens,
+                        temperature=self.config.temperature,
+                        max_tokens=self.config.max_tokens,
                     )
                     evolved_instruction = self._parse_instruction_output(
                         instruction_output.parsed,
@@ -153,8 +168,8 @@ class EvolInstructRoundStage(Stage):
                     response_output = llm_client.complete_structured(
                         messages=build_response_messages(evolved_instruction),
                         schema=EvolvedResponse,
-                        temperature=ctx.config.generator.temperature,
-                        max_tokens=ctx.config.generator.max_tokens,
+                        temperature=self.config.temperature,
+                        max_tokens=self.config.max_tokens,
                     )
                     evolved_response = self._parse_response_output(
                         response_output.parsed,
@@ -271,17 +286,14 @@ class EvolInstructRoundStage(Stage):
             return "evol_identical_to_parent"
         if contains_refusal(
             candidate_instruction,
-            ctx.config.generator.filter.refusal_keywords,
+            self.config.filter.refusal_keywords,
         ):
             return "evol_refusal"
-        if (
-            len(candidate_instruction)
-            < ctx.config.generator.filter.min_instruction_chars
-        ):
+        if len(candidate_instruction) < self.config.filter.min_instruction_chars:
             return "evol_instruction_too_short"
         if (
             levenshtein_distance(candidate_instruction, parent.payload.instruction)
-            < ctx.config.generator.filter.min_edit_distance_chars
+            < self.config.filter.min_edit_distance_chars
         ):
             return "evol_edit_distance_too_small"
         return None

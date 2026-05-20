@@ -5,7 +5,11 @@ import json
 import numpy as np
 import pytest
 
-from arka.config.models import CanaryFilterConfig, FiltersConfig, SemanticSimilarityFilterConfig
+from arka.config.models import (
+    CanaryFilterConfig,
+    FiltersConfig,
+    SemanticSimilarityFilterConfig,
+)
 from arka.pipeline.filter_stages import CanaryFilterStage, SemanticSimilarityFilterStage
 from arka.pipeline.models import StageContext
 from arka.records.models import (
@@ -99,9 +103,7 @@ def test_semantic_similarity_filter_disabled_returns_all(ctx) -> None:
     assert SemanticSimilarityFilterStage().run(records, ctx) == records
 
 
-def test_semantic_similarity_filter_drops_high_similarity(
-    ctx, monkeypatch
-) -> None:
+def test_semantic_similarity_filter_drops_high_similarity(ctx, monkeypatch) -> None:
     ctx.config.filters = FiltersConfig(
         target_count=5,
         stages=[SemanticSimilarityFilterConfig(threshold=0.9)],

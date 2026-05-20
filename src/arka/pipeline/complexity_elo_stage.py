@@ -33,7 +33,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from arka.config.models import resolve_llm_override
+from arka.config.models import ComplexityEloFilterConfig, resolve_llm_override
 from arka.llm.client import LLMClient, LLMClientError
 from arka.pipeline.models import StageContext
 from arka.pipeline.output import OutputWriter
@@ -87,7 +87,7 @@ _RANKER_SYSTEM = (
     "depth of domain knowledge required, the number of explicit reasoning\n"
     "steps, and the difficulty of edge cases. Length alone is NOT complexity.\n"
     "\n"
-    "Return ONLY a JSON object with a single key 'ranked_ids' \u2014 the list of\n"
+    "Return ONLY a JSON object with a single key 'ranked_ids' — the list of\n"
     "item ids from most complex (first) to least complex (last). Include every\n"
     "id exactly once.\n"
 )
@@ -134,17 +134,22 @@ class ComplexityEloScoringStage(Stage):
 
     def __init__(
         self,
+        config: ComplexityEloFilterConfig | None = None,
         llm_client: Any | None = None,
         seed: int = 0,
     ) -> None:
+        self.config = config
         self._llm_client = llm_client
         self._rng = random.Random(seed)
         self._output_writer = OutputWriter()
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        cfg = ctx.config.filters.get_stage_config("complexity_elo")
+        cfg = self.config
         if cfg is None:
-            return records
+            cfg = (
+                ctx.config.get_stage_config("complexity_elo")
+                or ComplexityEloFilterConfig()
+            )
 
         batch_size = getattr(cfg, "batch_size", None) or self.DEFAULT_BATCH_SIZE
         samples_per_record = (
