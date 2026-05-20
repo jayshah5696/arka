@@ -121,8 +121,17 @@ def test_config_validation_error_is_human_readable(
         ConfigLoader().load(config_path)
 
     message = str(exc_info.value)
-    assert "  - llm: " in message
-    assert "  - filters: " in message
+    assert "  - Missing required field: 'llm'" in message
+    assert "  - Missing required field: 'filters'" in message
+
+    # Check that unknown fields are formatted nicely
+    config_path.write_text(CONFIG_YAML + "unexpected_key: true\n")
+    with pytest.raises(ConfigValidationError) as exc_info:
+        ConfigLoader().load(config_path)
+    message2 = str(exc_info.value)
+    assert (
+        "  - Unknown field: 'unexpected_key' (this key is not allowed here)" in message2
+    )
 
 
 def test_load_config_requires_declared_env_vars(

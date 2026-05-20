@@ -206,3 +206,17 @@ def test_cli_catches_pipeline_runner_exceptions(
     # Because FakePipelineRunner raises before creating the run_report.json,
     # _print_summary will silently return. That's expected for a crash.
     assert "--- Pipeline Summary" not in out
+
+
+def test_cli_prints_duration_in_summary(tmp_path: Path, monkeypatch, capsys) -> None:
+    config_path = tmp_path / "custom-config.yaml"
+    config_path.write_text(CONFIG_TEXT)
+    (tmp_path / "seeds.jsonl").write_text('{"instruction":"Hello?","response":"Hi."}\n')
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setattr("arka.llm.factory.LLMClient", FakeGeneratorLLMClient)
+
+    main(["--config", str(config_path), "--run-id", "duration-run"])
+
+    out, _ = capsys.readouterr()
+    assert "--- Pipeline Summary" in out
+    assert "Duration: " in out
