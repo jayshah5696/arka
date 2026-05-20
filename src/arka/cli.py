@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 import uuid
 from collections.abc import Sequence
 from pathlib import Path
@@ -12,7 +13,9 @@ from arka.pipeline.runner import PipelineRunner
 from arka.pipeline.stage_builder import StageBuilder
 
 
-def _print_summary(run_id: str, project_root: Path) -> None:
+def _print_summary(
+    run_id: str, project_root: Path, duration_secs: float | None = None
+) -> None:
     """Print a human-readable pipeline run summary to stdout."""
     report_path = project_root / "runs" / run_id / "report" / "run_report.json"
     if not report_path.exists():
@@ -25,6 +28,13 @@ def _print_summary(run_id: str, project_root: Path) -> None:
 
     print(f"\n--- Pipeline Summary ({report.get('status', 'unknown')}) ---")
     print(f"Run ID: {report.get('run_id', run_id)}")
+    if duration_secs is not None:
+        if duration_secs < 60:
+            print(f"Duration: {duration_secs:.1f}s")
+        else:
+            mins = int(duration_secs // 60)
+            secs = duration_secs % 60
+            print(f"Duration: {mins}m {secs:.1f}s")
     print(f"Final Count: {report.get('final_count', 0)} records")
 
     cost = report.get("cost_usd")
@@ -88,6 +98,7 @@ def _resolve_run_id(cli_run_id: str | None, config_run_id: str | None) -> str:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    start_time = time.time()
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
     config_path = Path(args.config).expanduser().resolve()
@@ -127,4 +138,5 @@ def main(argv: Sequence[str] | None = None) -> None:
         print(f"Error: Pipeline execution failed - {exc}", file=sys.stderr)
         sys.exit(1)
     finally:
-        _print_summary(run_id, project_root)
+        duration_secs = time.time() - start_time
+        _print_summary(run_id, project_root, duration_secs)

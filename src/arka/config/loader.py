@@ -135,13 +135,21 @@ class ConfigLoader:
             else:
                 path = ".".join(str(loc) for loc in loc)
 
+            err_type = error.get("type")
+            if err_type == "missing":
+                err_msg = f"Missing required field: '{path}'"
+            elif err_type == "extra_forbidden":
+                err_msg = f"Unknown field: '{path}' (this key is not allowed here)"
+            else:
+                err_msg = f"Invalid value for '{path}': {msg}"
+
             reported.add(path)
-            lines.append(f"  - {path}: {msg}")
+            lines.append(f"  - {err_msg}")
 
         if is_legacy:
-            for field, msg in legacy_missing:
+            for field, _ in legacy_missing:
                 if field not in reported:
-                    lines.append(f"  - {field}: {msg}")
+                    lines.append(f"  - Missing required field: '{field}'")
                     reported.add(field)
 
         return "\n".join(lines)
