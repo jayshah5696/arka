@@ -416,3 +416,15 @@ def test_legacy_config_loader_deprecation_warning() -> None:
     }
     with pytest.deprecated_call():
         ConfigLoader().load_dict(cfg_dict)
+
+
+def test_yaml_syntax_error_includes_filename(tmp_path: Path) -> None:
+    config_path = tmp_path / "syntax-error.yaml"
+    config_path.write_text("invalid:\n  - yaml\n  here")
+
+    with pytest.raises(ConfigValidationError) as exc:
+        ConfigLoader().load(config_path)
+
+    # DX: Verify that the opaque <unicode string> has been replaced by the actual filename
+    assert str(config_path) in str(exc.value)
+    assert "<unicode string>" not in str(exc.value)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import os
 import re
 from pathlib import Path
@@ -23,7 +24,10 @@ class ConfigLoader:
         resolved_text = self._resolve_env_vars(raw_text)
 
         try:
-            data = yaml.safe_load(resolved_text) or {}
+            # DX: Use a named StringIO to give the yaml parser a filename for better line hints
+            stream = io.StringIO(resolved_text)
+            stream.name = str(path)
+            data = yaml.safe_load(stream) or {}
             return ResolvedConfig.model_validate(data)
         except ValidationError as exc:
             raise ConfigValidationError(
