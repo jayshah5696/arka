@@ -128,6 +128,25 @@ def test_cli_supports_explicit_config_run_id_and_resume(
     assert "--- Pipeline Summary" in out
 
 
+def test_cli_supports_validate_config(tmp_path: Path, monkeypatch, capsys) -> None:
+    config_path = tmp_path / "custom-config.yaml"
+    config_path.write_text(CONFIG_TEXT)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    import pytest
+
+    with pytest.raises(SystemExit) as exc:
+        main(["--config", str(config_path), "--validate-config"])
+
+    assert exc.value.code == 0
+    captured = capsys.readouterr()
+    stdout = captured.out
+
+    assert f"Configuration is valid: {config_path.resolve()}" in stdout
+    # Pipeline output should not exist
+    assert not (tmp_path / "runs").exists()
+
+
 def test_cli_supports_dry_run(tmp_path: Path, monkeypatch, capsys) -> None:
     config_path = tmp_path / "custom-config.yaml"
     config_path.write_text(CONFIG_TEXT)
