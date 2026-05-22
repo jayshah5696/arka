@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import httpx
 from openai import OpenAI
 
 from arka.config.models import LLMConfig
+
+# PERF: Connection pooling for openai client across batch calls. Reuses the underlying httpx.Client instead of instantiating new connections per request, avoiding TLS handshake overhead on batch calls.
+_SHARED_HTTP_CLIENT = httpx.Client()
 
 
 def build_openai_client(config: LLMConfig) -> OpenAI:
@@ -18,4 +22,5 @@ def build_openai_client(config: LLMConfig) -> OpenAI:
         timeout=config.timeout_seconds,
         max_retries=0,
         default_headers=default_headers or None,
+        http_client=_SHARED_HTTP_CLIENT,
     )
