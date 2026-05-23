@@ -85,6 +85,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Load config and preview stages without executing the pipeline",
     )
+    # DX: Add --validate-config to allow checking config without starting a dry run
+    parser.add_argument(
+        "--validate-config",
+        action="store_true",
+        help="Validate the configuration file and exit",
+    )
     return parser
 
 
@@ -113,6 +119,10 @@ def main(argv: Sequence[str] | None = None) -> None:
     except ConfigValidationError as exc:
         print(str(exc), file=sys.stderr)
         sys.exit(1)
+
+    if args.validate_config:
+        print("Configuration is valid.")
+        sys.exit(0)
 
     run_id = _resolve_run_id(args.run_id, config.run_id)
     stages = StageBuilder(config=config, project_root=project_root).build()
