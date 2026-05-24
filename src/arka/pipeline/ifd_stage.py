@@ -8,6 +8,7 @@ from arka.config.models import IFDFilterConfig
 from arka.llm.client import LLMClientError
 from arka.llm.models import SequenceScore
 from arka.pipeline.artifacts import StageArtifacts, StageReport
+from arka.pipeline.filter_stages import validate_ifd_capability
 from arka.pipeline.stages import Stage
 from arka.records.models import ConversationRecord, Record
 
@@ -15,6 +16,28 @@ from arka.records.models import ConversationRecord, Record
 class IFDFilterStage(Stage):
     name = "02e_ifd_filter"
     stage_action = "filtered"
+
+    @classmethod
+    def from_config(
+        cls,
+        config: IFDFilterConfig,
+        project_root: Path,
+        resolved_config: Any,
+    ) -> IFDFilterStage:
+        from arka.pipeline.models import StageContext
+
+        validate_ifd_capability(
+            config,
+            StageContext(
+                run_id="validation",
+                stage_name=cls.name,
+                work_dir=project_root / "runs" / "validation" / "stages" / cls.name,
+                config=resolved_config,
+                executor_mode=resolved_config.executor.mode,
+                max_workers=resolved_config.executor.max_workers,
+            ),
+        )
+        return cls(config=config, project_root=project_root)
 
     def __init__(
         self,

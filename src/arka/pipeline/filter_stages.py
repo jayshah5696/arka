@@ -21,7 +21,7 @@ from arka.llm.client import (
 )
 from arka.pipeline.artifacts import StageArtifacts, StageReport
 from arka.pipeline.models import StageContext
-from arka.pipeline.stages import Stage
+from arka.pipeline.stages import BaseFilterStage, Stage
 from arka.records.models import (
     ConversationRecord,
     Record,
@@ -29,55 +29,24 @@ from arka.records.models import (
 )
 
 
-class CanaryFilterStage(Stage):
+class CanaryFilterStage(BaseFilterStage):
     """Drop records whose text contains any configured canary phrase."""
 
     name = "02g_canary_filter"
-    stage_action = "filtered"
+    config_type = "canary"
+    config_class = CanaryFilterConfig
 
-    def __init__(self, config: CanaryFilterConfig | None = None) -> None:
-        self.config = config
+    def _is_active(self, config: CanaryFilterConfig) -> bool:
+        return bool(config.phrases)
 
-    def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        self.config = self.get_stage_config(ctx, CanaryFilterConfig, "canary")
-        if self.config is None:
-            return records
-        filter_config = self.config
-        if not filter_config.phrases:
-            return records
-
-        kept: list[Record] = []
-        dropped: list[Record] = []
-        drop_reasons: dict[str, int] = {}
-
-        for record in records:
-            if not isinstance(record, ConversationRecord):
-                kept.append(record)
-                continue
-
-            text = f"{record.payload.instruction}\n{record.payload.response}"
-            matched = next((p for p in filter_config.phrases if p in text), None)
-
-            if matched is None:
-                kept.append(record)
-            else:
-                reason = "canary_leak"
-                dropped.append(
-                    record.dropped_by(
-                        self.name, reason, f"Matched canary phrase: {matched}"
-                    )
-                )
-                drop_reasons[reason] = drop_reasons.get(reason, 0) + 1
-
-        _write_filter_artifacts(
-            ctx,
-            self.name,
-            len(records),
-            len(kept),
-            dropped,
-            drop_reasons,
-        )
-        return kept
+    def _check_record(
+        self, record: ConversationRecord, config: CanaryFilterConfig
+    ) -> tuple[str, str] | None:
+        text = f"{record.payload.instruction}\n{record.payload.response}"
+        matched = next((p for p in config.phrases if p in text), None)
+        if matched is None:
+            return None
+        return ("canary_leak", f"Matched canary phrase: {matched}")
 
 
 class SemanticSimilarityFilterStage(Stage):
@@ -90,7 +59,9 @@ class SemanticSimilarityFilterStage(Stage):
         self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        self.config = self.get_stage_config(ctx, SemanticSimilarityFilterConfig, "semantic_similarity")
+        self.config = self.get_stage_config(
+            ctx, SemanticSimilarityFilterConfig, "semantic_similarity"
+        )
         if self.config is None:
             return records
         filter_config = self.config
@@ -199,7 +170,9 @@ class LabelingQualityFilterStage(Stage):
         self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        self.config = self.get_stage_config(ctx, LabelingFilterConfig, "labeling_engine")
+        self.config = self.get_stage_config(
+            ctx, LabelingFilterConfig, "labeling_engine"
+        )
         if self.config is None or self.config.rubric_path is None:
             return records
         filter_config = self.config
