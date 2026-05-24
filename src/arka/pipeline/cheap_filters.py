@@ -5,97 +5,45 @@ from __future__ import annotations
 import logging
 import re
 import statistics
+from typing import TYPE_CHECKING
 
 from arka.config.models import (
     LanguageFilterConfig,
     LengthFilterConfig,
     SentenceVarianceFilterConfig,
 )
-from arka.pipeline.artifacts import StageArtifacts, StageReport
-from arka.pipeline.models import StageContext
-from arka.pipeline.stages import Stage
-from arka.records.models import ConversationRecord, Record
+from arka.pipeline.stages import BaseFilterStage
+
+if TYPE_CHECKING:
+    from arka.records.models import ConversationRecord
 
 logger = logging.getLogger(__name__)
 
 
-def write_filter_artifacts(
-    *,
-    stage_name: str,
-    ctx: StageContext,
-    dropped: list[Record],
-    count_in: int,
-    count_out: int,
-    drop_reasons: dict[str, int],
-) -> None:
-    StageArtifacts(ctx).write(
-        report=StageReport(
-            stage=stage_name,
-            count_in=count_in,
-            count_out=count_out,
-            dropped_count=len(dropped),
-            drop_reasons=drop_reasons,
-        ),
-        dropped=dropped,
-    )
-
-
-class LengthFilterStage(Stage):
+class LengthFilterStage(BaseFilterStage):
     """Drop records whose instruction or response length is outside bounds."""
 
     name = "02a_length_filter"
-    stage_action = "filtered"
+    config_type = "length"
+    config_class = LengthFilterConfig
 
-    def __init__(self, config: LengthFilterConfig | None = None) -> None:
-        self.config = config
-
-    def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        self.config = self.get_stage_config(ctx, LengthFilterConfig, "length")
-        cfg = self.config
-        if cfg is None:
-            return records
-
-        kept: list[Record] = []
-        dropped: list[Record] = []
-        drop_reasons: dict[str, int] = {}
-
-        for record in records:
-            if not isinstance(record, ConversationRecord):
-                kept.append(record)
-                continue
-
-            reason = self._check(record, cfg)
-            if reason is None:
-                kept.append(record)
-            else:
-                dropped.append(record.dropped_by(self.name, reason))
-                drop_reasons[reason] = drop_reasons.get(reason, 0) + 1
-
-        write_filter_artifacts(
-            stage_name=self.name,
-            ctx=ctx,
-            dropped=dropped,
-            count_in=len(records),
-            count_out=len(kept),
-            drop_reasons=drop_reasons,
-        )
-        return kept
-
-    def _check(self, record: ConversationRecord, cfg) -> str | None:
+    def _check_record(
+        self, record: ConversationRecord, config: LengthFilterConfig
+    ) -> tuple[str] | None:
         inst_len = len(record.payload.instruction)
         resp_len = len(record.payload.response)
-        if inst_len < cfg.min_instruction_chars:
-            return "instruction_too_short"
-        if inst_len > cfg.max_instruction_chars:
-            return "instruction_too_long"
-        if resp_len < cfg.min_response_chars:
-            return "response_too_short"
-        if resp_len > cfg.max_response_chars:
-            return "response_too_long"
+        if inst_len < config.min_instruction_chars:
+            return ("instruction_too_short",)
+        if inst_len > config.max_instruction_chars:
+            return ("instruction_too_long",)
+        if resp_len < config.min_response_chars:
+            return ("response_too_short",)
+        if resp_len > config.max_response_chars:
+            return ("response_too_long",)
         return None
 
 
-class LanguageFilterStage(Stage):
+class LanguageFilterStage(BaseFilterStage):
     """Drop records whose instruction is not in the allowed language set.
 
     Uses a simple heuristic based on character-set analysis. This avoids adding
@@ -106,43 +54,19 @@ class LanguageFilterStage(Stage):
     """
 
     name = "02b_language_filter"
-    stage_action = "filtered"
+    config_type = "language"
+    config_class = LanguageFilterConfig
 
-    def __init__(self, config: LanguageFilterConfig | None = None) -> None:
-        self.config = config
+    def _is_active(self, config: LanguageFilterConfig) -> bool:
+        self._warn_if_no_heuristic_available(config.allowed)
+        return True
 
-    def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        self.config = self.get_stage_config(ctx, LanguageFilterConfig, "language")
-        cfg = self.config
-        if cfg is None:
-            return records
-        self._warn_if_no_heuristic_available(cfg.allowed)
-
-        kept: list[Record] = []
-        dropped: list[Record] = []
-        drop_reasons: dict[str, int] = {}
-
-        for record in records:
-            if not isinstance(record, ConversationRecord):
-                kept.append(record)
-                continue
-
-            if self._is_allowed(record.payload.instruction, cfg.allowed):
-                kept.append(record)
-            else:
-                reason = "language_mismatch"
-                dropped.append(record.dropped_by(self.name, reason))
-                drop_reasons[reason] = drop_reasons.get(reason, 0) + 1
-
-        write_filter_artifacts(
-            stage_name=self.name,
-            ctx=ctx,
-            dropped=dropped,
-            count_in=len(records),
-            count_out=len(kept),
-            drop_reasons=drop_reasons,
-        )
-        return kept
+    def _check_record(
+        self, record: ConversationRecord, config: LanguageFilterConfig
+    ) -> tuple[str] | None:
+        if self._is_allowed(record.payload.instruction, config.allowed):
+            return None
+        return ("language_mismatch",)
 
     def _is_allowed(self, text: str, allowed: list[str]) -> bool:
         if "en" in allowed:
@@ -188,48 +112,19 @@ def _coefficient_of_variation(values: list[int]) -> float:
     return std / mean
 
 
-class SentenceVarianceFilterStage(Stage):
+class SentenceVarianceFilterStage(BaseFilterStage):
     """Drop records whose response has too-uniform sentence lengths."""
 
     name = "02f_sentence_variance"
-    stage_action = "filtered"
+    config_type = "sentence_variance"
+    config_class = SentenceVarianceFilterConfig
 
-    def __init__(self, config: SentenceVarianceFilterConfig | None = None) -> None:
-        self.config = config
+    def _check_record(
+        self, record: ConversationRecord, config: SentenceVarianceFilterConfig
+    ) -> tuple[str] | None:
+        lengths = _sentence_lengths(record.payload.response)
+        cv = _coefficient_of_variation(lengths)
 
-    def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        self.config = self.get_stage_config(
-            ctx, SentenceVarianceFilterConfig, "sentence_variance"
-        )
-        cfg = self.config
-        if cfg is None:
-            return records
-
-        kept: list[Record] = []
-        dropped: list[Record] = []
-        drop_reasons: dict[str, int] = {}
-
-        for record in records:
-            if not isinstance(record, ConversationRecord):
-                kept.append(record)
-                continue
-
-            lengths = _sentence_lengths(record.payload.response)
-            cv = _coefficient_of_variation(lengths)
-
-            if cv >= cfg.min_cv:
-                kept.append(record)
-            else:
-                reason = "low_sentence_variance"
-                dropped.append(record.dropped_by(self.name, reason))
-                drop_reasons[reason] = drop_reasons.get(reason, 0) + 1
-
-        write_filter_artifacts(
-            stage_name=self.name,
-            ctx=ctx,
-            dropped=dropped,
-            count_in=len(records),
-            count_out=len(kept),
-            drop_reasons=drop_reasons,
-        )
-        return kept
+        if cv >= config.min_cv:
+            return None
+        return ("low_sentence_variance",)
