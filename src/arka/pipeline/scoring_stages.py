@@ -41,12 +41,11 @@ class LabelingScoreStage(Stage):
         self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        if self.config is None:
-            self.config = (
-                getattr(ctx.config, "labeling_engine", None)
-                or ctx.config.get_stage_config("labeling_engine")
-                or LabelingFilterConfig()
-            )
+        self.config = self.get_stage_config(
+            ctx, LabelingFilterConfig, "labeling_engine"
+        )
+        if self.config is None or self.config.rubric_path is None:
+            return records
         filter_config = self.config
         if filter_config.rubric_path is None:
             return records
@@ -163,10 +162,11 @@ class RewardModelScoringStage(Stage):
         self._llm_client = llm_client
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
+        self.config = self.get_stage_config(
+            ctx, RewardModelFilterConfig, "reward_model"
+        )
         if self.config is None:
-            self.config = (
-                ctx.config.get_stage_config("reward_model") or RewardModelFilterConfig()
-            )
+            return records
         reward_config = self.config
 
         llm_client = self._llm_client or ctx.llm_client(
@@ -281,10 +281,9 @@ class PairDeltaFilterStage(Stage):
         *,
         parent_records: list[Record] | None = None,
     ) -> list[Record]:
+        self.config = self.get_stage_config(ctx, PairDeltaFilterConfig, "pair_delta")
         if self.config is None:
-            self.config = (
-                ctx.config.get_stage_config("pair_delta") or PairDeltaFilterConfig()
-            )
+            return records
         pair_config = self.config
 
         parent_by_id: dict[str, Record] = {}
@@ -401,18 +400,9 @@ class CompositeSelectStage(Stage):
         self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
+        self.config = self.get_stage_config(ctx, CompositeSelectConfig, "select")
         if self.config is None:
-            if ctx.config:
-                if hasattr(ctx.config, "filters"):
-                    self.config = ctx.config.filters.get_stage_config("select")
-                if self.config is None and hasattr(ctx.config, "pipeline"):
-                    for stage_cfg in ctx.config.pipeline:
-                        if isinstance(stage_cfg, CompositeSelectConfig):
-                            self.config = stage_cfg
-                            break
-        if self.config is None:
-            self.config = CompositeSelectConfig()
-
+            return records
         select_config = self.config
         weights = select_config.weights
         if not weights:

@@ -657,13 +657,18 @@ def test_extract_json_text_nested_braces() -> None:
 
 
 def test_extract_json_text_greedy_limitation_two_objects() -> None:
-    """Known limitation: greedy regex grabs from first { to last },
-    which produces invalid JSON when two objects are present."""
+    """It should extract the first JSON object when multiple are present."""
     client = _make_client_for_extraction()
     text = '{"a": 1} some text {"b": 2}'
     result = client._extract_json_text(text)
-    # The greedy match spans both objects — this is the documented limitation.
-    assert result == '{"a": 1} some text {"b": 2}'
+    assert result == '{"a": 1}'
+
+
+def test_extract_json_text_non_greedy_with_trailing_braces() -> None:
+    client = _make_client_for_extraction()
+    text = '{"a": 1} trailing text: {foo}'
+    result = client._extract_json_text(text)
+    assert result == '{"a": 1}'
 
 
 def test_extract_json_text_no_braces_returns_stripped() -> None:

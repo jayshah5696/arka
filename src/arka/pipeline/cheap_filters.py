@@ -7,14 +7,14 @@ import re
 import statistics
 from typing import TYPE_CHECKING
 
+from arka.config.models import (
+    LanguageFilterConfig,
+    LengthFilterConfig,
+    SentenceVarianceFilterConfig,
+)
 from arka.pipeline.stages import BaseFilterStage
 
 if TYPE_CHECKING:
-    from arka.config.models import (
-        LanguageFilterConfig,
-        LengthFilterConfig,
-        SentenceVarianceFilterConfig,
-    )
     from arka.records.models import ConversationRecord
 
 logger = logging.getLogger(__name__)
@@ -25,6 +25,7 @@ class LengthFilterStage(BaseFilterStage):
 
     name = "02a_length_filter"
     config_type = "length"
+    config_class = LengthFilterConfig
 
     def _check_record(
         self, record: ConversationRecord, config: LengthFilterConfig
@@ -54,6 +55,7 @@ class LanguageFilterStage(BaseFilterStage):
 
     name = "02b_language_filter"
     config_type = "language"
+    config_class = LanguageFilterConfig
 
     def _is_active(self, config: LanguageFilterConfig) -> bool:
         self._warn_if_no_heuristic_available(config.allowed)
@@ -115,6 +117,7 @@ class SentenceVarianceFilterStage(BaseFilterStage):
 
     name = "02f_sentence_variance"
     config_type = "sentence_variance"
+    config_class = SentenceVarianceFilterConfig
 
     def _check_record(
         self, record: ConversationRecord, config: SentenceVarianceFilterConfig

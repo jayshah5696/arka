@@ -144,12 +144,12 @@ class ComplexityEloScoringStage(Stage):
         self._output_writer = OutputWriter()
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
+        self.config = self.get_stage_config(
+            ctx, ComplexityEloFilterConfig, "complexity_elo"
+        )
+        if self.config is None:
+            return records
         cfg = self.config
-        if cfg is None:
-            cfg = (
-                ctx.config.get_stage_config("complexity_elo")
-                or ComplexityEloFilterConfig()
-            )
 
         batch_size = getattr(cfg, "batch_size", None) or self.DEFAULT_BATCH_SIZE
         samples_per_record = (

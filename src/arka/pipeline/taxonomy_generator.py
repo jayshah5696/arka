@@ -101,11 +101,9 @@ class TaxonomyGeneratorStage(Stage):
         self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
+        self.config = self.get_stage_config(ctx, TaxonomyGeneratorConfig, "generator")
         if self.config is None:
-            self.config = (
-                ctx.config.get_stage_config("taxonomy_generator")
-                or TaxonomyGeneratorConfig()
-            )
+            return list(records)
         gen_cfg = self.config
         target = gen_cfg.target_count * gen_cfg.generation_multiplier
         if target <= 0:

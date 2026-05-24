@@ -34,6 +34,7 @@ class CanaryFilterStage(BaseFilterStage):
 
     name = "02g_canary_filter"
     config_type = "canary"
+    config_class = CanaryFilterConfig
 
     def _is_active(self, config: CanaryFilterConfig) -> bool:
         return bool(config.phrases)
@@ -58,17 +59,9 @@ class SemanticSimilarityFilterStage(Stage):
         self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        if self.config is None:
-            if ctx.config:
-                if hasattr(ctx.config, "filters"):
-                    self.config = ctx.config.filters.get_stage_config(
-                        "semantic_similarity"
-                    )
-                if self.config is None and hasattr(ctx.config, "pipeline"):
-                    for stage_cfg in ctx.config.pipeline:
-                        if isinstance(stage_cfg, SemanticSimilarityFilterConfig):
-                            self.config = stage_cfg
-                            break
+        self.config = self.get_stage_config(
+            ctx, SemanticSimilarityFilterConfig, "semantic_similarity"
+        )
         if self.config is None:
             return records
         filter_config = self.config
@@ -177,15 +170,9 @@ class LabelingQualityFilterStage(Stage):
         self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        if self.config is None:
-            if ctx.config:
-                if hasattr(ctx.config, "filters"):
-                    self.config = ctx.config.filters.get_stage_config("labeling_engine")
-                if self.config is None and hasattr(ctx.config, "pipeline"):
-                    for stage_cfg in ctx.config.pipeline:
-                        if isinstance(stage_cfg, LabelingFilterConfig):
-                            self.config = stage_cfg
-                            break
+        self.config = self.get_stage_config(
+            ctx, LabelingFilterConfig, "labeling_engine"
+        )
         if self.config is None or self.config.rubric_path is None:
             return records
         filter_config = self.config

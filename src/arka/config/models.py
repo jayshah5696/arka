@@ -521,6 +521,15 @@ class ResolvedConfig(StrictModel):
         if "pipeline" in data:
             return data
 
+        import warnings
+
+        warnings.warn(
+            "Legacy configuration format detected. Please migrate to the unified sequential pipeline config format. "
+            "You can use the offline migration script `scripts/migrate_config.py` to automatically update your files.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
         pipeline = []
 
         # 1. data_source

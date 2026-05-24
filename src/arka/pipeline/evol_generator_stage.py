@@ -101,18 +101,14 @@ class EvolInstructRoundStage(Stage):
         self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        if self.config is None:
-            if ctx.config:
-                self.config = ctx.config.generator
-            if self.config is None and ctx.config and hasattr(ctx.config, "pipeline"):
-                for stage_cfg in ctx.config.pipeline:
-                    if isinstance(stage_cfg, EvolInstructGeneratorConfig):
-                        self.config = stage_cfg
-                        break
-        if self.config is None:
-            self.config = EvolInstructGeneratorConfig(
+        self.config = self.get_stage_config(
+            ctx,
+            EvolInstructGeneratorConfig,
+            "generator",
+            EvolInstructGeneratorConfig(
                 rounds=1, branching_factor=1, operators=["deepen"]
-            )
+            ),
+        )
         frontier = self._frontier_records(records)
         if not frontier:
             self._write_artifacts(

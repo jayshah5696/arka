@@ -55,8 +55,9 @@ class IFDFilterStage(Stage):
         self._llm_client = llm_client
 
     def run(self, records: list[Record], ctx) -> list[Record]:
+        self.config = self.get_stage_config(ctx, IFDFilterConfig, "ifd")
         if self.config is None:
-            self.config = ctx.config.get_stage_config("ifd_filter") or IFDFilterConfig()
+            return records
         filter_config = self.config
 
         llm_client = self._llm_client or ctx.llm_client()

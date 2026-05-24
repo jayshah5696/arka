@@ -29,41 +29,50 @@ class LabelingEngine:
         max_workers: int,
         run_canary: bool = True,
     ) -> list[LabelResult]:
-        worker_count = bounded_worker_count(len(pairs), max_workers)
+        # 1. Identify canary examples if requested
+        canary_good_item = None
+        canary_bad_item = None
+        if run_canary:
+            passing_examples = [
+                e for e in rubric.few_shot if e.expected_verdict == "pass"
+            ]
+            failing_examples = [
+                e for e in rubric.few_shot if e.expected_verdict == "fail"
+            ]
+            if passing_examples and failing_examples:
+                canary_good_item = passing_examples[0]
+                canary_bad_item = failing_examples[0]
+
+        # 2. Prepare items to run concurrently
+        items_to_run = list(pairs)
+        canary_indices = []
+        if canary_good_item is not None:
+            canary_indices.append(len(items_to_run))
+            items_to_run.append(
+                (canary_good_item.instruction, canary_good_item.response)
+            )
+        if canary_bad_item is not None:
+            canary_indices.append(len(items_to_run))
+            items_to_run.append((canary_bad_item.instruction, canary_bad_item.response))
+
+        worker_count = bounded_worker_count(len(items_to_run), max_workers)
         with ThreadPoolExecutor(max_workers=worker_count) as executor:
             futures = [
                 executor.submit(self.label, instruction, response, rubric)
-                for instruction, response in pairs
+                for instruction, response in items_to_run
             ]
-            pair_results = [future.result() for future in futures]
+            all_results = [future.result() for future in futures]
 
-        if run_canary:
-            self._run_canary_checks(rubric=rubric)
+        # 3. Separate main results and canary results
+        pair_results = all_results[: len(pairs)]
+
+        if len(canary_indices) == 2:
+            good_result = all_results[canary_indices[0]]
+            bad_result = all_results[canary_indices[1]]
+            if bad_result.overall >= good_result.overall:
+                warnings.warn(
+                    "known-bad canary scored too high relative to known-good canary",
+                    stacklevel=2,
+                )
+
         return pair_results
-
-    def _run_canary_checks(self, rubric: Rubric) -> None:
-        passing_examples = [
-            example for example in rubric.few_shot if example.expected_verdict == "pass"
-        ]
-        failing_examples = [
-            example for example in rubric.few_shot if example.expected_verdict == "fail"
-        ]
-        if not passing_examples or not failing_examples:
-            return
-        known_good = passing_examples[0]
-        known_bad = failing_examples[0]
-        good_result = self.label(
-            instruction=known_good.instruction,
-            response=known_good.response,
-            rubric=rubric,
-        )
-        bad_result = self.label(
-            instruction=known_bad.instruction,
-            response=known_bad.response,
-            rubric=rubric,
-        )
-        if bad_result.overall >= good_result.overall:
-            warnings.warn(
-                "known-bad canary scored too high relative to known-good canary",
-                stacklevel=2,
-            )

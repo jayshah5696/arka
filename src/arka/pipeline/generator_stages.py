@@ -89,12 +89,31 @@ class GenerationPlanItem:
     seed_record: ConversationRecord | GroundedChunkRecord
 
 
+def _remove_nones(val: Any) -> Any:
+    if isinstance(val, dict):
+        return {k: _remove_nones(v) for k, v in val.items() if v is not None}
+    if isinstance(val, list):
+        return [_remove_nones(item) for item in val]
+    return val
+
+
 def compute_prompt_hash(
     generator: PromptBasedGeneratorConfig | TransformGeneratorConfig | GeneratorConfig,
     llm: LLMConfig,
 ) -> str:
+    gen_dict = generator.model_dump(mode="json", exclude_none=True)
+    gen_dict = _remove_nones(gen_dict)
+    if "type" in gen_dict:
+        type_mapping = {
+            "prompt_based_generator": "prompt_based",
+            "transform_generator": "transform",
+            "evol_instruct_generator": "evol_instruct",
+            "taxonomy_generator": "taxonomy_prompt",
+        }
+        gen_dict["type"] = type_mapping.get(gen_dict["type"], gen_dict["type"])
+
     prompt_identity = {
-        "generator": generator.model_dump(mode="json", exclude_none=True),
+        "generator": gen_dict,
         "llm": {
             "provider": llm.provider,
             "model": llm.model,
@@ -124,16 +143,9 @@ class PromptBasedGeneratorStage(Stage):
         self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        if self.config is None:
-            if ctx.config:
-                self.config = ctx.config.generator
-            if self.config is None and ctx.config and hasattr(ctx.config, "pipeline"):
-                for stage_cfg in ctx.config.pipeline:
-                    if isinstance(stage_cfg, PromptBasedGeneratorConfig):
-                        self.config = stage_cfg
-                        break
-        if self.config is None:
-            self.config = PromptBasedGeneratorConfig()
+        self.config = self.get_stage_config(
+            ctx, PromptBasedGeneratorConfig, "generator"
+        )
         seed_records = [
             record
             for record in records
@@ -510,18 +522,14 @@ class TransformGeneratorStage(Stage):
         self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        if self.config is None:
-            if ctx.config:
-                self.config = ctx.config.generator
-            if self.config is None and ctx.config and hasattr(ctx.config, "pipeline"):
-                for stage_cfg in ctx.config.pipeline:
-                    if isinstance(stage_cfg, TransformGeneratorConfig):
-                        self.config = stage_cfg
-                        break
-        if self.config is None:
-            self.config = TransformGeneratorConfig(
+        self.config = self.get_stage_config(
+            ctx,
+            TransformGeneratorConfig,
+            "generator",
+            TransformGeneratorConfig(
                 input_field="payload.instruction", output_field="payload.response"
-            )
+            ),
+        )
         transformable_records = [
             record for record in records if isinstance(record, ConversationRecord)
         ]
