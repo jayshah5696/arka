@@ -110,7 +110,9 @@ class DoubleCriticFilterStage(Stage):
         self._output_writer = OutputWriter()
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        self.config = self.get_stage_config(ctx, DoubleCriticFilterConfig, "double_critic")
+        self.config = self.get_stage_config(
+            ctx, DoubleCriticFilterConfig, "double_critic"
+        )
         if self.config is None:
             return records
         filter_config = self.config

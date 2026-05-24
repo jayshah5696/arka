@@ -416,4 +416,3 @@ def test_legacy_config_loader_deprecation_warning() -> None:
     }
     with pytest.deprecated_call():
         ConfigLoader().load_dict(cfg_dict)
-
