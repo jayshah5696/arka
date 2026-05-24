@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TypeVar, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
+from arka.common.models import StrictModel
 from arka.pipeline.models import StageContext
 from arka.records.models import Record
-from arka.common.models import StrictModel
 
 T = TypeVar("T", bound=StrictModel)
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from arka.config.models import PipelineStageConfig, ResolvedConfig
+    from arka.records.models import ConversationRecord
 
 
 class Stage(ABC):
@@ -81,7 +87,6 @@ class Stage(ABC):
                     if isinstance(stage_cfg, config_cls):
                         return stage_cfg
 
-
         # 3. Fallback to default
         if default_val is not None:
             return default_val
@@ -92,6 +97,95 @@ class Stage(ABC):
                 return None
         return None
 
+    @classmethod
+    def from_config(
+        cls,
+        config: PipelineStageConfig,
+        project_root: Path,
+        resolved_config: ResolvedConfig,
+    ) -> Stage | list[Stage]:
+        import inspect
+
+        sig = inspect.signature(cls.__init__)
+        kwargs = {}
+        if "config" in sig.parameters:
+            kwargs["config"] = config
+        if "project_root" in sig.parameters:
+            kwargs["project_root"] = project_root
+        return cls(**kwargs)
 
 
+class BaseFilterStage(Stage):
+    config_type: str
+    config_class: type[Any]
+    stage_action: str = "filtered"
 
+    def __init__(self, config: Any | None = None) -> None:
+        self.config = config
+
+    def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
+        from arka.records.models import ConversationRecord
+
+        self.config = self.get_stage_config(
+            ctx,
+            config_cls=self.config_class,
+            legacy_field=self.config_type,
+        )
+        cfg = self.config
+        if cfg is None:
+            return records
+
+        if not self._is_active(cfg):
+            return records
+
+        kept: list[Record] = []
+        dropped: list[Record] = []
+        drop_reasons: dict[str, int] = {}
+
+        for record in records:
+            if not isinstance(record, ConversationRecord):
+                kept.append(record)
+                continue
+
+            check_result = self._check_record(record, cfg)
+            if check_result is None:
+                kept.append(record)
+            else:
+                reason = check_result[0]
+                details = check_result[1] if len(check_result) > 1 else None
+                dropped.append(record.dropped_by(self.name, reason, details))
+                drop_reasons[reason] = drop_reasons.get(reason, 0) + 1
+
+        self._write_artifacts(ctx, len(records), len(kept), dropped, drop_reasons)
+        return kept
+
+    def _is_active(self, config: Any) -> bool:
+        return True
+
+    def _check_record(
+        self, record: ConversationRecord, config: Any
+    ) -> tuple[str] | tuple[str, str] | None:
+        """Return None if record is kept, or a tuple of (reason, [details]) if dropped."""
+        raise NotImplementedError
+
+    def _write_artifacts(
+        self,
+        ctx: StageContext,
+        count_in: int,
+        count_out: int,
+        dropped: list[Record],
+        drop_reasons: dict[str, int],
+    ) -> None:
+        from arka.pipeline.artifacts import StageArtifacts, StageReport
+
+        StageArtifacts(ctx).write(
+            report=StageReport(
+                stage=self.name,
+                count_in=count_in,
+                count_out=count_out,
+                dropped_count=len(dropped),
+                drop_reasons=drop_reasons,
+            ),
+            # Preserve historical behavior: skip writing dropped.parquet when empty
+            dropped=dropped if dropped else None,
+        )
