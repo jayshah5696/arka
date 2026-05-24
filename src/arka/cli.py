@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import argparse
 import json
 import sys
 import time
 import uuid
 from collections.abc import Sequence
 from pathlib import Path
+
+import click
 
 from arka.config.loader import ConfigLoader, ConfigValidationError
 from arka.pipeline.runner import PipelineRunner
@@ -60,32 +61,69 @@ def _print_summary(
     print(f"\nFull report written to: {report_path}")
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="arka",
-        description="Arka: A config-driven synthetic data generation framework.",
-    )
-    parser.add_argument(
-        "--config",
-        default="config.yaml",
-        help="Path to the YAML configuration file (default: config.yaml)",
-    )
-    parser.add_argument(
-        "--run-id",
-        default=None,
-        help="Optional unique identifier for the run (overrides config run_id)",
-    )
-    parser.add_argument(
-        "--resume",
-        action="store_true",
-        help="Resume a previously interrupted run using checkpoints",
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Load config and preview stages without executing the pipeline",
-    )
-    return parser
+@click.command(name="arka")
+@click.option(
+    "--config",
+    default="config.yaml",
+    help="Path to the YAML configuration file (default: config.yaml)",
+)
+@click.option(
+    "--run-id",
+    default=None,
+    help="Optional unique identifier for the run (overrides config run_id)",
+)
+@click.option(
+    "--resume",
+    is_flag=True,
+    help="Resume a previously interrupted run using checkpoints",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Load config and preview stages without executing the pipeline",
+)
+def cli(config: str, run_id: str | None, resume: bool, dry_run: bool) -> None:
+    """Arka: A config-driven synthetic data generation framework."""
+    start_time = time.time()
+    config_path = Path(config).expanduser().resolve()
+    project_root = config_path.parent
+
+    # DX: Print clean error messages for config issues instead of Python tracebacks.
+    try:
+        loaded_config = ConfigLoader().load(config_path)
+    except FileNotFoundError:
+        click.echo(f"Error: Configuration file not found at {config_path}", err=True)
+        sys.exit(1)
+    except ConfigValidationError as exc:
+        click.echo(str(exc), err=True)
+        sys.exit(1)
+
+    resolved_run_id = _resolve_run_id(run_id, loaded_config.run_id)
+    stages = StageBuilder(config=loaded_config, project_root=project_root).build()
+
+    if dry_run:
+        click.echo(f"Dry run enabled. Loaded config: {config_path}")
+        click.echo(f"Resolved run ID: {resolved_run_id}")
+        click.echo("Stages to execute:")
+        for i, stage in enumerate(stages, 1):
+            click.echo(f"  {i}. {stage.name}")
+        return
+
+    try:
+        PipelineRunner(project_root=project_root).run(
+            config=loaded_config,
+            stages=stages,
+            run_id=resolved_run_id,
+            resume=resume,
+        )
+    except Exception as exc:
+        # DX: Catch pipeline execution errors to prevent raw Python tracebacks.
+        # This provides a clean, human-readable error message to the user.
+        click.echo(f"Error: Pipeline execution failed - {exc}", err=True)
+        sys.exit(1)
+    finally:
+        duration_secs = time.time() - start_time
+        _print_summary(resolved_run_id, project_root, duration_secs)
 
 
 def _resolve_run_id(cli_run_id: str | None, config_run_id: str | None) -> str:
@@ -98,45 +136,11 @@ def _resolve_run_id(cli_run_id: str | None, config_run_id: str | None) -> str:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    start_time = time.time()
-    parser = build_parser()
-    args = parser.parse_args(list(argv) if argv is not None else None)
-    config_path = Path(args.config).expanduser().resolve()
-    project_root = config_path.parent
-
-    # DX: Print clean error messages for config issues instead of Python tracebacks.
     try:
-        config = ConfigLoader().load(config_path)
-    except FileNotFoundError:
-        print(f"Error: Configuration file not found at {config_path}", file=sys.stderr)
-        sys.exit(1)
-    except ConfigValidationError as exc:
-        print(str(exc), file=sys.stderr)
-        sys.exit(1)
-
-    run_id = _resolve_run_id(args.run_id, config.run_id)
-    stages = StageBuilder(config=config, project_root=project_root).build()
-
-    if args.dry_run:
-        print(f"Dry run enabled. Loaded config: {config_path}")
-        print(f"Resolved run ID: {run_id}")
-        print("Stages to execute:")
-        for i, stage in enumerate(stages, 1):
-            print(f"  {i}. {stage.name}")
-        return
-
-    try:
-        PipelineRunner(project_root=project_root).run(
-            config=config,
-            stages=stages,
-            run_id=run_id,
-            resume=args.resume,
-        )
-    except Exception as exc:
-        # DX: Catch pipeline execution errors to prevent raw Python tracebacks.
-        # This provides a clean, human-readable error message to the user.
-        print(f"Error: Pipeline execution failed - {exc}", file=sys.stderr)
-        sys.exit(1)
-    finally:
-        duration_secs = time.time() - start_time
-        _print_summary(run_id, project_root, duration_secs)
+        cli.main(args=list(argv) if argv is not None else None, standalone_mode=False)
+    except click.exceptions.Exit as e:
+        if e.exit_code != 0:
+            sys.exit(e.exit_code)
+    except click.ClickException as e:
+        e.show()
+        sys.exit(e.exit_code)

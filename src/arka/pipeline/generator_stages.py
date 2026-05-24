@@ -124,8 +124,6 @@ def compute_prompt_hash(
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-
-
 class PromptBasedGeneratorStage(Stage):
     name = "02_generate"
     stage_action = "generated"
@@ -145,7 +143,9 @@ class PromptBasedGeneratorStage(Stage):
         self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        self.config = self.get_stage_config(ctx, PromptBasedGeneratorConfig, "generator")
+        self.config = self.get_stage_config(
+            ctx, PromptBasedGeneratorConfig, "generator"
+        )
         seed_records = [
             record
             for record in records

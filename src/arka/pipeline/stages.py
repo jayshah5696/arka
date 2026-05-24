@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TypeVar, Any
+from typing import TypeVar
 
+from arka.common.models import StrictModel
 from arka.pipeline.models import StageContext
 from arka.records.models import Record
-from arka.common.models import StrictModel
 
 T = TypeVar("T", bound=StrictModel)
 
@@ -81,7 +81,6 @@ class Stage(ABC):
                     if isinstance(stage_cfg, config_cls):
                         return stage_cfg
 
-
         # 3. Fallback to default
         if default_val is not None:
             return default_val
@@ -91,7 +90,3 @@ class Stage(ABC):
             except Exception:
                 return None
         return None
-
-
-
-

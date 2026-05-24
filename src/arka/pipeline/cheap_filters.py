@@ -198,7 +198,9 @@ class SentenceVarianceFilterStage(Stage):
         self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        self.config = self.get_stage_config(ctx, SentenceVarianceFilterConfig, "sentence_variance")
+        self.config = self.get_stage_config(
+            ctx, SentenceVarianceFilterConfig, "sentence_variance"
+        )
         cfg = self.config
         if cfg is None:
             return records

@@ -90,7 +90,9 @@ class SemanticSimilarityFilterStage(Stage):
         self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        self.config = self.get_stage_config(ctx, SemanticSimilarityFilterConfig, "semantic_similarity")
+        self.config = self.get_stage_config(
+            ctx, SemanticSimilarityFilterConfig, "semantic_similarity"
+        )
         if self.config is None:
             return records
         filter_config = self.config
@@ -199,7 +201,9 @@ class LabelingQualityFilterStage(Stage):
         self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        self.config = self.get_stage_config(ctx, LabelingFilterConfig, "labeling_engine")
+        self.config = self.get_stage_config(
+            ctx, LabelingFilterConfig, "labeling_engine"
+        )
         if self.config is None or self.config.rubric_path is None:
             return records
         filter_config = self.config

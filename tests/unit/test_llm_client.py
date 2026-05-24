@@ -671,7 +671,6 @@ def test_extract_json_text_non_greedy_with_trailing_braces() -> None:
     assert result == '{"a": 1}'
 
 
-
 def test_extract_json_text_no_braces_returns_stripped() -> None:
     client = _make_client_for_extraction()
     result = client._extract_json_text("  just plain text  ")
