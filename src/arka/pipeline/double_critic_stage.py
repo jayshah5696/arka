@@ -110,17 +110,9 @@ class DoubleCriticFilterStage(Stage):
         self._output_writer = OutputWriter()
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
+        self.config = self.get_stage_config(ctx, DoubleCriticFilterConfig, "double_critic")
         if self.config is None:
-            if ctx.config:
-                if hasattr(ctx.config, "filters"):
-                    self.config = ctx.config.filters.get_stage_config("double_critic")
-                if self.config is None and hasattr(ctx.config, "pipeline"):
-                    for stage_cfg in ctx.config.pipeline:
-                        if isinstance(stage_cfg, DoubleCriticFilterConfig):
-                            self.config = stage_cfg
-                            break
-        if self.config is None:
-            self.config = DoubleCriticFilterConfig()
+            return records
         filter_config = self.config
 
         conversation_records: list[ConversationRecord] = [
