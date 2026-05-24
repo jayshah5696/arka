@@ -393,3 +393,27 @@ def test_resolve_llm_override_returns_base_when_no_override() -> None:
 
     assert resolve_llm_override(base, None) is base
     assert resolve_llm_override(base, StageLLMOverride()) is base
+
+
+def test_legacy_config_loader_deprecation_warning() -> None:
+    cfg_dict = {
+        "version": "1",
+        "llm": {
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "api_key": "k",
+            "base_url": "https://api.openai.com/v1",
+        },
+        "executor": {"mode": "threadpool", "max_workers": 1},
+        "data_source": {"type": "seeds", "path": "./seeds.jsonl"},
+        "generator": {
+            "type": "prompt_based",
+            "target_count": 2,
+            "generation_multiplier": 1,
+        },
+        "filters": {"target_count": 2, "stages": []},
+        "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
+    }
+    with pytest.deprecated_call():
+        ConfigLoader().load_dict(cfg_dict)
+

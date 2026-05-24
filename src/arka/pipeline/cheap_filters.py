@@ -50,9 +50,8 @@ class LengthFilterStage(Stage):
         self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
+        self.config = self.get_stage_config(ctx, LengthFilterConfig, "length")
         cfg = self.config
-        if cfg is None:
-            cfg = ctx.config.filters.get_stage_config("length")
         if cfg is None:
             return records
 
@@ -113,9 +112,8 @@ class LanguageFilterStage(Stage):
         self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
+        self.config = self.get_stage_config(ctx, LanguageFilterConfig, "language")
         cfg = self.config
-        if cfg is None:
-            cfg = ctx.config.filters.get_stage_config("language")
         if cfg is None:
             return records
         self._warn_if_no_heuristic_available(cfg.allowed)
@@ -200,9 +198,8 @@ class SentenceVarianceFilterStage(Stage):
         self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
+        self.config = self.get_stage_config(ctx, SentenceVarianceFilterConfig, "sentence_variance")
         cfg = self.config
-        if cfg is None:
-            cfg = ctx.config.filters.get_stage_config("sentence_variance")
         if cfg is None:
             return records
 

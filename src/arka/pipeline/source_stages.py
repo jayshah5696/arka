@@ -36,16 +36,7 @@ class SeedSourceStage(Stage):
         self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[ConversationRecord]:
-        if self.config is None:
-            if ctx.config:
-                self.config = ctx.config.data_source
-            if self.config is None and ctx.config and hasattr(ctx.config, "pipeline"):
-                for stage_cfg in ctx.config.pipeline:
-                    if isinstance(stage_cfg, SeedSourceConfig):
-                        self.config = stage_cfg
-                        break
-        if self.config is None:
-            self.config = SeedSourceConfig(path="")
+        self.config = self.get_stage_config(ctx, SeedSourceConfig, "data_source", SeedSourceConfig(path=""))
         if records:
             return [
                 record for record in records if isinstance(record, ConversationRecord)
@@ -148,16 +139,7 @@ class PDFSourceStage(Stage):
         records: list[Record],
         ctx: StageContext,
     ) -> list[GroundedChunkRecord]:
-        if self.config is None:
-            if ctx.config:
-                self.config = ctx.config.data_source
-            if self.config is None and ctx.config and hasattr(ctx.config, "pipeline"):
-                for stage_cfg in ctx.config.pipeline:
-                    if isinstance(stage_cfg, PDFSourceConfig):
-                        self.config = stage_cfg
-                        break
-        if self.config is None:
-            self.config = PDFSourceConfig(path="")
+        self.config = self.get_stage_config(ctx, PDFSourceConfig, "data_source", PDFSourceConfig(path=""))
         if records:
             return [
                 record for record in records if isinstance(record, GroundedChunkRecord)

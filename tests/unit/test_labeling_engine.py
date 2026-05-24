@@ -160,3 +160,48 @@ def test_labeling_engine_skips_canary_when_run_canary_false() -> None:
 
     assert len(results) == 1
     assert client.calls == 1  # No canary calls
+
+
+def test_labeling_engine_canary_checks_are_parallelized() -> None:
+    from unittest.mock import patch, MagicMock
+
+    rubric = build_rubric()
+    client = SequentialFakeLLMClient(
+        [
+            JudgeResponse(
+                scores={"instruction_clarity": 5, "response_quality": 4},
+                reasoning="strong",
+            ),
+            JudgeResponse(
+                scores={"instruction_clarity": 5, "response_quality": 5},
+                reasoning="good canary",
+            ),
+            JudgeResponse(
+                scores={"instruction_clarity": 1, "response_quality": 1},
+                reasoning="bad canary",
+            ),
+        ]
+    )
+    engine = LabelingEngine(llm_client=client)
+
+    with patch("arka.labeling.engine.ThreadPoolExecutor", autospec=True) as mock_executor_cls:
+        mock_executor = MagicMock()
+        mock_executor_cls.return_value.__enter__.return_value = mock_executor
+
+        mock_future = MagicMock()
+        mock_future.result.return_value = MagicMock(overall=4.0)
+        mock_executor.submit.return_value = mock_future
+
+        engine.label_batch(
+            pairs=[("Explain gravity", "Gravity attracts masses.")],
+            rubric=rubric,
+            max_workers=5,
+        )
+
+        # Verify that all 3 calls (1 main + 2 canary) were submitted to the executor
+        assert mock_executor.submit.call_count == 3
+        submitted_instructions = [c[0][1] for c in mock_executor.submit.call_args_list]
+        assert "Explain gravity" in submitted_instructions
+        assert "What is 2+2?" in submitted_instructions
+        assert "Tell me stuff" in submitted_instructions
+

@@ -378,11 +378,32 @@ class LLMClient:
             if match is None:
                 raise ValueError("Could not extract JSON from code fence")
             return match.group(1)
-        # Greedy regex: matches from first '{' to last '}' in the text.
-        # Known limitation: breaks on responses with multiple JSON objects
-        # or significant text containing curly braces after the JSON block.
-        # This is a last-resort fallback; provider-native strategies above
-        # handle the common case without regex extraction.
+        # Balanced brace counting to extract the first complete JSON object
+        first_brace = stripped.find("{")
+        if first_brace != -1:
+            brace_count = 0
+            in_string = False
+            escape = False
+            for i in range(first_brace, len(stripped)):
+                ch = stripped[i]
+                if escape:
+                    escape = False
+                    continue
+                if ch == "\\":
+                    escape = True
+                    continue
+                if ch == '"':
+                    in_string = not in_string
+                    continue
+                if not in_string:
+                    if ch == "{":
+                        brace_count += 1
+                    elif ch == "}":
+                        brace_count -= 1
+                        if brace_count == 0:
+                            return stripped[first_brace : i + 1]
+
+        # Greedy fallback if balanced matching fails
         json_object_match = re.search(r"\{.*\}", stripped, re.DOTALL)
         if json_object_match is not None:
             return json_object_match.group(0)

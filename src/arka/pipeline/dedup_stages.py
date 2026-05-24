@@ -89,10 +89,7 @@ class NearDedupStage(Stage):
         self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        # Stage is only instantiated when present in config list;
-        # look up the near dedup config from self.config.
-        if self.config is None:
-            self.config = ctx.config.get_stage_config("near_dedup") or NearDedupConfig()
+        self.config = self.get_stage_config(ctx, NearDedupConfig, "near_dedup")
         near_cfg = self.config
 
         kept_records: list[Record] = []

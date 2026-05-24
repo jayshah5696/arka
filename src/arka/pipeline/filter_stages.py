@@ -39,17 +39,9 @@ class CanaryFilterStage(Stage):
         self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
+        self.config = self.get_stage_config(ctx, CanaryFilterConfig, "canary")
         if self.config is None:
-            if ctx.config:
-                if hasattr(ctx.config, "filters"):
-                    self.config = ctx.config.filters.get_stage_config("canary")
-                if self.config is None and hasattr(ctx.config, "pipeline"):
-                    for stage_cfg in ctx.config.pipeline:
-                        if isinstance(stage_cfg, CanaryFilterConfig):
-                            self.config = stage_cfg
-                            break
-        if self.config is None:
-            self.config = CanaryFilterConfig()
+            return records
         filter_config = self.config
         if not filter_config.phrases:
             return records
@@ -98,17 +90,7 @@ class SemanticSimilarityFilterStage(Stage):
         self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        if self.config is None:
-            if ctx.config:
-                if hasattr(ctx.config, "filters"):
-                    self.config = ctx.config.filters.get_stage_config(
-                        "semantic_similarity"
-                    )
-                if self.config is None and hasattr(ctx.config, "pipeline"):
-                    for stage_cfg in ctx.config.pipeline:
-                        if isinstance(stage_cfg, SemanticSimilarityFilterConfig):
-                            self.config = stage_cfg
-                            break
+        self.config = self.get_stage_config(ctx, SemanticSimilarityFilterConfig, "semantic_similarity")
         if self.config is None:
             return records
         filter_config = self.config
@@ -217,15 +199,7 @@ class LabelingQualityFilterStage(Stage):
         self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        if self.config is None:
-            if ctx.config:
-                if hasattr(ctx.config, "filters"):
-                    self.config = ctx.config.filters.get_stage_config("labeling_engine")
-                if self.config is None and hasattr(ctx.config, "pipeline"):
-                    for stage_cfg in ctx.config.pipeline:
-                        if isinstance(stage_cfg, LabelingFilterConfig):
-                            self.config = stage_cfg
-                            break
+        self.config = self.get_stage_config(ctx, LabelingFilterConfig, "labeling_engine")
         if self.config is None or self.config.rubric_path is None:
             return records
         filter_config = self.config
