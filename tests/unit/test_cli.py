@@ -220,3 +220,29 @@ def test_cli_prints_duration_in_summary(tmp_path: Path, monkeypatch, capsys) -> 
     out, _ = capsys.readouterr()
     assert "--- Pipeline Summary" in out
     assert "Duration: " in out
+
+
+def test_cli_supports_validate_config(tmp_path: Path, monkeypatch, capsys) -> None:
+    config_path = tmp_path / "custom-config.yaml"
+    config_path.write_text("""
+version: "1"
+llm:
+  provider: openai
+  base_url: https://api.openai.com/v1
+  api_key: dummy
+  model: foo
+executor:
+  mode: threadpool
+  max_workers: 1
+pipeline: []
+output:
+  path: dummy_out.jsonl
+  format: jsonl
+""")
+
+    main(["--config", str(config_path), "--validate-config"])
+
+    captured = capsys.readouterr()
+    stdout = captured.out
+
+    assert "Configuration is valid." in stdout
