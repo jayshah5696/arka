@@ -67,23 +67,6 @@ class EvolRawRow(StrictModel):
 class EvolInstructRoundStage(Stage):
     stage_action = "generated"
 
-    @classmethod
-    def from_config(
-        cls,
-        config: EvolInstructGeneratorConfig,
-        project_root: Path,
-        resolved_config: Any,
-    ) -> list[EvolInstructRoundStage]:
-        rounds = config.rounds or 0
-        return [
-            cls(
-                round_number=round_number,
-                config=config,
-                project_root=project_root,
-            )
-            for round_number in range(1, rounds + 1)
-        ]
-
     def __init__(
         self,
         *,

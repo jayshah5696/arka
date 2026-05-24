@@ -522,7 +522,6 @@ class ResolvedConfig(StrictModel):
             return data
 
         import warnings
-
         warnings.warn(
             "Legacy configuration format detected. Please migrate to the unified sequential pipeline config format. "
             "You can use the offline migration script `scripts/migrate_config.py` to automatically update your files.",

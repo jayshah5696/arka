@@ -1,14 +1,14 @@
 import sys
-import warnings
 from pathlib import Path
-
+import warnings
 import yaml
+import pytest
 
 # Ensure scripts directory can be imported
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from arka.config.loader import ConfigLoader
 from scripts.migrate_config import migrate_file
+from arka.config.loader import ConfigLoader
 
 
 def test_offline_migration_utility(tmp_path: Path) -> None:
@@ -61,10 +61,8 @@ output:
 
     # Filter out external package warnings (like pydantic json_encoders warnings)
     deprecation_warnings = [
-        w
-        for w in captured
-        if issubclass(w.category, DeprecationWarning)
-        and "Legacy configuration format detected" in str(w.message)
+        w for w in captured
+        if issubclass(w.category, DeprecationWarning) and "Legacy configuration format detected" in str(w.message)
     ]
     assert len(deprecation_warnings) == 0
 

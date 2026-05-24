@@ -289,7 +289,7 @@ def test_ifd_stage_position_when_capability_check_is_stubbed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "arka.pipeline.filter_stages.validate_ifd_capability", lambda cfg, ctx: None
+        "arka.pipeline.stage_builder.validate_ifd_capability", lambda cfg, ctx: None
     )
     config = _base_config(
         filters={

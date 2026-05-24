@@ -36,9 +36,7 @@ class SeedSourceStage(Stage):
         self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[ConversationRecord]:
-        self.config = self.get_stage_config(
-            ctx, SeedSourceConfig, "data_source", SeedSourceConfig(path="")
-        )
+        self.config = self.get_stage_config(ctx, SeedSourceConfig, "data_source", SeedSourceConfig(path=""))
         if records:
             return [
                 record for record in records if isinstance(record, ConversationRecord)
@@ -141,9 +139,7 @@ class PDFSourceStage(Stage):
         records: list[Record],
         ctx: StageContext,
     ) -> list[GroundedChunkRecord]:
-        self.config = self.get_stage_config(
-            ctx, PDFSourceConfig, "data_source", PDFSourceConfig(path="")
-        )
+        self.config = self.get_stage_config(ctx, PDFSourceConfig, "data_source", PDFSourceConfig(path=""))
         if records:
             return [
                 record for record in records if isinstance(record, GroundedChunkRecord)

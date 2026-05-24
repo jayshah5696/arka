@@ -48,9 +48,7 @@ class LabelingEngine:
         canary_indices = []
         if canary_good_item is not None:
             canary_indices.append(len(items_to_run))
-            items_to_run.append(
-                (canary_good_item.instruction, canary_good_item.response)
-            )
+            items_to_run.append((canary_good_item.instruction, canary_good_item.response))
         if canary_bad_item is not None:
             canary_indices.append(len(items_to_run))
             items_to_run.append((canary_bad_item.instruction, canary_bad_item.response))
@@ -64,7 +62,7 @@ class LabelingEngine:
             all_results = [future.result() for future in futures]
 
         # 3. Separate main results and canary results
-        pair_results = all_results[: len(pairs)]
+        pair_results = all_results[:len(pairs)]
 
         if len(canary_indices) == 2:
             good_result = all_results[canary_indices[0]]
@@ -76,3 +74,4 @@ class LabelingEngine:
                 )
 
         return pair_results
+

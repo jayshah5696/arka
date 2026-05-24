@@ -163,7 +163,7 @@ def test_labeling_engine_skips_canary_when_run_canary_false() -> None:
 
 
 def test_labeling_engine_canary_checks_are_parallelized() -> None:
-    from unittest.mock import MagicMock, patch
+    from unittest.mock import patch, MagicMock
 
     rubric = build_rubric()
     client = SequentialFakeLLMClient(
@@ -184,9 +184,7 @@ def test_labeling_engine_canary_checks_are_parallelized() -> None:
     )
     engine = LabelingEngine(llm_client=client)
 
-    with patch(
-        "arka.labeling.engine.ThreadPoolExecutor", autospec=True
-    ) as mock_executor_cls:
+    with patch("arka.labeling.engine.ThreadPoolExecutor", autospec=True) as mock_executor_cls:
         mock_executor = MagicMock()
         mock_executor_cls.return_value.__enter__.return_value = mock_executor
 
@@ -206,3 +204,4 @@ def test_labeling_engine_canary_checks_are_parallelized() -> None:
         assert "Explain gravity" in submitted_instructions
         assert "What is 2+2?" in submitted_instructions
         assert "Tell me stuff" in submitted_instructions
+

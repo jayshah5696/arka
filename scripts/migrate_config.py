@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-
 import yaml
 
 from arka.config.models import ResolvedConfig
@@ -44,9 +43,7 @@ def main() -> None:
         description="Migrate a legacy Arka configuration file to the modern pipeline format."
     )
     parser.add_argument("input", type=str, help="Path to the legacy YAML config file")
-    parser.add_argument(
-        "output", type=str, help="Path to save the migrated YAML config file"
-    )
+    parser.add_argument("output", type=str, help="Path to save the migrated YAML config file")
     args = parser.parse_args()
 
     migrate_file(Path(args.input), Path(args.output))
