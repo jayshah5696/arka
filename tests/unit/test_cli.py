@@ -188,7 +188,9 @@ def test_cli_catches_pipeline_runner_exceptions(
             self.project_root = project_root
 
         def run(self, config, stages, run_id, resume) -> None:
-            raise ValueError("Something bad happened during execution")
+            raise RuntimeError(
+                "Stage '02_generate' failed - Something bad happened during execution"
+            )
 
     monkeypatch.setattr("arka.cli.PipelineRunner", FakePipelineRunner)
 
@@ -200,7 +202,7 @@ def test_cli_catches_pipeline_runner_exceptions(
     assert exc.value.code == 1
     out, err = capsys.readouterr()
     assert (
-        "Error: Pipeline execution failed - Something bad happened during execution"
+        "Error: Pipeline execution failed - Stage '02_generate' failed - Something bad happened during execution"
         in err
     )
     # Because FakePipelineRunner raises before creating the run_report.json,
