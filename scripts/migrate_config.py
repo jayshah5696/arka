@@ -3,10 +3,10 @@
 
 from __future__ import annotations
 
-import argparse
 import sys
 from pathlib import Path
 
+import click
 import yaml
 
 from arka.config.models import ResolvedConfig
@@ -39,17 +39,12 @@ def migrate_file(input_path: Path, output_path: Path) -> None:
         sys.exit(1)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Migrate a legacy Arka configuration file to the modern pipeline format."
-    )
-    parser.add_argument("input", type=str, help="Path to the legacy YAML config file")
-    parser.add_argument(
-        "output", type=str, help="Path to save the migrated YAML config file"
-    )
-    args = parser.parse_args()
-
-    migrate_file(Path(args.input), Path(args.output))
+@click.command()
+@click.argument("input_path", type=click.Path(exists=True, path_type=Path))
+@click.argument("output_path", type=click.Path(path_type=Path))
+def main(input_path: Path, output_path: Path) -> None:
+    """Migrate a legacy Arka configuration file to the modern pipeline format."""
+    migrate_file(input_path, output_path)
 
 
 if __name__ == "__main__":

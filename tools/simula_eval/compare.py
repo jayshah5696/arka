@@ -9,10 +9,11 @@ Usage:
 
 from __future__ import annotations
 
-import argparse
 import json
 from pathlib import Path
 from typing import Any
+
+import click
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -98,16 +99,25 @@ def render(metrics: list[dict[str, Any]]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("metrics_files", type=Path, nargs="+")
-    ap.add_argument("--out", type=Path, required=True)
-    args = ap.parse_args()
-
-    metrics = [_load(p) for p in args.metrics_files]
+@click.command()
+@click.argument(
+    "metrics_files",
+    nargs=-1,
+    type=click.Path(exists=True, path_type=Path),
+    required=True,
+)
+@click.option(
+    "--out",
+    type=click.Path(path_type=Path),
+    required=True,
+    help="Path to output comparison Markdown file",
+)
+def main(metrics_files: tuple[Path, ...], out: Path) -> None:
+    """Render a side-by-side comparison markdown table from N metrics.json files."""
+    metrics = [_load(p) for p in metrics_files]
     text = render(metrics)
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(text)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text)
     print(text)
 
 

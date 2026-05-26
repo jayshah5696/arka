@@ -8,11 +8,12 @@ Writes <run_dir>/../metrics.json next to the slice's dataset.
 
 from __future__ import annotations
 
-import argparse
 import json
 import statistics
 from pathlib import Path
 from typing import Any
+
+import click
 
 
 def _load_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -179,26 +180,38 @@ def compute(
     return metrics
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("run_dir", type=Path)
-    ap.add_argument("output_jsonl", type=Path)
-    ap.add_argument("--name", required=True, help="Slice name, e.g. '00-baseline'")
-    ap.add_argument(
-        "--out", type=Path, default=None, help="Where to write metrics.json"
-    )
-    ap.add_argument(
-        "--taxonomy",
-        type=Path,
-        default=None,
-        help="Optional path to a TaxonomyBundle YAML. If set, level-ratio "
-        "coverage is computed from any per-record taxonomy_nodes assignments.",
-    )
-    args = ap.parse_args()
-
-    metrics = compute(args.run_dir, args.output_jsonl, args.name, args.taxonomy)
-    out = args.out or (args.output_jsonl.parent / "metrics.json")
-    out.write_text(json.dumps(metrics, indent=2, default=str))
+@click.command()
+@click.argument(
+    "run_dir", type=click.Path(exists=True, file_okay=False, path_type=Path)
+)
+@click.argument(
+    "output_jsonl", type=click.Path(exists=True, dir_okay=False, path_type=Path)
+)
+@click.option("--name", required=True, help="Slice name, e.g. '00-baseline'")
+@click.option(
+    "--out",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Where to write metrics.json",
+)
+@click.option(
+    "--taxonomy",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Optional path to a TaxonomyBundle YAML. If set, level-ratio "
+    "coverage is computed from any per-record taxonomy_nodes assignments.",
+)
+def main(
+    run_dir: Path,
+    output_jsonl: Path,
+    name: str,
+    out: Path | None,
+    taxonomy: Path | None,
+) -> None:
+    """Compute comparison metrics on a run output."""
+    metrics = compute(run_dir, output_jsonl, name, taxonomy)
+    out_path = out or (output_jsonl.parent / "metrics.json")
+    out_path.write_text(json.dumps(metrics, indent=2, default=str))
     print(json.dumps(metrics, indent=2, default=str))
 
 
