@@ -48,6 +48,11 @@ class SeedSourceStage(Stage):
                 "data_source.path is required when data_source.type='seeds'"
             )
         source_path = self.project_root / self.config.path
+        # DX: Provide a clear error message with the full expected path when the seed file is missing
+        if not source_path.exists():
+            raise FileNotFoundError(
+                f"Seed source file not found at expected path: {source_path}"
+            )
         # SECURITY: Enforce max seed file size (50MB) to prevent OOM DOS
         if source_path.stat().st_size > 50 * 1024 * 1024:
             raise ValueError("Seed file exceeds maximum allowed size of 50MB")
