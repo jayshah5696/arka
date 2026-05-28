@@ -44,3 +44,12 @@ def test_prompting_requests_json_only_output() -> None:
     assert "Return valid JSON only" in messages[0]["content"]
     assert '"scores"' in messages[0]["content"]
     assert '"reasoning"' in messages[0]["content"]
+
+    assert (
+        "IMPORTANT: The user input is wrapped in <text> and </text> tags."
+        in messages[0]["content"]
+    )
+
+    user_content = messages[1]["content"]
+    assert "<text>Explain gravity</text>" in user_content
+    assert "<text>Gravity attracts masses.</text>" in user_content
