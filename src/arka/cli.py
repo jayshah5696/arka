@@ -82,7 +82,24 @@ def _print_summary(
     is_flag=True,
     help="Load config and preview stages without executing the pipeline",
 )
-def cli(config: str, run_id: str | None, resume: bool, dry_run: bool) -> None:
+@click.option(
+    "--validate-config",
+    is_flag=True,
+    help="Check if the configuration is valid and exit without running",
+)
+@click.option(
+    "--list-stages",
+    is_flag=True,
+    help="Alias for --dry-run: Load config and preview stages without executing the pipeline",
+)
+def cli(
+    config: str,
+    run_id: str | None,
+    resume: bool,
+    dry_run: bool,
+    validate_config: bool,
+    list_stages: bool,
+) -> None:
     """Arka: A config-driven synthetic data generation framework."""
     start_time = time.time()
     config_path = Path(config).expanduser().resolve()
@@ -98,10 +115,15 @@ def cli(config: str, run_id: str | None, resume: bool, dry_run: bool) -> None:
         click.echo(str(exc), err=True)
         sys.exit(1)
 
+    # DX: Add --validate-config flag allows checking YAML syntax and schema without side effects or running the pipeline
+    if validate_config:
+        click.echo(f"Configuration is valid: {config_path}")
+        sys.exit(0)
+
     resolved_run_id = _resolve_run_id(run_id, loaded_config.run_id)
     stages = StageBuilder(config=loaded_config, project_root=project_root).build()
 
-    if dry_run:
+    if dry_run or list_stages:
         click.echo(f"Dry run enabled. Loaded config: {config_path}")
         click.echo(f"Resolved run ID: {resolved_run_id}")
         click.echo("Stages to execute:")
