@@ -33,3 +33,34 @@ def test_build_openai_client_sets_openrouter_compatible_headers() -> None:
 
     assert client.default_headers["HTTP-Referer"] == "https://example.com/"
     assert client.default_headers["X-Title"] == "arka"
+
+
+def test_build_openai_client_caches_instances() -> None:
+    config1 = LLMConfig(
+        provider="openai",
+        model="gpt-4o-mini",
+        api_key="test-key-cache",
+        base_url="https://openrouter.ai/api/v1",
+    )
+
+    config2 = LLMConfig(
+        provider="openai",
+        model="gpt-4o-mini",
+        api_key="test-key-cache",
+        base_url="https://openrouter.ai/api/v1",
+    )
+
+    client1 = build_openai_client(config1)
+    client2 = build_openai_client(config2)
+
+    assert client1 is client2
+
+    config_different = LLMConfig(
+        provider="openai",
+        model="gpt-4o-mini",
+        api_key="test-key-different",
+        base_url="https://openrouter.ai/api/v1",
+    )
+    client_different = build_openai_client(config_different)
+
+    assert client1 is not client_different
