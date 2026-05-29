@@ -428,3 +428,16 @@ def test_yaml_syntax_error_includes_filename(tmp_path: Path) -> None:
     # DX: Verify that the opaque <unicode string> has been replaced by the actual filename
     assert str(config_path) in str(exc.value)
     assert "<unicode string>" not in str(exc.value)
+
+
+def test_missing_environment_variable_error(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("NONEXISTENT_VAR", raising=False)
+
+    config_path = tmp_path / "env-error.yaml"
+    config_path.write_text("api_key: ${NONEXISTENT_VAR}")
+
+    with pytest.raises(ConfigValidationError) as exc:
+        ConfigLoader().load(config_path)
+
+    assert "Missing environment variable: ${NONEXISTENT_VAR} is not set" in str(exc.value)
+    assert "You can set it with 'export NONEXISTENT_VAR=<value>'" in str(exc.value)
