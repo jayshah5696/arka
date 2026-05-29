@@ -122,3 +122,21 @@ def test_seed_source_stage_requires_explicit_path(tmp_path: Path) -> None:
         match="data_source.path is required when data_source.type='seeds'",
     ):
         SeedSourceStage(project_root=tmp_path).run([], ctx)
+
+
+def test_seed_source_stage_missing_file_raises_not_found(tmp_path: Path) -> None:
+    config = ConfigLoader().load_dict(build_config("does_not_exist.jsonl"))
+    ctx = StageContext(
+        run_id="run-1",
+        stage_name="01_source",
+        work_dir=tmp_path / "work",
+        config=config,
+        executor_mode=config.executor.mode,
+        max_workers=config.executor.max_workers,
+    )
+
+    with pytest.raises(FileNotFoundError) as exc:
+        SeedSourceStage(project_root=tmp_path).run([], ctx)
+
+    assert "Seed source file not found at expected path:" in str(exc.value)
+    assert "does_not_exist.jsonl" in str(exc.value)
