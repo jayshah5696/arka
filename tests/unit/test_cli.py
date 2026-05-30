@@ -253,8 +253,8 @@ def test_cli_supports_list_stages(tmp_path: Path, monkeypatch, capsys) -> None:
     captured = capsys.readouterr()
     stdout = captured.out
 
-    assert "Dry run enabled. Loaded config: " in stdout
-    assert "Resolved run ID: test-list-stages" in stdout
+    assert "Loaded config: " in stdout
+    assert "Dry run enabled." not in stdout
     assert "Stages to execute:" in stdout
     assert "1. 01_source" in stdout
     assert "2. 02_normalize" in stdout
@@ -262,3 +262,29 @@ def test_cli_supports_list_stages(tmp_path: Path, monkeypatch, capsys) -> None:
 
     # Pipeline output should not exist since it's a dry run
     assert not (tmp_path / "runs" / "test-list-stages" / "manifest.json").exists()
+
+
+def test_cli_validate_config_catches_stage_builder_errors(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    config_path = tmp_path / "custom-config.yaml"
+    config_path.write_text(CONFIG_TEXT)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    def mock_build(self):
+        raise ValueError("Invalid stage configuration parameters")
+
+    from arka.pipeline.stage_builder import StageBuilder
+
+    monkeypatch.setattr(StageBuilder, "build", mock_build)
+
+    import pytest
+
+    with pytest.raises(SystemExit) as exc:
+        main(["--config", str(config_path), "--validate-config"])
+
+    assert exc.value.code == 1
+    captured = capsys.readouterr()
+    stderr = captured.err
+
+    assert "Configuration is invalid: Invalid stage configuration parameters" in stderr

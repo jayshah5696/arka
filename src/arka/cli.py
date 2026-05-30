@@ -6,12 +6,17 @@ import time
 import uuid
 from collections.abc import Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import click
 
 from arka.config.loader import ConfigLoader, ConfigValidationError
 from arka.pipeline.runner import PipelineRunner
 from arka.pipeline.stage_builder import StageBuilder
+
+if TYPE_CHECKING:
+    from arka.config.models import ResolvedConfig
+    from arka.pipeline.stages import Stage
 
 
 def _print_summary(
@@ -61,6 +66,79 @@ def _print_summary(
     print(f"\nFull report written to: {report_path}")
 
 
+def _load_config(config_path: Path) -> ResolvedConfig:
+    """Load config and print clean error messages for config issues instead of Python tracebacks."""
+    try:
+        return ConfigLoader().load(config_path)
+    except FileNotFoundError:
+        click.echo(f"Error: Configuration file not found at {config_path}", err=True)
+        sys.exit(1)
+    except ConfigValidationError as exc:
+        click.echo(str(exc), err=True)
+        sys.exit(1)
+
+
+def _validate_config(
+    loaded_config: ResolvedConfig, config_path: Path, project_root: Path
+) -> None:
+    """Validate config including stage building without side effects or running the pipeline."""
+    try:
+        # Build stages to ensure they are valid and can be constructed
+        StageBuilder(config=loaded_config, project_root=project_root).build()
+    except Exception as exc:
+        click.echo(f"Configuration is invalid: {exc}", err=True)
+        sys.exit(1)
+
+    click.echo(f"Configuration is valid: {config_path}")
+    sys.exit(0)
+
+
+def _dry_run_or_list_stages(
+    *,
+    dry_run: bool,
+    list_stages: bool,
+    config_path: Path,
+    resolved_run_id: str,
+    stages: list[Stage],
+) -> None:
+    """Preview stages without executing the pipeline."""
+    if dry_run:
+        click.echo(f"Dry run enabled. Loaded config: {config_path}")
+        click.echo(f"Resolved run ID: {resolved_run_id}")
+    else:
+        click.echo(f"Loaded config: {config_path}")
+    click.echo("Stages to execute:")
+    for i, stage in enumerate(stages, 1):
+        click.echo(f"  {i}. {stage.name}")
+
+
+def _run_pipeline(
+    *,
+    project_root: Path,
+    loaded_config: ResolvedConfig,
+    stages: list[Stage],
+    resolved_run_id: str,
+    resume: bool,
+    start_time: float,
+) -> None:
+    """Execute the pipeline stages and display execution summary."""
+    try:
+        PipelineRunner(project_root=project_root).run(
+            config=loaded_config,
+            stages=stages,
+            run_id=resolved_run_id,
+            resume=resume,
+        )
+    except Exception as exc:
+        # DX: Catch pipeline execution errors to prevent raw Python tracebacks.
+        # This provides a clean, human-readable error message to the user.
+        click.echo(f"Error: Pipeline execution failed - {exc}", err=True)
+        sys.exit(1)
+    finally:
+        duration_secs = time.time() - start_time
+        _print_summary(resolved_run_id, project_root, duration_secs)
+
+
 @click.command(name="arka")
 @click.option(
     "--config",
@@ -105,47 +183,32 @@ def cli(
     config_path = Path(config).expanduser().resolve()
     project_root = config_path.parent
 
-    # DX: Print clean error messages for config issues instead of Python tracebacks.
-    try:
-        loaded_config = ConfigLoader().load(config_path)
-    except FileNotFoundError:
-        click.echo(f"Error: Configuration file not found at {config_path}", err=True)
-        sys.exit(1)
-    except ConfigValidationError as exc:
-        click.echo(str(exc), err=True)
-        sys.exit(1)
+    loaded_config = _load_config(config_path)
 
-    # DX: Add --validate-config flag allows checking YAML syntax and schema without side effects or running the pipeline
     if validate_config:
-        click.echo(f"Configuration is valid: {config_path}")
-        sys.exit(0)
+        _validate_config(loaded_config, config_path, project_root)
 
     resolved_run_id = _resolve_run_id(run_id, loaded_config.run_id)
     stages = StageBuilder(config=loaded_config, project_root=project_root).build()
 
     if dry_run or list_stages:
-        click.echo(f"Dry run enabled. Loaded config: {config_path}")
-        click.echo(f"Resolved run ID: {resolved_run_id}")
-        click.echo("Stages to execute:")
-        for i, stage in enumerate(stages, 1):
-            click.echo(f"  {i}. {stage.name}")
+        _dry_run_or_list_stages(
+            dry_run=dry_run,
+            list_stages=list_stages,
+            config_path=config_path,
+            resolved_run_id=resolved_run_id,
+            stages=stages,
+        )
         return
 
-    try:
-        PipelineRunner(project_root=project_root).run(
-            config=loaded_config,
-            stages=stages,
-            run_id=resolved_run_id,
-            resume=resume,
-        )
-    except Exception as exc:
-        # DX: Catch pipeline execution errors to prevent raw Python tracebacks.
-        # This provides a clean, human-readable error message to the user.
-        click.echo(f"Error: Pipeline execution failed - {exc}", err=True)
-        sys.exit(1)
-    finally:
-        duration_secs = time.time() - start_time
-        _print_summary(resolved_run_id, project_root, duration_secs)
+    _run_pipeline(
+        project_root=project_root,
+        loaded_config=loaded_config,
+        stages=stages,
+        resolved_run_id=resolved_run_id,
+        resume=resume,
+        start_time=start_time,
+    )
 
 
 def _resolve_run_id(cli_run_id: str | None, config_run_id: str | None) -> str:
