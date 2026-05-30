@@ -163,7 +163,10 @@ class ConfigLoader:
             env_var = match.group(1)
             value = os.getenv(env_var)
             if value is None:
-                raise ConfigValidationError(f"Missing environment variable: {env_var}")
+                # DX: Make missing environment variable errors specific and actionable
+                raise ConfigValidationError(
+                    f"Missing environment variable: ${{{env_var}}} is not set. You can set it with 'export {env_var}=<value>'"
+                )
             return value
 
         return _ENV_VAR_PATTERN.sub(replace, text)
