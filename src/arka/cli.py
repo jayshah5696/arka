@@ -52,6 +52,10 @@ def _print_summary(
         print(
             f"  {name}: {count_in} in -> {count_out} out (dropped {dropped}) [{status}]"
         )
+        # DX: If a stage failed, print the error type and message for better visibility
+        if status == "failed" and "error" in stage:
+            err = stage["error"]
+            print(f"    - Failed: {err.get('type')}: {err.get('message')}")
 
         drop_reasons = stage.get("drop_reasons", {})
         if drop_reasons:
