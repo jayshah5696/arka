@@ -130,7 +130,10 @@ def test_config_validation_error_is_human_readable(
         ConfigLoader().load(config_path)
     message2 = str(exc_info.value)
     assert (
-        "  - Unknown field: 'unexpected_key' (this key is not allowed here)" in message2
+        "Unknown field: 'unexpected_key'" in message2
+    )
+    assert (
+        "(this key is not allowed here)" in message2
     )
 
 
@@ -439,5 +442,7 @@ def test_missing_environment_variable_error(tmp_path: Path, monkeypatch) -> None
     with pytest.raises(ConfigValidationError) as exc:
         ConfigLoader().load(config_path)
 
-    assert "Missing environment variable: ${NONEXISTENT_VAR} is not set" in str(exc.value)
+    assert "Missing environment variable: ${NONEXISTENT_VAR} is not set" in str(
+        exc.value
+    )
     assert "You can set it with 'export NONEXISTENT_VAR=<value>'" in str(exc.value)

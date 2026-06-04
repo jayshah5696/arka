@@ -1,0 +1,3 @@
+## 2024-06-04 - Palette: Add line hints to configuration validation errors
+* **Learning:** When adding features or tests, temporary files and artifacts must be cleaned up before committing to keep the repository clean. When testing DX improvements to CLI, it is important to remember to test on invalid and missing configs without committing them to the final solution.
+* **Action:** Before marking any changes ready for review or submit, proactively list all files in the current directory and `tests/fixtures/` and ensure no `.yaml`, `.py`, `.diff` files that were part of scratchwork are left behind. Pay careful attention to `git status` to ensure only the intended modified code is staged and committed.

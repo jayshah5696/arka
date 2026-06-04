@@ -31,7 +31,7 @@ class ConfigLoader:
             return ResolvedConfig.model_validate(data)
         except ValidationError as exc:
             raise ConfigValidationError(
-                self._format_validation_error(exc, data)
+                self._format_validation_error(exc, data, raw_yaml=resolved_text)
             ) from exc
         except yaml.YAMLError as exc:
             raise ConfigValidationError(str(exc)) from exc
@@ -46,7 +46,9 @@ class ConfigLoader:
 
     @staticmethod
     def _format_validation_error(
-        exc: ValidationError, data: dict[str, Any] | None = None
+        exc: ValidationError,
+        data: dict[str, Any] | None = None,
+        raw_yaml: str | None = None,
     ) -> str:
         is_legacy = data is not None and "pipeline" not in data
 
@@ -140,12 +142,23 @@ class ConfigLoader:
                 path = ".".join(str(loc) for loc in loc)
 
             err_type = error.get("type")
+            line_hint = ""
+            if raw_yaml is not None and loc:
+                target_key = str(loc[-1])
+                for i, line in enumerate(raw_yaml.splitlines()):
+                    # DX: Try to find the key in the YAML to give a line number hint
+                    if re.search(rf"^\s*['\"]?{re.escape(target_key)}['\"]?\s*:", line):
+                        line_hint = f" (around line {i + 1})"
+                        break
+
             if err_type == "missing":
-                err_msg = f"Missing required field: '{path}'"
+                err_msg = f"Missing required field: '{path}'{line_hint}"
             elif err_type == "extra_forbidden":
-                err_msg = f"Unknown field: '{path}' (this key is not allowed here)"
+                err_msg = (
+                    f"Unknown field: '{path}'{line_hint} (this key is not allowed here)"
+                )
             else:
-                err_msg = f"Invalid value for '{path}': {msg}"
+                err_msg = f"Invalid value for '{path}': {msg}{line_hint}"
 
             reported.add(path)
             lines.append(f"  - {err_msg}")
