@@ -47,6 +47,10 @@ def _print_summary(
     if cost is not None:
         print(f"Total Cost: ${cost:.6f}")
 
+    dataset_path = report.get("dataset_path")
+    if dataset_path:
+        print(f"\nDataset Output: {dataset_path}")
+
     print("\nStage Yields:")
     for stage in report.get("stage_yields", []):
         name = stage.get("stage", "unknown")

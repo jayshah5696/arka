@@ -254,7 +254,7 @@ def test_pipeline_runner_marks_failed_run_and_persists_failure_report(
 ) -> None:
     runner = PipelineRunner(project_root=tmp_path)
 
-    with pytest.raises(RuntimeError, match="Stage '02_transform' failed - boom"):
+    with pytest.raises(RuntimeError, match="Stage '02_transform' failed. 1 records were lost - boom"):
         runner.run(
             config=config_dict,
             stages=[SourceStage(), FailingStage()],
@@ -296,7 +296,7 @@ def test_pipeline_runner_marks_failed_run_and_persists_failure_report(
         {
             "stage": "02_transform",
             "count_in": 1,
-            "count_out": 1,
+            "count_out": 0,
             "status": "failed",
             "resumed": False,
             "dropped_count": 0,
