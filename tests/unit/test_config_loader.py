@@ -124,13 +124,15 @@ def test_config_validation_error_is_human_readable(
     assert "  - Missing required field: 'llm'" in message
     assert "  - Missing required field: 'filters'" in message
 
-    # Check that unknown fields are formatted nicely
+    # Check that unknown fields are formatted nicely and include line hints
+    yaml_lines = CONFIG_YAML.splitlines()
+    unexpected_line_num = len(yaml_lines) + 1
     config_path.write_text(CONFIG_YAML + "unexpected_key: true\n")
     with pytest.raises(ConfigValidationError) as exc_info:
         ConfigLoader().load(config_path)
     message2 = str(exc_info.value)
     assert (
-        "  - Unknown field: 'unexpected_key' (this key is not allowed here)" in message2
+        f"  - Unknown field: 'unexpected_key' (check line {unexpected_line_num}) (this key is not allowed here)" in message2
     )
 
 

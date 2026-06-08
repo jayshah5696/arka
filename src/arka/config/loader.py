@@ -31,7 +31,7 @@ class ConfigLoader:
             return ResolvedConfig.model_validate(data)
         except ValidationError as exc:
             raise ConfigValidationError(
-                self._format_validation_error(exc, data)
+                self._format_validation_error(exc, data, raw_text)
             ) from exc
         except yaml.YAMLError as exc:
             raise ConfigValidationError(str(exc)) from exc
@@ -45,8 +45,21 @@ class ConfigLoader:
             ) from exc
 
     @staticmethod
+    def _find_line_number(raw_text: str, path: str) -> int | None:
+        key = path.split(".")[-1]
+        if key.isdigit():
+            return None
+        for i, line in enumerate(raw_text.splitlines(), 1):
+            if re.search(rf"^\s*(?:-\s+)?{key}\s*:", line):
+                return i
+        return None
+
+    @classmethod
     def _format_validation_error(
-        exc: ValidationError, data: dict[str, Any] | None = None
+        cls,
+        exc: ValidationError,
+        data: dict[str, Any] | None = None,
+        raw_text: str | None = None,
     ) -> str:
         is_legacy = data is not None and "pipeline" not in data
 
@@ -139,13 +152,20 @@ class ConfigLoader:
             else:
                 path = ".".join(str(loc) for loc in loc)
 
+            line_hint = ""
+            if raw_text is not None:
+                line_num = cls._find_line_number(raw_text, path)
+                if line_num is not None:
+                    line_hint = f" (check line {line_num})"
+
             err_type = error.get("type")
+            # DX: Add line hints to ConfigValidationError for easier debugging
             if err_type == "missing":
-                err_msg = f"Missing required field: '{path}'"
+                err_msg = f"Missing required field: '{path}'{line_hint}"
             elif err_type == "extra_forbidden":
-                err_msg = f"Unknown field: '{path}' (this key is not allowed here)"
+                err_msg = f"Unknown field: '{path}'{line_hint} (this key is not allowed here)"
             else:
-                err_msg = f"Invalid value for '{path}': {msg}"
+                err_msg = f"Invalid value for '{path}'{line_hint}: {msg}"
 
             reported.add(path)
             lines.append(f"  - {err_msg}")
