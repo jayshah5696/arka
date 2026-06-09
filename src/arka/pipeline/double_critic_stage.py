@@ -165,7 +165,12 @@ class DoubleCriticFilterStage(Stage):
                 )
             return parsed
 
-        with ThreadPoolExecutor(max_workers=worker_count) as pool:
+        if getattr(ctx, "executor", None) is not None:
+            pool = ctx.executor
+        else:
+            pool = ThreadPoolExecutor(max_workers=worker_count)
+
+        try:
             yes_futs = [
                 pool.submit(_call_one, _YES_SYSTEM, r) for r in conversation_records
             ]
@@ -174,6 +179,9 @@ class DoubleCriticFilterStage(Stage):
             ]
             yes_results = [f.result() for f in yes_futs]
             no_results = [f.result() for f in no_futs]
+        finally:
+            if getattr(ctx, "executor", None) is None:
+                pool.shutdown(wait=True)
 
         kept: list[Record] = list(non_conv)
         dropped: list[Record] = []
