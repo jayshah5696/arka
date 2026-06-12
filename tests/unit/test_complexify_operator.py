@@ -111,9 +111,10 @@ def test_complexify_messages_have_user_role_and_json_instruction_key() -> None:
     from arka.pipeline.evol_instruct import build_evol_messages
 
     messages = build_evol_messages(_parent_record(), operator="complexify")
-    assert len(messages) == 1
-    assert messages[0]["role"] == "user"
-    assert '"instruction"' in messages[0]["content"]
+    assert len(messages) == 2
+    assert messages[0]["role"] == "system"
+    assert messages[1]["role"] == "user"
+    assert '"instruction"' in messages[1]["content"]
 
 
 # --- Test 4: config layer accepts complexify --------------------------------
