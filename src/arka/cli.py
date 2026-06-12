@@ -122,6 +122,7 @@ def _run_pipeline(
     start_time: float,
 ) -> None:
     """Execute the pipeline stages and display execution summary."""
+    error_msg = None
     try:
         PipelineRunner(project_root=project_root).run(
             config=loaded_config,
@@ -132,11 +133,14 @@ def _run_pipeline(
     except Exception as exc:
         # DX: Catch pipeline execution errors to prevent raw Python tracebacks.
         # This provides a clean, human-readable error message to the user.
-        click.echo(f"Error: Pipeline execution failed - {exc}", err=True)
-        sys.exit(1)
+        error_msg = f"Error: Pipeline execution failed - {exc}"
     finally:
         duration_secs = time.time() - start_time
         _print_summary(resolved_run_id, project_root, duration_secs)
+        if error_msg:
+            # DX: Print the error message after the summary so it's not lost in terminal scrollback
+            click.echo(f"\n{error_msg}", err=True)
+            sys.exit(1)
 
 
 @click.command(name="arka")
