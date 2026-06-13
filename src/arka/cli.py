@@ -54,9 +54,17 @@ def _print_summary(
         count_out = stage.get("count_out", 0)
         dropped = stage.get("dropped_count", 0)
         status = stage.get("status", "unknown")
-        print(
-            f"  {name}: {count_in} in -> {count_out} out (dropped {dropped}) [{status}]"
-        )
+
+        # DX: Explicitly show lost records in the CLI summary when a stage fails
+        if status == "failed":
+            lost = count_in - count_out
+            print(
+                f"  {name}: {count_in} in -> {count_out} out (lost {lost} records) [{status}]"
+            )
+        else:
+            print(
+                f"  {name}: {count_in} in -> {count_out} out (dropped {dropped}) [{status}]"
+            )
 
         drop_reasons = stage.get("drop_reasons", {})
         if drop_reasons:

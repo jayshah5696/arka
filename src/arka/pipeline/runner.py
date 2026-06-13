@@ -110,7 +110,7 @@ class PipelineRunner:
                         self._build_stage_stat(
                             stage_name=stage.name,
                             count_in=count_in,
-                            count_out=len(records),
+                            count_out=0,
                             status="failed",
                             resumed=False,
                             stats_path=run_paths.stage_stats_path(stage.name),
@@ -122,7 +122,7 @@ class PipelineRunner:
                         stage_name=stage.name,
                         artifact_path=stage_path,
                         count_in=count_in,
-                        count_out=len(records),
+                        count_out=0,
                         status="failed",
                     )
                     # DX: Wrap stage failures with the stage name to improve error visibility in CLI
