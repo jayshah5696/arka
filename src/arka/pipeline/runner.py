@@ -106,11 +106,12 @@ class PipelineRunner:
                         type=exc.__class__.__name__,
                         message=str(exc),
                     )
+                    # DX: On stage failure, record count_out as 0 to accurately reflect that 0 valid records were produced, avoiding confusion from duplicating the input count.
                     stage_stats.append(
                         self._build_stage_stat(
                             stage_name=stage.name,
                             count_in=count_in,
-                            count_out=len(records),
+                            count_out=0,
                             status="failed",
                             resumed=False,
                             stats_path=run_paths.stage_stats_path(stage.name),
@@ -122,7 +123,7 @@ class PipelineRunner:
                         stage_name=stage.name,
                         artifact_path=stage_path,
                         count_in=count_in,
-                        count_out=len(records),
+                        count_out=0,
                         status="failed",
                     )
                     # DX: Wrap stage failures with the stage name to improve error visibility in CLI
