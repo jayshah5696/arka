@@ -124,13 +124,15 @@ def test_config_validation_error_is_human_readable(
     assert "  - Missing required field: 'llm'" in message
     assert "  - Missing required field: 'filters'" in message
 
-    # Check that unknown fields are formatted nicely
+    # Check that unknown fields are formatted nicely and include line hints
+    yaml_lines = CONFIG_YAML.splitlines()
+    unexpected_line_num = len(yaml_lines) + 1
     config_path.write_text(CONFIG_YAML + "unexpected_key: true\n")
     with pytest.raises(ConfigValidationError) as exc_info:
         ConfigLoader().load(config_path)
     message2 = str(exc_info.value)
     assert (
-        "  - Unknown field: 'unexpected_key' (this key is not allowed here)" in message2
+        f"  - Unknown field: 'unexpected_key' (check line {unexpected_line_num}) (this key is not allowed here)" in message2
     )
 
 
@@ -441,3 +443,27 @@ def test_missing_environment_variable_error(tmp_path: Path, monkeypatch) -> None
 
     assert "Missing environment variable: ${NONEXISTENT_VAR} is not set" in str(exc.value)
     assert "You can set it with 'export NONEXISTENT_VAR=<value>'" in str(exc.value)
+
+
+def test_loader_formats_union_tag_invalid_errors_readably() -> None:
+    loader = ConfigLoader()
+    invalid_data = {
+        "version": "1",
+        "pipeline": [{"type": "invalid_stage_type"}],
+        "llm": {
+            "provider": "openai",
+            "model": "m",
+            "api_key": "k",
+            "base_url": "http://u",
+        },
+        "executor": {},
+        "output": {"format": "chatml", "path": "p"},
+    }
+
+    with pytest.raises(ConfigValidationError) as exc:
+        loader.load_dict(invalid_data)
+
+    error_msg = str(exc.value)
+    assert "Invalid pipeline stage type: 'invalid_stage_type'" in error_msg
+    assert "Expected one of:" in error_msg
+
