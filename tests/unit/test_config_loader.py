@@ -439,9 +439,7 @@ def test_missing_environment_variable_error(tmp_path: Path, monkeypatch) -> None
     with pytest.raises(ConfigValidationError) as exc:
         ConfigLoader().load(config_path)
 
-    assert "Missing environment variable: ${NONEXISTENT_VAR} is not set" in str(
-        exc.value
-    )
+    assert "Missing environment variable: ${NONEXISTENT_VAR} is not set" in str(exc.value)
     assert "You can set it with 'export NONEXISTENT_VAR=<value>'" in str(exc.value)
 
 
@@ -466,3 +464,4 @@ def test_loader_formats_union_tag_invalid_errors_readably() -> None:
     error_msg = str(exc.value)
     assert "Invalid pipeline stage type: 'invalid_stage_type'" in error_msg
     assert "Expected one of:" in error_msg
+
