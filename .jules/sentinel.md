@@ -4,3 +4,4 @@
 / Vulnerability: API keys could leak if LLM API error stack traces are printed.
 / Learning: Using `from exc` when re-raising `openai` API errors includes the `httpx.Request` context in the traceback, which contains headers like `Authorization: Bearer <API_KEY>`.
 / Prevention: Always use `from None` when catching API client errors that contain sensitive HTTP request context to suppress the original exception's `__cause__` in tracebacks.
+## 2026-06-12 - Prompt Injection via Seed Data / Vulnerability: Untrusted seed inputs inserted directly into judge/critic LLM prompts / Learning: The pipeline failed to consistently sanitize inputs across all stages, leaving some models vulnerable to prompt injection / Prevention: Ensure sanitize_for_prompt and system warnings are used consistently across all LLM prompt construction methods, particularly for filter and generator stages.
