@@ -47,6 +47,10 @@ def _print_summary(
     if cost is not None:
         print(f"Total Cost: ${cost:.6f}")
 
+    dataset_path = report.get("dataset_path")
+    if dataset_path:
+        print(f"\nDataset Output: {dataset_path}")
+
     error_info = report.get("error")
     if error_info:
         # DX: Explicitly highlight the failed stage and error in the summary report
@@ -70,6 +74,10 @@ def _print_summary(
             print(
                 f"  {name}: {count_in} in -> {count_out} out (lost {lost} records) [{status}]{cost_str}"
             )
+            # DX: print error details on the stage that failed
+            error = stage.get("error")
+            if error:
+                print(f"    - Failed: {error.get('type')}: {error.get('message')}")
         else:
             print(
                 f"  {name}: {count_in} in -> {count_out} out (dropped {dropped}) [{status}]{cost_str}"
