@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -22,6 +23,7 @@ class StageContext:
     config: ResolvedConfig
     executor_mode: str
     max_workers: int
+    executor: ThreadPoolExecutor | None = None
     checkpoint_manager: CheckpointManager | None = None
     # Optional injected factory used by the StageContext.llm_client() seam.
     # Tests can pass a fake; production runs leave it None and the seam
