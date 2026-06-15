@@ -308,8 +308,16 @@ class ComplexityEloScoringStage(Stage):
                     valid.append(rid)
             return valid
 
-        with ThreadPoolExecutor(max_workers=worker_count) as pool:
+        if getattr(ctx, "executor", None) is not None:
+            pool = ctx.executor
+        else:
+            pool = ThreadPoolExecutor(max_workers=worker_count)
+
+        try:
             return list(pool.map(_one, batches))
+        finally:
+            if getattr(ctx, "executor", None) is None:
+                pool.shutdown(wait=True)
 
     def _write_artifacts(
         self, ctx: StageContext, *, count_in: int, elos: list[float]
