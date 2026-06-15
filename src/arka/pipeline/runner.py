@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -56,102 +57,109 @@ class PipelineRunner:
         failed_stage_name: str | None = None
         failed_error: StageErrorInfo | None = None
 
+        # PERF: Reusing a single ThreadPoolExecutor across all pipeline stages to avoid the overhead of repeatedly creating and destroying thread pools per stage/batch.
         try:
-            for i, stage in enumerate(stages, 1):
-                stage_path = run_paths.stage_data_path(stage.name)
-                stage_checkpoint = checkpoint_manager.load_stage(run_id, stage.name)
-                if self._should_resume_stage(
-                    resume=resume,
-                    stage_path=stage_path,
-                    stage_checkpoint=stage_checkpoint,
-                ):
-                    records = self.output_writer.read_parquet(stage_path)
-                    stage_stats.append(
-                        self._build_stage_stat(
-                            stage_name=stage.name,
-                            count_in=int(stage_checkpoint["count_out"]),
-                            count_out=len(records),
-                            status="resumed",
-                            resumed=True,
-                            stats_path=run_paths.stage_stats_path(stage.name),
+            with ThreadPoolExecutor(
+                max_workers=resolved_config.executor.max_workers
+            ) as shared_executor:
+                for i, stage in enumerate(stages, 1):
+                    stage_path = run_paths.stage_data_path(stage.name)
+                    stage_checkpoint = checkpoint_manager.load_stage(run_id, stage.name)
+                    if self._should_resume_stage(
+                        resume=resume,
+                        stage_path=stage_path,
+                        stage_checkpoint=stage_checkpoint,
+                    ):
+                        records = self.output_writer.read_parquet(stage_path)
+                        stage_stats.append(
+                            self._build_stage_stat(
+                                stage_name=stage.name,
+                                count_in=int(stage_checkpoint["count_out"]),
+                                count_out=len(records),
+                                status="resumed",
+                                resumed=True,
+                                stats_path=run_paths.stage_stats_path(stage.name),
+                            )
                         )
-                    )
-                    # DX: Provide per-stage progress indication for skipped stages
-                    print(
-                        f"Skipping stage {i}/{len(stages)}: {stage.name} (resumed from checkpoint)..."
-                    )
-                    continue
+                        # DX: Provide per-stage progress indication for skipped stages
+                        print(
+                            f"Skipping stage {i}/{len(stages)}: {stage.name} (resumed from checkpoint)..."
+                        )
+                        continue
 
-                stage_dir = run_paths.stage_dir(stage.name)
-                stage_dir.mkdir(parents=True, exist_ok=True)
-                context = StageContext(
-                    run_id=run_id,
-                    stage_name=stage.name,
-                    work_dir=stage_dir,
-                    config=resolved_config,
-                    executor_mode=resolved_config.executor.mode,
-                    max_workers=resolved_config.executor.max_workers,
-                    checkpoint_manager=checkpoint_manager,
-                )
-                count_in = len(records)
-                # DX: Provide per-stage progress indication during long runs
-                print(
-                    f"Running stage {i}/{len(stages)}: {stage.name} ({count_in} records in)..."
-                )
-                try:
-                    stage_output = list(stage.run(records, context))
-                except Exception as exc:
-                    failed_stage_name = stage.name
-                    failed_error = StageErrorInfo(
-                        type=exc.__class__.__name__,
-                        message=str(exc),
+                    stage_dir = run_paths.stage_dir(stage.name)
+                    stage_dir.mkdir(parents=True, exist_ok=True)
+                    context = StageContext(
+                        run_id=run_id,
+                        stage_name=stage.name,
+                        work_dir=stage_dir,
+                        config=resolved_config,
+                        executor_mode=resolved_config.executor.mode,
+                        max_workers=resolved_config.executor.max_workers,
+                        executor=shared_executor,
+                        checkpoint_manager=checkpoint_manager,
                     )
-                    stage_stats.append(
-                        self._build_stage_stat(
+                    count_in = len(records)
+                    # DX: Provide per-stage progress indication during long runs
+                    print(
+                        f"Running stage {i}/{len(stages)}: {stage.name} ({count_in} records in)..."
+                    )
+                    try:
+                        stage_output = list(stage.run(records, context))
+                    except Exception as exc:
+                        failed_stage_name = stage.name
+                        failed_error = StageErrorInfo(
+                            type=exc.__class__.__name__,
+                            message=str(exc),
+                        )
+                        stage_stats.append(
+                            self._build_stage_stat(
+                                stage_name=stage.name,
+                                count_in=count_in,
+                                count_out=0,
+                                status="failed",
+                                resumed=False,
+                                stats_path=run_paths.stage_stats_path(stage.name),
+                                error=failed_error,
+                            )
+                        )
+                        checkpoint_manager.save_stage(
+                            run_id=run_id,
                             stage_name=stage.name,
+                            artifact_path=stage_path,
                             count_in=count_in,
                             count_out=0,
                             status="failed",
-                            resumed=False,
-                            stats_path=run_paths.stage_stats_path(stage.name),
-                            error=failed_error,
                         )
+                        # DX: Wrap stage failures with the stage name to improve error visibility in CLI
+                        raise RuntimeError(
+                            f"Stage '{stage.name}' failed - {exc}"
+                        ) from exc
+
+                    records = self._append_stage_events(
+                        records=stage_output,
+                        stage_name=stage.name,
+                        action=stage.stage_action,
                     )
+                    self.output_writer.write_parquet(records=records, path=stage_path)
                     checkpoint_manager.save_stage(
                         run_id=run_id,
                         stage_name=stage.name,
                         artifact_path=stage_path,
                         count_in=count_in,
-                        count_out=0,
-                        status="failed",
-                    )
-                    # DX: Wrap stage failures with the stage name to improve error visibility in CLI
-                    raise RuntimeError(f"Stage '{stage.name}' failed - {exc}") from exc
-
-                records = self._append_stage_events(
-                    records=stage_output,
-                    stage_name=stage.name,
-                    action=stage.stage_action,
-                )
-                self.output_writer.write_parquet(records=records, path=stage_path)
-                checkpoint_manager.save_stage(
-                    run_id=run_id,
-                    stage_name=stage.name,
-                    artifact_path=stage_path,
-                    count_in=count_in,
-                    count_out=len(records),
-                    status="completed",
-                )
-                stage_stats.append(
-                    self._build_stage_stat(
-                        stage_name=stage.name,
-                        count_in=count_in,
                         count_out=len(records),
                         status="completed",
-                        resumed=False,
-                        stats_path=run_paths.stage_stats_path(stage.name),
                     )
-                )
+                    stage_stats.append(
+                        self._build_stage_stat(
+                            stage_name=stage.name,
+                            count_in=count_in,
+                            count_out=len(records),
+                            status="completed",
+                            resumed=False,
+                            stats_path=run_paths.stage_stats_path(stage.name),
+                        )
+                    )
         except Exception:
             failed_error_payload = RunReporter.serialize_error(
                 failed_stage_name, failed_error
