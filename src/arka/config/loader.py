@@ -164,6 +164,12 @@ class ConfigLoader:
                 err_msg = f"Missing required field: '{path}'{line_hint}"
             elif err_type == "extra_forbidden":
                 err_msg = f"Unknown field: '{path}'{line_hint} (this key is not allowed here)"
+            elif err_type == "union_tag_invalid":
+                # DX: Make discriminated union errors more readable
+                ctx = error.get("ctx", {})
+                tag = ctx.get("tag", "unknown")
+                expected_tags = ctx.get("expected_tags", "unknown")
+                err_msg = f"Invalid pipeline stage type: '{tag}'{line_hint}. Expected one of: {expected_tags}"
             else:
                 err_msg = f"Invalid value for '{path}'{line_hint}: {msg}"
 
