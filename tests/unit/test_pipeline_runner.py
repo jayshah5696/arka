@@ -275,14 +275,14 @@ def test_pipeline_runner_marks_failed_run_and_persists_failure_report(
         "type": "RuntimeError",
         "message": "boom",
     }
-    assert manifest["final_count"] == 1
+    assert manifest["final_count"] == 0
     assert report["status"] == "failed"
     assert report["error"] == {
         "stage": "02_transform",
         "type": "RuntimeError",
         "message": "boom",
     }
-    assert report["final_count"] == 1
+    assert report["final_count"] == 0
     assert report["dataset_path"] is None
     assert report["stage_yields"] == [
         {
@@ -296,7 +296,7 @@ def test_pipeline_runner_marks_failed_run_and_persists_failure_report(
         {
             "stage": "02_transform",
             "count_in": 1,
-            "count_out": 1,
+            "count_out": 0,
             "status": "failed",
             "resumed": False,
             "dropped_count": 0,
