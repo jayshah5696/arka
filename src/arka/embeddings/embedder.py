@@ -22,7 +22,8 @@ from __future__ import annotations
 
 import hashlib
 import math
-from typing import TYPE_CHECKING
+import threading
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -32,6 +33,10 @@ from arka.llm.openai_client import build_openai_client
 if TYPE_CHECKING:
     from arka.pipeline.checkpoint import CheckpointManager
     from arka.records.models import Record
+
+
+_hf_client_cache: dict[str, Any] = {}
+_hf_cache_lock = threading.Lock()
 
 
 class Embedder:
@@ -138,7 +143,14 @@ class Embedder:
         try:
             from fastembed import TextEmbedding
 
-            embedding_model = TextEmbedding(model_name=model_name)
+            with _hf_cache_lock:
+                if model_name in _hf_client_cache:
+                    embedding_model = _hf_client_cache[model_name]
+                else:
+                    # PERF: Cache HuggingFace fastembed model initialization. Avoids loading weights from disk for every batch/call, which is slow and memory intensive. Expected impact: significantly speeds up embedding operations.
+                    embedding_model = TextEmbedding(model_name=model_name)
+                    _hf_client_cache[model_name] = embedding_model
+
             vectors = list(embedding_model.embed(texts))
         except Exception:
             return None
