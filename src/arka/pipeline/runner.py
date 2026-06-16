@@ -125,8 +125,10 @@ class PipelineRunner:
                         count_out=len(records),
                         status="failed",
                     )
-                    # DX: Wrap stage failures with the stage name to improve error visibility in CLI
-                    raise RuntimeError(f"Stage '{stage.name}' failed - {exc}") from exc
+                    # DX: Tell the user exactly which stage failed and how many records were lost
+                    raise RuntimeError(
+                        f"Stage '{stage.name}' failed - {exc}. {count_in} records were lost."
+                    ) from exc
 
                 records = self._append_stage_events(
                     records=stage_output,
