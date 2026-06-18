@@ -47,6 +47,17 @@ def _print_summary(
     if cost is not None:
         print(f"Total Cost: ${cost:.6f}")
 
+    dataset_path = report.get("dataset_path")
+    if dataset_path:
+        print(f"\nDataset Output: {dataset_path}")
+
+    error_info = report.get("error")
+    if error_info:
+        # DX: Explicitly highlight the failed stage and error in the summary report
+        print(
+            f"Fatal Error: Stage '{error_info.get('stage', 'unknown')}' failed - {error_info.get('message', 'Unknown error')}"
+        )
+
     print("\nStage Yields:")
     for stage in report.get("stage_yields", []):
         name = stage.get("stage", "unknown")
@@ -54,9 +65,23 @@ def _print_summary(
         count_out = stage.get("count_out", 0)
         dropped = stage.get("dropped_count", 0)
         status = stage.get("status", "unknown")
-        print(
-            f"  {name}: {count_in} in -> {count_out} out (dropped {dropped}) [{status}]"
-        )
+        cost_usd = stage.get("cost_usd")
+        cost_str = f" (${cost_usd:.6f})" if cost_usd is not None else ""
+
+        # DX: Explicitly show lost records in the CLI summary when a stage fails
+        if status == "failed":
+            lost = count_in - count_out
+            print(
+                f"  {name}: {count_in} in -> {count_out} out (lost {lost} records) [{status}]{cost_str}"
+            )
+            # DX: print error details on the stage that failed
+            error = stage.get("error")
+            if error:
+                print(f"    - Failed: {error.get('type')}: {error.get('message')}")
+        else:
+            print(
+                f"  {name}: {count_in} in -> {count_out} out (dropped {dropped}) [{status}]{cost_str}"
+            )
 
         drop_reasons = stage.get("drop_reasons", {})
         if drop_reasons:
@@ -122,6 +147,7 @@ def _run_pipeline(
     start_time: float,
 ) -> None:
     """Execute the pipeline stages and display execution summary."""
+    error_to_report = None
     try:
         PipelineRunner(project_root=project_root).run(
             config=loaded_config,
@@ -130,13 +156,19 @@ def _run_pipeline(
             resume=resume,
         )
     except Exception as exc:
-        # DX: Catch pipeline execution errors to prevent raw Python tracebacks.
-        # This provides a clean, human-readable error message to the user.
-        click.echo(f"Error: Pipeline execution failed - {exc}", err=True)
-        sys.exit(1)
+        error_to_report = exc
     finally:
         duration_secs = time.time() - start_time
-        _print_summary(resolved_run_id, project_root, duration_secs)
+        try:
+            _print_summary(resolved_run_id, project_root, duration_secs)
+        except Exception:
+            pass  # Prevent summary errors from swallowing pipeline errors
+
+    if error_to_report is not None:
+        # DX: Print the fatal error message after the summary so it is the last thing
+        # the user sees, preventing them from having to scroll up to find the failure cause.
+        click.echo(f"\nError: Pipeline execution failed - {error_to_report}", err=True)
+        sys.exit(1)
 
 
 @click.command(name="arka")

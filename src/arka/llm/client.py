@@ -139,14 +139,16 @@ class OpenAICompatibleJsonSchemaStrategy(StructuredOutputStrategy):
         except BadRequestError:
             return None
         except AuthenticationError as exc:
-            raise LLMClientError("auth_error", str(exc)) from exc
+            # SECURITY: Drop original exception context to prevent leaking HTTP request context (headers, API keys) in tracebacks
+            raise LLMClientError("auth_error", str(exc)) from None
         except (
             RateLimitError,
             APIConnectionError,
             APITimeoutError,
             InternalServerError,
         ) as exc:
-            raise LLMClientError("retryable_api_error", str(exc)) from exc
+            # SECURITY: Drop original exception context to prevent leaking HTTP request context (headers, API keys) in tracebacks
+            raise LLMClientError("retryable_api_error", str(exc)) from None
 
         output = client._to_output(
             response=response,
@@ -221,14 +223,16 @@ class OpenAINativeParseStrategy(StructuredOutputStrategy):
         except BadRequestError:
             return None
         except AuthenticationError as exc:
-            raise LLMClientError("auth_error", str(exc)) from exc
+            # SECURITY: Drop original exception context to prevent leaking HTTP request context (headers, API keys) in tracebacks
+            raise LLMClientError("auth_error", str(exc)) from None
         except (
             RateLimitError,
             APIConnectionError,
             APITimeoutError,
             InternalServerError,
         ) as exc:
-            raise LLMClientError("retryable_api_error", str(exc)) from exc
+            # SECURITY: Drop original exception context to prevent leaking HTTP request context (headers, API keys) in tracebacks
+            raise LLMClientError("retryable_api_error", str(exc)) from None
 
         output = client._to_output(
             response=response,
@@ -330,16 +334,19 @@ class LLMClient:
         try:
             response = create_completion()
         except AuthenticationError as exc:
-            raise LLMClientError("auth_error", str(exc)) from exc
+            # SECURITY: Drop original exception context to prevent leaking HTTP request context (headers, API keys) in tracebacks
+            raise LLMClientError("auth_error", str(exc)) from None
         except BadRequestError as exc:
-            raise LLMClientError("bad_request_error", str(exc)) from exc
+            # SECURITY: Drop original exception context to prevent leaking HTTP request context (headers, API keys) in tracebacks
+            raise LLMClientError("bad_request_error", str(exc)) from None
         except (
             RateLimitError,
             APIConnectionError,
             APITimeoutError,
             InternalServerError,
         ) as exc:
-            raise LLMClientError("retryable_api_error", str(exc)) from exc
+            # SECURITY: Drop original exception context to prevent leaking HTTP request context (headers, API keys) in tracebacks
+            raise LLMClientError("retryable_api_error", str(exc)) from None
 
         return self._to_output(
             response=response,
@@ -460,7 +467,8 @@ class LLMClient:
                 logprobs=True,
             )
         except AuthenticationError as exc:
-            raise LLMClientError("auth_error", str(exc)) from exc
+            # SECURITY: Drop original exception context to prevent leaking HTTP request context (headers, API keys) in tracebacks
+            raise LLMClientError("auth_error", str(exc)) from None
 
         logprobs_list = self._extract_logprobs(response)
         if not logprobs_list:
