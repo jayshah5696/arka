@@ -133,7 +133,7 @@ class PipelineRunner:
                         )
                         # DX: Wrap stage failures with the stage name to improve error visibility in CLI
                         raise RuntimeError(
-                            f"Stage '{stage.name}' failed - {exc}"
+                            f"Stage '{stage.name}' failed - {exc}. {count_in} records were lost."
                         ) from exc
 
                     records = self._append_stage_events(
