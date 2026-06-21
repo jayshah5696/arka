@@ -144,6 +144,7 @@ def test_cli_supports_dry_run(tmp_path: Path, monkeypatch, capsys) -> None:
     assert "1. 01_source" in stdout
     assert "2. 02_normalize" in stdout
     assert "3. 02_generate" in stdout
+    assert f"Expected Dataset Output: {tmp_path / 'output' / 'dataset.jsonl'}" in stdout
 
     # Pipeline output should not exist since it's a dry run
     assert not (tmp_path / "runs" / "test-dry-run" / "manifest.json").exists()
@@ -259,6 +260,7 @@ def test_cli_supports_list_stages(tmp_path: Path, monkeypatch, capsys) -> None:
     assert "1. 01_source" in stdout
     assert "2. 02_normalize" in stdout
     assert "3. 02_generate" in stdout
+    assert f"Expected Dataset Output: {tmp_path / 'output' / 'dataset.jsonl'}" in stdout
 
     # Pipeline output should not exist since it's a dry run
     assert not (tmp_path / "runs" / "test-list-stages" / "manifest.json").exists()

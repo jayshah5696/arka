@@ -125,6 +125,8 @@ def _dry_run_or_list_stages(
     config_path: Path,
     resolved_run_id: str,
     stages: list[Stage],
+    loaded_config: ResolvedConfig,
+    project_root: Path,
 ) -> None:
     """Preview stages without executing the pipeline."""
     if dry_run:
@@ -135,6 +137,10 @@ def _dry_run_or_list_stages(
     click.echo("Stages to execute:")
     for i, stage in enumerate(stages, 1):
         click.echo(f"  {i}. {stage.name}")
+
+    # DX: Print the expected dataset output path during dry-runs so the user knows where the file will end up
+    output_path = project_root / loaded_config.output.path
+    click.echo(f"\nExpected Dataset Output: {output_path}")
 
 
 def _run_pipeline(
@@ -230,6 +236,8 @@ def cli(
             config_path=config_path,
             resolved_run_id=resolved_run_id,
             stages=stages,
+            loaded_config=loaded_config,
+            project_root=project_root,
         )
         return
 
