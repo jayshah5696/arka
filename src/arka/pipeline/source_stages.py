@@ -9,6 +9,7 @@ from pathlib import Path
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
+from arka.common.security import sanitize_for_prompt
 from arka.config.models import PDFSourceConfig, SeedSourceConfig
 from arka.pipeline.models import StageContext
 from arka.pipeline.stages import Stage
@@ -109,8 +110,8 @@ class SeedSourceStage(Stage):
         config_hash: str,
     ) -> ConversationRecord:
         # SECURITY: Sanitize seed input by limiting length to mitigate prompt injection and context overflow
-        normalized_instruction = instruction.strip()[:16384]
-        normalized_response = response.strip()[:16384]
+        normalized_instruction = sanitize_for_prompt(instruction.strip()[:16384])
+        normalized_response = sanitize_for_prompt(response.strip()[:16384])
         payload = ConversationPayload(
             instruction=normalized_instruction,
             response=normalized_response,
