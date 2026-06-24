@@ -99,7 +99,7 @@ def _load_config(config_path: Path) -> ResolvedConfig:
         click.echo(f"Error: Configuration file not found at {config_path}", err=True)
         sys.exit(1)
     except ConfigValidationError as exc:
-        click.echo(str(exc), err=True)
+        click.echo(f"Error: {str(exc)}", err=True)
         sys.exit(1)
 
 

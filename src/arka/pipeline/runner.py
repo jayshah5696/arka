@@ -132,8 +132,9 @@ class PipelineRunner:
                             status="failed",
                         )
                         # DX: Wrap stage failures with the stage name to improve error visibility in CLI
+                        record_str = "record was" if count_in == 1 else "records were"
                         raise RuntimeError(
-                            f"Stage '{stage.name}' failed - {exc}"
+                            f"Stage '{stage.name}' failed - {exc}. {count_in} {record_str} lost."
                         ) from exc
 
                     records = self._append_stage_events(

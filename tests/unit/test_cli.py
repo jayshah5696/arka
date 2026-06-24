@@ -177,6 +177,22 @@ def test_cli_handles_invalid_config_gracefully(tmp_path: Path, capsys) -> None:
     assert "Configuration is invalid:" in err
 
 
+def test_cli_handles_missing_config_field_error_with_prefix(
+    tmp_path: Path, capsys
+) -> None:
+    config_path = tmp_path / "invalid-config.yaml"
+    config_path.write_text("version: '1'\nllm:\n  provider: test\n")
+
+    import pytest
+
+    with pytest.raises(SystemExit) as exc:
+        main(["--config", str(config_path)])
+
+    assert exc.value.code == 1
+    out, err = capsys.readouterr()
+    assert "Error: Configuration is invalid:" in err
+
+
 def test_cli_catches_pipeline_runner_exceptions(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
