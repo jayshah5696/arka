@@ -13,9 +13,7 @@ scratch/
 .idea/
 .vscode/
 *.pi/
-*.rtk/
 .pi
-.rtk
 # nwt symlinked dirs (worktrees)
 .venv
 
