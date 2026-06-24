@@ -115,3 +115,13 @@ def test_pdf_source_stage_raises_for_empty_pdf_text(tmp_path: Path) -> None:
         match="PDF extraction produced no text|EOF marker not found|Cannot find Root object",
     ):
         PDFSourceStage(project_root=tmp_path).run([], ctx)
+
+
+def test_pdf_source_stage_missing_file_raises_not_found(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path, "./does_not_exist.pdf")
+
+    with pytest.raises(FileNotFoundError) as exc:
+        PDFSourceStage(project_root=tmp_path).run([], ctx)
+
+    assert "PDF source file not found at expected path:" in str(exc.value)
+    assert "does_not_exist.pdf" in str(exc.value)

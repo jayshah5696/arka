@@ -158,7 +158,9 @@ class PDFSourceStage(Stage):
             raise ValueError("PDF source requires data_source.path")
         source_path = self.project_root / self.config.path
         if not source_path.exists():
-            raise ValueError(f"PDF source path does not exist: {source_path}")
+            raise FileNotFoundError(
+                f"PDF source file not found at expected path: {source_path}"
+            )
 
         try:
             reader = PdfReader(str(source_path))
