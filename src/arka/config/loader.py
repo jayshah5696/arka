@@ -34,7 +34,8 @@ class ConfigLoader:
                 self._format_validation_error(exc, data, raw_text)
             ) from exc
         except yaml.YAMLError as exc:
-            raise ConfigValidationError(str(exc)) from exc
+            # DX: Make YAML syntax errors more user-friendly by explaining the context
+            raise ConfigValidationError(f"Invalid YAML syntax in configuration file:\n{exc}") from exc
 
     def load_dict(self, data: dict[str, Any]) -> ResolvedConfig:
         try:
