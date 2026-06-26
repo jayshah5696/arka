@@ -10,3 +10,9 @@
 * **Before**: Output error was `Configuration is invalid: ...`, and RuntimeError was `Stage 'generate' failed - API Error`.
 * **After**: Output error is `Error: Configuration is invalid: ...`, and RuntimeError is `Stage 'generate' failed - API Error. 1 record was lost.` or `Stage 'generate' failed - API Error. 150 records were lost.`
 
+
+## 2024-06-26 - Palette: Better YAML syntax error formatting
+* **What**: Updated `_format_yaml_error` in `src/arka/config/loader.py` to intercept PyYAML syntax errors and extract specific line, column, and file names from the exception's `problem_mark`.
+* **Why**: To remove developer friction by providing clean, actionable hints directly pointing developers to syntax errors in their configuration files, without exposing confusing `while scanning...` raw stack traces or default `<unicode string>` filenames.
+* **Before**: Output error was `Configuration is invalid: while scanning a simple key... in "<unicode string>", line 19, column 1...`.
+* **After**: Output error is `Error: Invalid YAML syntax in 'config.yaml' at line 19, column 1: could not find expected ':' (context: while scanning a simple key)`.
