@@ -34,7 +34,7 @@ class ConfigLoader:
                 self._format_validation_error(exc, data, raw_text)
             ) from exc
         except yaml.YAMLError as exc:
-            raise ConfigValidationError(str(exc)) from exc
+            raise ConfigValidationError(self._format_yaml_error(exc)) from exc
 
     def load_dict(self, data: dict[str, Any]) -> ResolvedConfig:
         try:
@@ -53,6 +53,24 @@ class ConfigLoader:
             if re.search(rf"^\s*(?:-\s+)?{key}\s*:", line):
                 return i
         return None
+
+    @classmethod
+    def _format_yaml_error(cls, exc: yaml.YAMLError) -> str:
+        # DX: Make raw YAML syntax errors cleaner by stripping out stack trace noise and just pointing to the line/column
+        if hasattr(exc, "problem_mark") and exc.problem_mark is not None:
+            line = exc.problem_mark.line + 1
+            column = exc.problem_mark.column + 1
+            problem = getattr(exc, "problem", "Unknown syntax error")
+
+            name = getattr(exc.problem_mark, "name", None)
+            name_str = f" in '{name}' " if name and name != "<unicode string>" else " "
+
+            msg = f"Invalid YAML syntax{name_str}at line {line}, column {column}: {problem}"
+            context = getattr(exc, "context", None)
+            if context:
+                msg += f" (context: {context})"
+            return msg
+        return str(exc)
 
     @classmethod
     def _format_validation_error(
