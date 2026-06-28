@@ -73,6 +73,8 @@ def config_hash(config: ResolvedConfig) -> str:
     Used by ``PipelineRunner`` for the Manifest's ``config_hash`` and by
     Generators that scope their resume buckets per resolved config.
     """
+    if hasattr(config, "_computed_hash") and config._computed_hash is not None:
+        return config._computed_hash
     return hashlib.sha256(
         json.dumps(config.model_dump(mode="json"), sort_keys=True).encode("utf-8")
     ).hexdigest()

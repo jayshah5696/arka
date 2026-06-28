@@ -28,7 +28,14 @@ class ConfigLoader:
             stream = io.StringIO(resolved_text)
             stream.name = str(path)
             data = yaml.safe_load(stream) or {}
-            return ResolvedConfig.model_validate(data)
+            config = ResolvedConfig.model_validate(data)
+
+            # PERF: Compute config hash once at load time to avoid recomputing it in every stage. Expected impact: significantly reduces hash computation overhead during pipeline execution.
+            from arka.records.identity import config_hash
+
+            config._computed_hash = config_hash(config)
+
+            return config
         except ValidationError as exc:
             raise ConfigValidationError(
                 self._format_validation_error(exc, data, raw_text)
@@ -38,7 +45,14 @@ class ConfigLoader:
 
     def load_dict(self, data: dict[str, Any]) -> ResolvedConfig:
         try:
-            return ResolvedConfig.model_validate(data)
+            config = ResolvedConfig.model_validate(data)
+
+            # PERF: Compute config hash once at load time to avoid recomputing it in every stage. Expected impact: significantly reduces hash computation overhead during pipeline execution.
+            from arka.records.identity import config_hash
+
+            config._computed_hash = config_hash(config)
+
+            return config
         except ValidationError as exc:
             raise ConfigValidationError(
                 self._format_validation_error(exc, data)

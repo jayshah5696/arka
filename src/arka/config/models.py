@@ -497,9 +497,12 @@ class LegacyConfigNamespace:
         return f"LegacyConfigNamespace({attrs})"
 
 
+from pydantic import PrivateAttr
+
 class ResolvedConfig(StrictModel):
     version: str
     run_id: str | None = None
+    _computed_hash: str | None = PrivateAttr(default=None)
     llm: LLMConfig
     executor: ExecutorConfig
     pipeline: list[PipelineStageConfig] = Field(default_factory=list)
