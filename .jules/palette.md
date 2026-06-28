@@ -10,3 +10,8 @@
 * **Before**: Output error was `Configuration is invalid: ...`, and RuntimeError was `Stage 'generate' failed - API Error`.
 * **After**: Output error is `Error: Configuration is invalid: ...`, and RuntimeError is `Stage 'generate' failed - API Error. 1 record was lost.` or `Stage 'generate' failed - API Error. 150 records were lost.`
 
+## 2024-06-28 - Palette: Surface PyYAML syntax errors with exact line and column hints
+* **What**: Updated `ConfigLoader` in `src/arka/config/loader.py` to extract `line`, `column`, and `name` from `yaml.YAMLError`'s `problem_mark` (if available) and formatted it as `<file>:<line>:<col>: <problem>` instead of dumping the raw PyYAML exception string.
+* **Why**: To remove developer friction when writing configuration files. Previously, a missing colon or bad indentation resulted in an unreadable dump of the raw parser error without clear pointers to where the error occurred in the file.
+* **Before**: Output error was an opaque `ConfigValidationError: expected <block end>, but found '<block sequence start>'` (plus the raw repr of the Mark objects).
+* **After**: Output error is clearly actionable: `Error: /path/to/bad.yaml:5:14: mapping values are not allowed here`.
