@@ -10,3 +10,9 @@
 * **Before**: Output error was `Configuration is invalid: ...`, and RuntimeError was `Stage 'generate' failed - API Error`.
 * **After**: Output error is `Error: Configuration is invalid: ...`, and RuntimeError is `Stage 'generate' failed - API Error. 1 record was lost.` or `Stage 'generate' failed - API Error. 150 records were lost.`
 
+
+## 2024-08-16 - Palette: Enhance YAML syntax error formatting
+* **What**: Updated `_format_validation_error` exception block in `src/arka/config/loader.py` to extract `line`, `column`, and `name` from `yaml.YAMLError` using its `problem_mark` attribute.
+* **Why**: To remove developer friction when writing YAML configurations by providing actionable location hints for syntax errors rather than raw stack traces with unreadable line markers.
+* **Before**: Output error omitted accurate line details when the stream was explicitly named, or just printed Python stack traces or opaque `<unicode string>` identifiers.
+* **After**: Output explicitly prints the exact file name, line, and column of the syntax error (e.g. `YAML syntax error in /path/to/config.yaml at line 4, column 1:`).
