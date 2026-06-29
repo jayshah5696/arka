@@ -34,7 +34,15 @@ class ConfigLoader:
                 self._format_validation_error(exc, data, raw_text)
             ) from exc
         except yaml.YAMLError as exc:
-            raise ConfigValidationError(str(exc)) from exc
+            msg = str(exc)
+            if hasattr(exc, "problem_mark") and exc.problem_mark is not None:
+                line = exc.problem_mark.line + 1
+                col = exc.problem_mark.column + 1
+                name = exc.problem_mark.name
+                msg = (
+                    f"YAML syntax error in {name} at line {line}, column {col}:\n{msg}"
+                )
+            raise ConfigValidationError(msg) from exc
 
     def load_dict(self, data: dict[str, Any]) -> ResolvedConfig:
         try:

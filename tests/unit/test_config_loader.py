@@ -431,6 +431,8 @@ def test_yaml_syntax_error_includes_filename(tmp_path: Path) -> None:
     # DX: Verify that the opaque <unicode string> has been replaced by the actual filename
     assert str(config_path) in str(exc.value)
     assert "<unicode string>" not in str(exc.value)
+    assert "YAML syntax error in" in str(exc.value)
+    assert "at line 3, column 7" in str(exc.value)
 
 
 def test_missing_environment_variable_error(tmp_path: Path, monkeypatch) -> None:
