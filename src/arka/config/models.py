@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal
 
-from pydantic import Discriminator, Field, HttpUrl, SecretStr, Tag, model_validator
+from pydantic import (
+    Discriminator,
+    Field,
+    HttpUrl,
+    PrivateAttr,
+    SecretStr,
+    Tag,
+    model_validator,
+)
 
 from arka.common.models import StrictModel
 
@@ -498,6 +506,8 @@ class LegacyConfigNamespace:
 
 
 class ResolvedConfig(StrictModel):
+    _computed_hash: str | None = PrivateAttr(default=None)
+
     version: str
     run_id: str | None = None
     llm: LLMConfig
