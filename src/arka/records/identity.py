@@ -73,9 +73,14 @@ def config_hash(config: ResolvedConfig) -> str:
     Used by ``PipelineRunner`` for the Manifest's ``config_hash`` and by
     Generators that scope their resume buckets per resolved config.
     """
-    return hashlib.sha256(
+    if config._computed_hash is not None:
+        return config._computed_hash
+    # PERF: Cache config hash computation on ResolvedConfig object. Computing a deep config hash per record (e.g. source stages, transforms) causes massive serialization overhead and CPU spin. Expected impact: Reduces O(N) configuration serialization to O(1).
+    hash_value = hashlib.sha256(
         json.dumps(config.model_dump(mode="json"), sort_keys=True).encode("utf-8")
     ).hexdigest()
+    config._computed_hash = hash_value
+    return hash_value
 
 
 def file_hash(path: Path) -> str:
