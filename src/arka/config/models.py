@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal
 
-from pydantic import Discriminator, Field, HttpUrl, SecretStr, Tag, model_validator
+from pydantic import (
+    Discriminator,
+    Field,
+    HttpUrl,
+    PrivateAttr,
+    SecretStr,
+    Tag,
+    model_validator,
+)
 
 from arka.common.models import StrictModel
 
@@ -506,6 +514,8 @@ class ResolvedConfig(StrictModel):
     embeddings: EmbeddingsConfig = Field(default_factory=EmbeddingsConfig)
     labeling_engine: LabelingEngineConfig = Field(default_factory=LabelingEngineConfig)
     output: OutputConfig
+
+    _computed_hash: str | None = PrivateAttr(default=None)
 
     def get_stage_config(self, stage_type: str) -> Any:
         for stage in self.pipeline:
