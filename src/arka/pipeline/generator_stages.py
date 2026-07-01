@@ -553,6 +553,9 @@ class TransformGeneratorStage(Stage):
         transformed_records: list[Record] = []
         costs: list[float] = []
 
+        # PERF: Hoisted config_hash computation outside the record loop. Computing config_hash is expensive and invariant per stage. Expected impact: eliminates redundant JSON serialization and hashing per record.
+        config_hash = self._config_hash(ctx)
+
         for record in transformable_records:
             input_text = self._field_value(record, self.config.input_field)
             output = llm_client.complete_structured(
@@ -572,7 +575,7 @@ class TransformGeneratorStage(Stage):
                 self._build_transformed_record(
                     record=record,
                     transformed_text=parsed.text.strip(),
-                    config_hash=self._config_hash(ctx),
+                    config_hash=config_hash,
                     generator_config=self.config,
                 )
             )
@@ -605,7 +608,8 @@ class TransformGeneratorStage(Stage):
         config_hash: str,
         generator_config: TransformGeneratorConfig,
     ) -> ConversationRecord:
-        payload = record.payload.model_copy(deep=True)
+        # PERF: Removed deep=True from model_copy() in TransformGenerator hot loop to avoid unnecessary deep copies of large records. Expected impact: Reduced memory allocation and faster record transformation.
+        payload = record.payload.model_copy()
         original_text = self._field_value(record, generator_config.output_field)
         payload = self._set_payload_field(
             payload=payload,
@@ -633,7 +637,7 @@ class TransformGeneratorStage(Stage):
         return ConversationRecord(
             id=compute_record_id(payload, lineage),
             content_hash=compute_content_hash(payload),
-            source=record.source.model_copy(deep=True),
+            source=record.source.model_copy(),
             lineage=lineage,
             payload=payload,
             scores=RecordScores(),
