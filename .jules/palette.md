@@ -10,3 +10,9 @@
 * **Before**: Output error was `Configuration is invalid: ...`, and RuntimeError was `Stage 'generate' failed - API Error`.
 * **After**: Output error is `Error: Configuration is invalid: ...`, and RuntimeError is `Stage 'generate' failed - API Error. 1 record was lost.` or `Stage 'generate' failed - API Error. 150 records were lost.`
 
+
+## 2024-11-20 - Palette: Error visibility formatting in CLI config errors
+* **What**: Extracted line and column numbers from PyYAML syntax exceptions in `src/arka/config/loader.py` to display actionable location hints.
+* **Why**: To remove developer friction by providing accurate pointers to syntax issues within large YAML configuration files, saving time during debugging.
+* **Before**: Raw PyYAML exceptions were printed as opaque error messages, sometimes without useful file context (`in "<unicode string>"`).
+* **After**: Error messages explicitly state the syntax error along with the filename, line number, and column number (e.g., `YAML syntax error in test.yaml at line 3, column 7: could not find expected ':'`). Added a unit test validating this format.
