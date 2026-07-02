@@ -1,9 +1,11 @@
-Plan:
-1. Update `CheckpointManager` in `src/arka/pipeline/checkpoint.py` to create `embeddings_cache` and provide `save_embedding`/`load_embedding` methods.
-2. Update `_build_run_report` to take `checkpoint_manager` in `src/arka/pipeline/runner.py`.
-3. Update calls to `_build_run_report` to pass `checkpoint_manager`.
-4. Update `_compute_diversity_score` to take `checkpoint_manager`.
-5. Update `_embed_texts` to take `checkpoint_manager` and add the caching logic.
-6. Update `SemanticSimilarityFilterStage.run` to pass `ctx.checkpoint_manager` to `_embed_texts`.
-7. Add an entry to `.jules/bolt.md`.
-8. Complete pre-commit checks and submit.
+1. **Hoist config_hash computation out of loops in generator stages.**
+   - In `TransformGeneratorStage.run` (src/arka/pipeline/generator_stages.py), the `config_hash=self._config_hash(ctx)` is called inside the `for record in transformable_records:` loop. Since `ctx.config` is invariant per stage execution, computing its hash via JSON serialization on every single record adds massive redundant overhead. I will compute `config_hash = self._config_hash(ctx)` before the loop and pass it in.
+
+2. **Run tests.**
+   - `uv run pytest tests/` to ensure everything is green.
+
+3. **Complete pre-commit steps to ensure proper testing, verification, review, and reflection are done.**
+   - Run the checks to make sure the code is compliant.
+
+4. **Submit PR.**
+   - With PR title "Bolt: [optimization summary]".

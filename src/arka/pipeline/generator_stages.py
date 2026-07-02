@@ -553,6 +553,9 @@ class TransformGeneratorStage(Stage):
         transformed_records: list[Record] = []
         costs: list[float] = []
 
+        # PERF: Hoist config_hash computation out of record loop to avoid redundant JSON serialization and hashing overhead per record. Expected impact: Eliminates O(N) configuration hashing.
+        config_hash = self._config_hash(ctx)
+
         for record in transformable_records:
             input_text = self._field_value(record, self.config.input_field)
             output = llm_client.complete_structured(
@@ -572,7 +575,7 @@ class TransformGeneratorStage(Stage):
                 self._build_transformed_record(
                     record=record,
                     transformed_text=parsed.text.strip(),
-                    config_hash=self._config_hash(ctx),
+                    config_hash=config_hash,
                     generator_config=self.config,
                 )
             )
