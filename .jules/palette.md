@@ -10,3 +10,8 @@
 * **Before**: Output error was `Configuration is invalid: ...`, and RuntimeError was `Stage 'generate' failed - API Error`.
 * **After**: Output error is `Error: Configuration is invalid: ...`, and RuntimeError is `Stage 'generate' failed - API Error. 1 record was lost.` or `Stage 'generate' failed - API Error. 150 records were lost.`
 
+## 2024-07-04 - Palette: Improve PyYAML syntax error messages with line/column hints
+* **What**: Extracted `line`, `column`, and `name` from `yaml.YAMLError` in `ConfigLoader.load` when parsing fails.
+* **Why**: To remove developer friction when writing complex configurations by providing exact file, line, and column numbers for syntax errors, rather than an opaque raw exception trace.
+* **Before**: Output error was `Configuration is invalid: mapping values are not allowed here...`
+* **After**: Output error is `Error: Configuration is invalid: YAML syntax error in config.yaml at line 14, column 7: mapping values are not allowed here`

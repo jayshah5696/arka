@@ -433,6 +433,21 @@ def test_yaml_syntax_error_includes_filename(tmp_path: Path) -> None:
     assert "<unicode string>" not in str(exc.value)
 
 
+def test_yaml_syntax_error_includes_line_and_column(tmp_path: Path) -> None:
+    config_path = tmp_path / "syntax-error-line-col.yaml"
+    # This specifically triggers a "mapping values are not allowed here" error
+    # at line 2, column 7.
+    config_path.write_text("invalid\n  yaml:\n    - : error\n")
+
+    with pytest.raises(ConfigValidationError) as exc:
+        ConfigLoader().load(config_path)
+
+    error_str = str(exc.value)
+    assert "YAML syntax error in" in error_str
+    assert "at line 2, column 7" in error_str
+    assert "mapping values are not allowed here" in error_str
+
+
 def test_missing_environment_variable_error(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.delenv("NONEXISTENT_VAR", raising=False)
 
