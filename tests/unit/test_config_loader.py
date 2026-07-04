@@ -429,8 +429,12 @@ def test_yaml_syntax_error_includes_filename(tmp_path: Path) -> None:
         ConfigLoader().load(config_path)
 
     # DX: Verify that the opaque <unicode string> has been replaced by the actual filename
-    assert str(config_path) in str(exc.value)
-    assert "<unicode string>" not in str(exc.value)
+    error_msg = str(exc.value)
+    assert str(config_path) in error_msg
+    assert "<unicode string>" not in error_msg
+    assert "YAML syntax error in" in error_msg
+    assert "at line 3, column 7" in error_msg
+    assert "could not find expected ':'" in error_msg
 
 
 def test_missing_environment_variable_error(tmp_path: Path, monkeypatch) -> None:
