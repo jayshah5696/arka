@@ -433,7 +433,10 @@ def test_yaml_syntax_error_includes_filename(tmp_path: Path) -> None:
     assert "<unicode string>" not in str(exc.value)
 
     # DX: Verify the error message contains the expected line and column hint format
-    assert f"YAML syntax error in {config_path} at line 3, column 7: could not find expected ':'" in str(exc.value)
+    assert (
+        f"YAML syntax error in {config_path} at line 3, column 7: could not find expected ':'"
+        in str(exc.value)
+    )
 
 
 def test_missing_environment_variable_error(tmp_path: Path, monkeypatch) -> None:
