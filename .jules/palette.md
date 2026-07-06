@@ -21,3 +21,9 @@
 * **Why**: To remove developer friction when configuring pipelines. Previously, raw YAML syntax errors from PyYAML were opaque and difficult to debug, often just returning the raw exception string without clear line/column pointers if the user didn't know what to look for.
 * **Before**: `Configuration is invalid: while parsing a flow node expected the node content, but found '-' in "/app/bad_yaml.yaml", line 12, column 3` (or similar raw traceback/string representations).
 * **After**: `Error: YAML syntax error in /app/bad_yaml.yaml at line 12, column 3: expected the node content, but found '-'`
+
+## 2024-11-20 - Palette: Raise explicit FileNotFoundError for missing rubric files
+* **What**: Changed the `ValueError` raised in `LabelingScoreStage` when a rubric file is missing to a `FileNotFoundError`, and updated the error message to include the full evaluated path. Added a unit test to verify this behavior.
+* **Why**: To remove developer friction by providing a standard, clear, and actionable error (matching other file resolution issues like source files) when a required input rubric file cannot be found. This consistency reduces cognitive load during debugging.
+* **Before**: The CLI threw a generic `ValueError` without an explicit `FileNotFoundError` context when a rubric file was missing.
+* **After**: The CLI catches and formats the `FileNotFoundError` consistently, printing the full path to help the user locate the missing rubric definition file.
