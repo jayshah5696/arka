@@ -52,9 +52,9 @@ class LabelingScoreStage(Stage):
 
         rubric_path = self.project_root / filter_config.rubric_path
         if not rubric_path.exists():
-            raise ValueError(
-                f"filters.labeling_engine.rubric_path points to a missing file: "
-                f"{rubric_path}"
+            # DX: Raise FileNotFoundError explicitly instead of generic ValueError when rubric file is missing
+            raise FileNotFoundError(
+                f"filters.labeling_engine.rubric_path points to a missing file: {rubric_path}"
             )
         rubric = RubricLoader().load(rubric_path)
         llm_client = self._llm_client or ctx.llm_client()
