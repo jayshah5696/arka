@@ -80,3 +80,14 @@ def test_rubric_loader_requires_expected_verdicts_for_few_shot_examples(
 
     with pytest.raises(RubricValidationError, match="expected_verdict"):
         RubricLoader().load(rubric_path)
+
+
+def test_rubric_loader_handles_yaml_syntax_error(tmp_path: Path) -> None:
+    rubric_path = tmp_path / "bad_rubric.yaml"
+    rubric_path.write_text("this is not: valid: yaml: [")
+
+    with pytest.raises(
+        RubricValidationError,
+        match=r"YAML syntax error in .*bad_rubric\.yaml at line 1, column 19",
+    ):
+        RubricLoader().load(rubric_path)
