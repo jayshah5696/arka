@@ -21,3 +21,8 @@
 * **Why**: To remove developer friction when configuring pipelines. Previously, raw YAML syntax errors from PyYAML were opaque and difficult to debug, often just returning the raw exception string without clear line/column pointers if the user didn't know what to look for.
 * **Before**: `Configuration is invalid: while parsing a flow node expected the node content, but found '-' in "/app/bad_yaml.yaml", line 12, column 3` (or similar raw traceback/string representations).
 * **After**: `Error: YAML syntax error in /app/bad_yaml.yaml at line 12, column 3: expected the node content, but found '-'`
+## 2024-11-20 - Palette: Add --version flag to CLI
+* **What**: Added `@click.version_option(package_name="arka")` to the `cli` command in `src/arka/cli.py`.
+* **Why**: To remove developer friction by allowing users to quickly verify the installed version of the framework directly from the command line, instead of having to inspect package metadata manually.
+* **Before**: Running `uv run arka --version` failed or wasn't supported.
+* **After**: Running `uv run arka --version` successfully prints the version of the `arka` package.
