@@ -208,6 +208,8 @@ def _run_pipeline(
     is_flag=True,
     help="Alias for --dry-run: Load config and preview stages without executing the pipeline",
 )
+# DX: Add --version flag [what] so users can easily check the installed framework version without looking at package metadata [why]
+@click.version_option(package_name="arka")
 def cli(
     config: str,
     run_id: str | None,
