@@ -21,3 +21,9 @@
 * **Why**: To remove developer friction when configuring pipelines. Previously, raw YAML syntax errors from PyYAML were opaque and difficult to debug, often just returning the raw exception string without clear line/column pointers if the user didn't know what to look for.
 * **Before**: `Configuration is invalid: while parsing a flow node expected the node content, but found '-' in "/app/bad_yaml.yaml", line 12, column 3` (or similar raw traceback/string representations).
 * **After**: `Error: YAML syntax error in /app/bad_yaml.yaml at line 12, column 3: expected the node content, but found '-'`
+
+## 2024-11-20 - Palette: Colorize CLI output for better visibility of pipeline status and errors
+* **What**: Converted standard `print` and `click.echo` statements to `click.secho` in `src/arka/cli.py` to add color coding to terminal output. Errors and failed stages are now colored red, successful completion in green, and the dataset output path in cyan.
+* **Why**: To remove developer friction by making it immediately obvious at a glance whether the pipeline succeeded, failed, or generated errors, significantly improving readability and debuggability in the terminal.
+* **Before**: All CLI summary and error outputs were plain text without any color distinction.
+* **After**: CLI output is color-coded using `click.secho`, highlighting crucial statuses and errors.
