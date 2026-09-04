@@ -32,63 +32,74 @@ def _print_summary(
     except Exception:
         return
 
-    print(f"\n--- Pipeline Summary ({report.get('status', 'unknown')}) ---")
-    print(f"Run ID: {report.get('run_id', run_id)}")
+    status = report.get("status", "unknown")
+    header_color = (
+        "green" if status == "completed" else "red" if status == "failed" else None
+    )
+
+    # DX: Use color-coded terminal output for better DX
+    click.secho(f"\n--- Pipeline Summary ({status}) ---", fg=header_color, bold=True)
+    click.secho(f"Run ID: {report.get('run_id', run_id)}")
     if duration_secs is not None:
         if duration_secs < 60:
-            print(f"Duration: {duration_secs:.1f}s")
+            click.secho(f"Duration: {duration_secs:.1f}s")
         else:
             mins = int(duration_secs // 60)
             secs = duration_secs % 60
-            print(f"Duration: {mins}m {secs:.1f}s")
-    print(f"Final Count: {report.get('final_count', 0)} records")
+            click.secho(f"Duration: {mins}m {secs:.1f}s")
+    click.secho(f"Final Count: {report.get('final_count', 0)} records")
 
     cost = report.get("cost_usd")
     if cost is not None:
-        print(f"Total Cost: ${cost:.6f}")
+        click.secho(f"Total Cost: ${cost:.6f}")
 
     dataset_path = report.get("dataset_path")
     if dataset_path:
-        print(f"\nDataset Output: {dataset_path}")
+        click.secho(f"\nDataset Output: {dataset_path}")
 
     error_info = report.get("error")
     if error_info:
         # DX: Explicitly highlight the failed stage and error in the summary report
-        print(
-            f"Fatal Error: Stage '{error_info.get('stage', 'unknown')}' failed - {error_info.get('message', 'Unknown error')}"
+        click.secho(
+            f"Fatal Error: Stage '{error_info.get('stage', 'unknown')}' failed - {error_info.get('message', 'Unknown error')}",
+            fg="red",
         )
 
-    print("\nStage Yields:")
+    click.secho("\nStage Yields:")
     for stage in report.get("stage_yields", []):
         name = stage.get("stage", "unknown")
         count_in = stage.get("count_in", 0)
         count_out = stage.get("count_out", 0)
         dropped = stage.get("dropped_count", 0)
-        status = stage.get("status", "unknown")
+        stage_status = stage.get("status", "unknown")
         cost_usd = stage.get("cost_usd")
         cost_str = f" (${cost_usd:.6f})" if cost_usd is not None else ""
 
         # DX: Explicitly show lost records in the CLI summary when a stage fails
-        if status == "failed":
+        if stage_status == "failed":
             lost = count_in - count_out
-            print(
-                f"  {name}: {count_in} in -> {count_out} out (lost {lost} records) [{status}]{cost_str}"
+            click.secho(
+                f"  {name}: {count_in} in -> {count_out} out (lost {lost} records) [{stage_status}]{cost_str}",
+                fg="red",
             )
             # DX: print error details on the stage that failed
             error = stage.get("error")
             if error:
-                print(f"    - Failed: {error.get('type')}: {error.get('message')}")
+                click.secho(
+                    f"    - Failed: {error.get('type')}: {error.get('message')}",
+                    fg="red",
+                )
         else:
-            print(
-                f"  {name}: {count_in} in -> {count_out} out (dropped {dropped}) [{status}]{cost_str}"
+            click.secho(
+                f"  {name}: {count_in} in -> {count_out} out (dropped {dropped}) [{stage_status}]{cost_str}"
             )
 
         drop_reasons = stage.get("drop_reasons", {})
         if drop_reasons:
             for reason, count in drop_reasons.items():
-                print(f"    - {reason}: {count}")
+                click.secho(f"    - {reason}: {count}")
 
-    print(f"\nFull report written to: {report_path}")
+    click.secho(f"\nFull report written to: {report_path}")
 
 
 def _load_config(config_path: Path) -> ResolvedConfig:
@@ -96,10 +107,14 @@ def _load_config(config_path: Path) -> ResolvedConfig:
     try:
         return ConfigLoader().load(config_path)
     except FileNotFoundError:
-        click.echo(f"Error: Configuration file not found at {config_path}", err=True)
+        # DX: Use color-coded terminal output for better DX
+        click.secho(
+            f"Error: Configuration file not found at {config_path}", fg="red", err=True
+        )
         sys.exit(1)
     except ConfigValidationError as exc:
-        click.echo(f"Error: {str(exc)}", err=True)
+        # DX: Use color-coded terminal output for better DX
+        click.secho(f"Error: {str(exc)}", fg="red", err=True)
         sys.exit(1)
 
 
@@ -111,10 +126,12 @@ def _validate_config(
         # Build stages to ensure they are valid and can be constructed
         StageBuilder(config=loaded_config, project_root=project_root).build()
     except Exception as exc:
-        click.echo(f"Configuration is invalid: {exc}", err=True)
+        # DX: Use color-coded terminal output for better DX
+        click.secho(f"Configuration is invalid: {exc}", fg="red", err=True)
         sys.exit(1)
 
-    click.echo(f"Configuration is valid: {config_path}")
+    # DX: Use color-coded terminal output for better DX
+    click.secho(f"Configuration is valid: {config_path}", fg="green")
     sys.exit(0)
 
 
@@ -173,7 +190,11 @@ def _run_pipeline(
     if error_to_report is not None:
         # DX: Print the fatal error message after the summary so it is the last thing
         # the user sees, preventing them from having to scroll up to find the failure cause.
-        click.echo(f"\nError: Pipeline execution failed - {error_to_report}", err=True)
+        click.secho(
+            f"\nError: Pipeline execution failed - {error_to_report}",
+            fg="red",
+            err=True,
+        )
         sys.exit(1)
 
 
