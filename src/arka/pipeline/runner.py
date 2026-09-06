@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import click
 import yaml
 
 from arka.config.loader import ConfigLoader
@@ -81,9 +82,11 @@ class PipelineRunner:
                                 stats_path=run_paths.stage_stats_path(stage.name),
                             )
                         )
-                        # DX: Provide per-stage progress indication for skipped stages
-                        print(
-                            f"Skipping stage {i}/{len(stages)}: {stage.name} (resumed from checkpoint)..."
+                        # DX: Colorize terminal output for better readability
+                        # Provide per-stage progress indication for skipped stages
+                        click.secho(
+                            f"Skipping stage {i}/{len(stages)}: {stage.name} (resumed from checkpoint)...",
+                            fg="yellow",
                         )
                         continue
 
@@ -100,9 +103,11 @@ class PipelineRunner:
                         checkpoint_manager=checkpoint_manager,
                     )
                     count_in = len(records)
-                    # DX: Provide per-stage progress indication during long runs
-                    print(
-                        f"Running stage {i}/{len(stages)}: {stage.name} ({count_in} records in)..."
+                    # DX: Colorize terminal output for better readability
+                    # Provide per-stage progress indication during long runs
+                    click.secho(
+                        f"Running stage {i}/{len(stages)}: {stage.name} ({count_in} records in)...",
+                        fg="cyan",
                     )
                     try:
                         stage_output = list(stage.run(records, context))
