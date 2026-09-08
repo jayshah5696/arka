@@ -21,3 +21,9 @@
 * **Why**: To remove developer friction when configuring pipelines. Previously, raw YAML syntax errors from PyYAML were opaque and difficult to debug, often just returning the raw exception string without clear line/column pointers if the user didn't know what to look for.
 * **Before**: `Configuration is invalid: while parsing a flow node expected the node content, but found '-' in "/app/bad_yaml.yaml", line 12, column 3` (or similar raw traceback/string representations).
 * **After**: `Error: YAML syntax error in /app/bad_yaml.yaml at line 12, column 3: expected the node content, but found '-'`
+
+## 2024-11-20 - Palette: Color-coded terminal output in CLI
+* **What**: Updated `_load_config`, `_validate_config`, and `_run_pipeline` error reporting to use `click.secho(..., fg="red", err=True)`. Updated success state in `_validate_config` to `click.secho(..., fg="green")`. Updated `_print_summary` to color-code failed stage outputs in red.
+* **Why**: To remove developer friction by making critical failures (like config errors or pipeline crashes) immediately visible and distinguishable from standard INFO log streams in the terminal.
+* **Before**: All outputs (success, standard info, failures) were printed in plain white text, requiring developers to read through logs carefully to spot crashes.
+* **After**: Fatal errors and config validation failures pop in bright red, while success states show in green, significantly reducing debugging time.
