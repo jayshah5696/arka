@@ -58,6 +58,7 @@ filters:
   target_count: 1
 embeddings:
   provider: huggingface
+  batch_size: 256
   model: all-MiniLM-L6-v2
 output:
   format: chatml

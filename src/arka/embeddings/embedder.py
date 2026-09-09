@@ -151,7 +151,12 @@ class Embedder:
                     embedding_model = TextEmbedding(model_name=model_name)
                     _hf_client_cache[model_name] = embedding_model
 
-            vectors = list(embedding_model.embed(texts))
+            # PERF: Tune batch size for fastembed throughput via config. Expected impact: Increases embedding throughput on large datasets.
+            vectors = list(
+                embedding_model.embed(
+                    texts, batch_size=self._config.embeddings.batch_size
+                )
+            )
         except Exception:
             return None
         if not vectors:

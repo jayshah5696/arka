@@ -291,6 +291,7 @@ class OutputConfig(StrictModel):
 class EmbeddingsConfig(StrictModel):
     provider: Literal["huggingface", "openai"] = "huggingface"
     model: str = "all-MiniLM-L6-v2"
+    batch_size: int = 256
     # SECURITY: Using SecretStr and Field(exclude=True) to prevent plaintext API keys from leaking into serialized configs on disk (e.g., config.resolved.yaml)
     api_key: SecretStr | None = Field(default=None, exclude=True)
     base_url: HttpUrl | None = None

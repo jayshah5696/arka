@@ -23,6 +23,7 @@ pipeline:
     lsh_bands: 16
 embeddings:
   provider: huggingface
+  batch_size: 256
   model: all-MiniLM-L6-v2
 output:
   format: chatml
