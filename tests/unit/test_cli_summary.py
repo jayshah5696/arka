@@ -37,5 +37,5 @@ def test_print_summary_with_error(capsys, tmp_path):
     assert "02_generate: 10 in -> 5 out (lost 5 records) [failed]" in captured.out
     assert (
         "Failed: LLMClientError: API rate limit exceeded after 3 retries"
-        in captured.out
+        in captured.err
     )

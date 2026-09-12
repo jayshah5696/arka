@@ -306,3 +306,29 @@ def test_cli_validate_config_catches_stage_builder_errors(
     stderr = captured.err
 
     assert "Configuration is invalid: Invalid stage configuration parameters" in stderr
+
+
+def test_cli_colored_output(tmp_path: Path) -> None:
+    from click.testing import CliRunner
+
+    from arka.cli import cli
+
+    config_path = tmp_path / "valid-config.yaml"
+    config_path.write_text(CONFIG_TEXT)
+
+    runner = CliRunner()
+
+    # Test valid config output (green)
+    result = runner.invoke(
+        cli, ["--config", str(config_path), "--validate-config"], color=True
+    )
+    assert result.exit_code == 0
+    assert "Configuration is valid: " in result.stdout
+    assert "\x1b[32m" in result.stdout  # ANSI green
+
+    # Test missing config error output (red)
+    missing_config = tmp_path / "missing.yaml"
+    result_err = runner.invoke(cli, ["--config", str(missing_config)], color=True)
+    assert result_err.exit_code == 1
+    assert "Error: Configuration file not found at " in result_err.output
+    assert "\x1b[31m" in result_err.output  # ANSI red
