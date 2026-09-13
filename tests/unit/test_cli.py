@@ -306,3 +306,19 @@ def test_cli_validate_config_catches_stage_builder_errors(
     stderr = captured.err
 
     assert "Configuration is invalid: Invalid stage configuration parameters" in stderr
+
+
+def test_cli_color_output_on_invalid_config(tmp_path: Path) -> None:
+    from click.testing import CliRunner
+
+    from arka.cli import cli
+
+    config_path = tmp_path / "invalid-config.yaml"
+    config_path.write_text("version: '1'\n")
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["--config", str(config_path)], color=True)
+
+    assert result.exit_code == 1
+    # Check for ANSI red color code \x1b[31m in stderr/output
+    assert "\x1b[31m" in result.output
