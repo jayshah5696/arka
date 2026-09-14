@@ -174,7 +174,7 @@ def test_cli_handles_invalid_config_gracefully(tmp_path: Path, capsys) -> None:
 
     assert exc.value.code == 1
     out, err = capsys.readouterr()
-    assert "Configuration is invalid:" in err
+    assert "Error: Configuration is invalid:" in err
 
 
 def test_cli_handles_missing_config_field_error_with_prefix(
@@ -282,6 +282,20 @@ def test_cli_supports_list_stages(tmp_path: Path, monkeypatch, capsys) -> None:
     assert not (tmp_path / "runs" / "test-list-stages" / "manifest.json").exists()
 
 
+def test_cli_color_output_for_errors(tmp_path: Path) -> None:
+    from click.testing import CliRunner
+    from arka.cli import cli
+
+    config_path = tmp_path / "missing.yaml"
+
+    runner = CliRunner(mix_stderr=False) if "mix_stderr" in CliRunner.__init__.__code__.co_varnames else CliRunner()
+    result = runner.invoke(cli, ["--config", str(config_path)], color=True)
+
+    assert result.exit_code == 1
+    # Check for the red ANSI escape code (\x1b[31m) in stderr
+    assert "\x1b[31mError: Configuration file not found at" in result.stderr
+
+
 def test_cli_validate_config_catches_stage_builder_errors(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
@@ -305,4 +319,4 @@ def test_cli_validate_config_catches_stage_builder_errors(
     captured = capsys.readouterr()
     stderr = captured.err
 
-    assert "Configuration is invalid: Invalid stage configuration parameters" in stderr
+    assert "Error: Configuration is invalid: Invalid stage configuration parameters" in stderr
