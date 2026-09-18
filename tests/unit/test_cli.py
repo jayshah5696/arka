@@ -306,3 +306,31 @@ def test_cli_validate_config_catches_stage_builder_errors(
     stderr = captured.err
 
     assert "Configuration is invalid: Invalid stage configuration parameters" in stderr
+
+
+def test_cli_output_has_colors(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "custom-config.yaml"
+    config_path.write_text(CONFIG_TEXT)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    from click.testing import CliRunner
+
+    from arka.cli import cli
+
+    runner = CliRunner()
+
+    # Test green validation success
+    result = runner.invoke(
+        cli, ["--config", str(config_path), "--validate-config"], color=True
+    )
+    assert result.exit_code == 0
+    # ANSI escape code for green is \x1b[32m
+    assert "\x1b[32mConfiguration is valid:" in result.output
+
+    # Test red config file missing error
+    result = runner.invoke(
+        cli, ["--config", str(tmp_path / "non_existent.yaml")], color=True
+    )
+    assert result.exit_code == 1
+    # ANSI escape code for red is \x1b[31m
+    assert "\x1b[31mError: Configuration file not found at" in result.output
