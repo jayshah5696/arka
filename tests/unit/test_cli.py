@@ -306,3 +306,37 @@ def test_cli_validate_config_catches_stage_builder_errors(
     stderr = captured.err
 
     assert "Configuration is invalid: Invalid stage configuration parameters" in stderr
+
+
+def test_cli_colored_output_on_error(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "does-not-exist.yaml"
+    monkeypatch.chdir(tmp_path)
+    from click.testing import CliRunner
+
+    from arka.cli import cli
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["--config", str(config_path)], color=True)
+
+    assert result.exit_code == 1
+    # Check that the ANSI escape code for red (\x1b[31m) is present
+    assert "\x1b[31mError: Configuration file not found at " in result.stderr
+
+
+def test_cli_colored_output_on_success(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "custom-config.yaml"
+    config_path.write_text(CONFIG_TEXT)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.chdir(tmp_path)
+    from click.testing import CliRunner
+
+    from arka.cli import cli
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["--config", str(config_path), "--validate-config"], color=True
+    )
+
+    assert result.exit_code == 0
+    # Check that the ANSI escape code for green (\x1b[32m) is present
+    assert "\x1b[32mConfiguration is valid: " in result.output
