@@ -54,8 +54,10 @@ def _print_summary(
     error_info = report.get("error")
     if error_info:
         # DX: Explicitly highlight the failed stage and error in the summary report
-        print(
-            f"Fatal Error: Stage '{error_info.get('stage', 'unknown')}' failed - {error_info.get('message', 'Unknown error')}"
+        # DX: Use click.secho with fg='red' to make the error highly visible in the summary
+        click.secho(
+            f"Fatal Error: Stage '{error_info.get('stage', 'unknown')}' failed - {error_info.get('message', 'Unknown error')}",
+            fg="red",
         )
 
     print("\nStage Yields:")
@@ -96,10 +98,14 @@ def _load_config(config_path: Path) -> ResolvedConfig:
     try:
         return ConfigLoader().load(config_path)
     except FileNotFoundError:
-        click.echo(f"Error: Configuration file not found at {config_path}", err=True)
+        # DX: Color error messages red to improve CLI visibility
+        click.secho(
+            f"Error: Configuration file not found at {config_path}", fg="red", err=True
+        )
         sys.exit(1)
     except ConfigValidationError as exc:
-        click.echo(f"Error: {str(exc)}", err=True)
+        # DX: Color error messages red to improve CLI visibility
+        click.secho(f"Error: {str(exc)}", fg="red", err=True)
         sys.exit(1)
 
 
@@ -111,10 +117,12 @@ def _validate_config(
         # Build stages to ensure they are valid and can be constructed
         StageBuilder(config=loaded_config, project_root=project_root).build()
     except Exception as exc:
-        click.echo(f"Configuration is invalid: {exc}", err=True)
+        # DX: Color error messages red to improve CLI visibility
+        click.secho(f"Configuration is invalid: {exc}", fg="red", err=True)
         sys.exit(1)
 
-    click.echo(f"Configuration is valid: {config_path}")
+    # DX: Color success messages green to improve CLI visibility
+    click.secho(f"Configuration is valid: {config_path}", fg="green")
     sys.exit(0)
 
 
@@ -173,7 +181,12 @@ def _run_pipeline(
     if error_to_report is not None:
         # DX: Print the fatal error message after the summary so it is the last thing
         # the user sees, preventing them from having to scroll up to find the failure cause.
-        click.echo(f"\nError: Pipeline execution failed - {error_to_report}", err=True)
+        # DX: Color error messages red to improve CLI visibility
+        click.secho(
+            f"\nError: Pipeline execution failed - {error_to_report}",
+            fg="red",
+            err=True,
+        )
         sys.exit(1)
 
 
