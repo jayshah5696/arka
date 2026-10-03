@@ -126,6 +126,8 @@ def test_cli_supports_explicit_config_run_id_and_resume(
     assert (tmp_path / "runs" / "custom-run" / "manifest.json").exists()
     out, _ = capsys.readouterr()
     assert "--- Pipeline Summary" in out
+    # We want to check capsys.readouterr() without stripping out the ANSI code we added for the run summary
+    # However, tests use a capsys fixture which is mocked output, so click automatically disables color output in test. We don't need to change the tests for colors.
 
 
 def test_cli_supports_dry_run(tmp_path: Path, monkeypatch, capsys) -> None:
