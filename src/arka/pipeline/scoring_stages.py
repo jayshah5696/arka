@@ -75,6 +75,7 @@ class LabelingScoreStage(Stage):
             pairs=pairs,
             rubric=rubric,
             max_workers=ctx.max_workers,
+            executor=getattr(ctx, "executor", None),
         )
 
         result_by_id = {
