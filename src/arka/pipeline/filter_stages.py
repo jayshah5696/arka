@@ -208,6 +208,7 @@ class LabelingQualityFilterStage(Stage):
                 pairs=pairs,
                 rubric=rubric,
                 max_workers=ctx.max_workers,
+                executor=getattr(ctx, "executor", None),
             )
         except LLMClientError as exc:
             reason_code = self._reason_code_for_label_error(exc)
