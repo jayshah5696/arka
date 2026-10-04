@@ -21,3 +21,9 @@
 * **Why**: To remove developer friction when configuring pipelines. Previously, raw YAML syntax errors from PyYAML were opaque and difficult to debug, often just returning the raw exception string without clear line/column pointers if the user didn't know what to look for.
 * **Before**: `Configuration is invalid: while parsing a flow node expected the node content, but found '-' in "/app/bad_yaml.yaml", line 12, column 3` (or similar raw traceback/string representations).
 * **After**: `Error: YAML syntax error in /app/bad_yaml.yaml at line 12, column 3: expected the node content, but found '-'`
+
+## 2024-11-20 - Palette: Color-coded CLI terminal output for errors and success messages
+* **What**: Replaced standard `click.echo` with `click.secho` in `src/arka/cli.py` to add color formatting (`fg="red"` for errors and `fg="green"` for success validations). Added `# DX: Use color-coded terminal output...` comments to document the improvement.
+* **Why**: To remove developer friction by making fatal errors and configuration validation successes visually distinct in the terminal output, allowing developers to spot issues faster.
+* **Before**: Output used standard `click.echo` with plain white text (no color), making it harder to visually scan logs for errors or successful validation output.
+* **After**: Output uses `click.secho` to print errors in red text and configuration validation success messages in green text.
