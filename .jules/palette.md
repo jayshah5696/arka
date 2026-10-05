@@ -32,3 +32,9 @@
 * **Why**: To remove developer friction by providing a standard, clear, and actionable error (matching other file resolution issues like source files) when a required input rubric file cannot be found. This consistency reduces cognitive load during debugging.
 * **Before**: The CLI threw a generic `ValueError` without an explicit `FileNotFoundError` context when a rubric file was missing.
 * **After**: The CLI catches and formats the `FileNotFoundError` consistently, printing the full path to help the user locate the missing rubric definition file.
+
+## 2024-11-20 - Palette: Improved YAML syntax error formatting in RubricLoader
+* **What**: Updated `RubricLoader.load` in `src/arka/labeling/rubric.py` to catch `yaml.YAMLError` and extract `problem_mark.name`, `line`, and `column` using a named StringIO stream to provide developer-friendly error messages with exact file and line coordinates.
+* **Why**: To remove developer friction when configuring rubric YAML files, ensuring syntax errors clearly highlight the offending file, line, and column.
+* **Before**: Threw unformatted raw PyYAML exceptions or missing context on syntax error in rubric files.
+* **After**: Raises `RubricValidationError` with clear file, line, and column hints: `YAML syntax error in [file] at line [line], column [column]: [problem]`.
