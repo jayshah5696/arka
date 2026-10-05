@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from pydantic import BaseModel
 
 from arka.config.loader import ConfigLoader
@@ -205,3 +206,51 @@ def test_labeling_score_stage_passes_non_conversation_records_unchanged(
     assert len(records) == 1
     assert records[0].id == "plain-1"
     assert records[0].scores.quality is None
+
+
+def test_labeling_score_stage_wraps_missing_rubric_path_with_config_context(
+    tmp_path: Path,
+) -> None:
+    config = ConfigLoader().load_dict(
+        {
+            "version": "1",
+            "llm": {
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "api_key": "test-key",
+                "base_url": "https://api.openai.com/v1",
+            },
+            "executor": {"mode": "threadpool", "max_workers": 1},
+            "data_source": {"type": "seeds", "path": "./seeds.jsonl"},
+            "generator": {
+                "type": "prompt_based",
+                "target_count": 2,
+                "generation_multiplier": 1,
+            },
+            "filters": {
+                "target_count": 2,
+            },
+            "labeling_engine": {
+                "rubric_path": "rubrics/missing.yaml",
+                "mode": "single",
+            },
+            "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
+        }
+    )
+    work_dir = tmp_path / "runs" / "run-1" / "stages" / "02s_label_score"
+    work_dir.mkdir(parents=True, exist_ok=True)
+    ctx = StageContext(
+        run_id="run-1",
+        stage_name="02s_label_score",
+        work_dir=work_dir,
+        config=config,
+        executor_mode=config.executor.mode,
+        max_workers=config.executor.max_workers,
+    )
+    stage = LabelingScoreStage(project_root=tmp_path)
+
+    with pytest.raises(
+        FileNotFoundError,
+        match=r"filters\.labeling_engine\.rubric_path points to a missing file: ",
+    ):
+        stage.run([_record("1", "Explain gravity", "Gravity attracts masses.")], ctx)

@@ -26,3 +26,9 @@
 * **Why**: To remove developer friction by allowing users to quickly verify the installed version of the framework directly from the command line, instead of having to inspect package metadata manually.
 * **Before**: Running `uv run arka --version` failed or wasn't supported.
 * **After**: Running `uv run arka --version` successfully prints the version of the `arka` package.
+
+## 2024-11-20 - Palette: Raise explicit FileNotFoundError for missing rubric files
+* **What**: Changed the `ValueError` raised in `LabelingScoreStage` when a rubric file is missing to a `FileNotFoundError`, and updated the error message to include the full evaluated path. Added a unit test to verify this behavior.
+* **Why**: To remove developer friction by providing a standard, clear, and actionable error (matching other file resolution issues like source files) when a required input rubric file cannot be found. This consistency reduces cognitive load during debugging.
+* **Before**: The CLI threw a generic `ValueError` without an explicit `FileNotFoundError` context when a rubric file was missing.
+* **After**: The CLI catches and formats the `FileNotFoundError` consistently, printing the full path to help the user locate the missing rubric definition file.
