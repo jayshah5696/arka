@@ -28,6 +28,7 @@ class LabelingEngine:
         rubric: Rubric,
         max_workers: int,
         run_canary: bool = True,
+        executor: ThreadPoolExecutor | None = None,
     ) -> list[LabelResult]:
         # 1. Identify canary examples if requested
         canary_good_item = None
@@ -56,12 +57,20 @@ class LabelingEngine:
             items_to_run.append((canary_bad_item.instruction, canary_bad_item.response))
 
         worker_count = bounded_worker_count(len(items_to_run), max_workers)
-        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        # PERF: Reuse ThreadPoolExecutor across stages instead of creating new pools per batch. Expected impact: significantly reduces thread spawn/destroy overhead during batch processing.
+        if executor is not None:
             futures = [
                 executor.submit(self.label, instruction, response, rubric)
                 for instruction, response in items_to_run
             ]
             all_results = [future.result() for future in futures]
+        else:
+            with ThreadPoolExecutor(max_workers=worker_count) as new_executor:
+                futures = [
+                    new_executor.submit(self.label, instruction, response, rubric)
+                    for instruction, response in items_to_run
+                ]
+                all_results = [future.result() for future in futures]
 
         # 3. Separate main results and canary results
         pair_results = all_results[: len(pairs)]

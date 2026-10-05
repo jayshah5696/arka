@@ -59,6 +59,7 @@ filters:
 embeddings:
   provider: huggingface
   model: all-MiniLM-L6-v2
+  batch_size: 256
 output:
   format: chatml
   path: ./output/dataset.jsonl
@@ -126,6 +127,8 @@ def test_cli_supports_explicit_config_run_id_and_resume(
     assert (tmp_path / "runs" / "custom-run" / "manifest.json").exists()
     out, _ = capsys.readouterr()
     assert "--- Pipeline Summary" in out
+    # We want to check capsys.readouterr() without stripping out the ANSI code we added for the run summary
+    # However, tests use a capsys fixture which is mocked output, so click automatically disables color output in test. We don't need to change the tests for colors.
 
 
 def test_cli_supports_dry_run(tmp_path: Path, monkeypatch, capsys) -> None:
@@ -306,3 +309,9 @@ def test_cli_validate_config_catches_stage_builder_errors(
     stderr = captured.err
 
     assert "Configuration is invalid: Invalid stage configuration parameters" in stderr
+
+
+def test_cli_supports_version_option(capsys) -> None:
+    main(["--version"])
+    captured = capsys.readouterr()
+    assert "version" in captured.out
