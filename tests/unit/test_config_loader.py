@@ -29,6 +29,7 @@ filters:
 embeddings:
   provider: huggingface
   model: all-MiniLM-L6-v2
+  batch_size: 256
 output:
   format: chatml
   path: ./output/dataset.jsonl
@@ -67,6 +68,7 @@ labeling_engine:
 embeddings:
   provider: openai
   model: text-embedding-3-small
+  batch_size: 256
   api_key: ${OPENROUTER_API_KEY}
   base_url: https://openrouter.ai/api/v1
   openai_compatible:
