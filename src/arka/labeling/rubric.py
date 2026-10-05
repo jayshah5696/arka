@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 from pathlib import Path
 
 import yaml
@@ -44,10 +45,26 @@ class RubricValidationError(ValueError):
 class RubricLoader:
     def load(self, path: Path) -> Rubric:
         try:
-            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            # DX: Use a named StringIO to give the yaml parser a filename for better line hints
+            raw_text = path.read_text(encoding="utf-8")
+            stream = io.StringIO(raw_text)
+            stream.name = str(path)
+            data = yaml.safe_load(stream) or {}
             rubric = Rubric.model_validate(data)
-        except (ValidationError, yaml.YAMLError) as exc:
+        except ValidationError as exc:
             raise RubricValidationError(str(exc)) from exc
+        except yaml.YAMLError as exc:
+            # DX: Provide actionable line and column hints for raw YAML syntax errors
+            mark = getattr(exc, "problem_mark", None)
+            if mark is not None:
+                name = mark.name
+                line = mark.line + 1
+                column = mark.column + 1
+                problem = getattr(exc, "problem", str(exc))
+                msg = f"YAML syntax error in {name} at line {line}, column {column}: {problem}"
+            else:
+                msg = f"YAML syntax error: {exc}"
+            raise RubricValidationError(msg) from exc
         self._validate_weight_dimensions(rubric)
         return rubric
 
