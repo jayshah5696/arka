@@ -309,3 +309,9 @@ def test_cli_validate_config_catches_stage_builder_errors(
     stderr = captured.err
 
     assert "Configuration is invalid: Invalid stage configuration parameters" in stderr
+
+
+def test_cli_supports_version_option(capsys) -> None:
+    main(["--version"])
+    captured = capsys.readouterr()
+    assert "version" in captured.out
