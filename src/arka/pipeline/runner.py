@@ -102,7 +102,7 @@ class PipelineRunner:
                     count_in = len(records)
                     # DX: Provide per-stage progress indication during long runs
                     print(
-                        f"Running stage {i}/{len(stages)}: {stage.name} ({count_in} records in)..."
+                        f"\033[36mRunning stage {i}/{len(stages)}: {stage.name} ({count_in} records in)...\033[0m"
                     )
                     try:
                         stage_output = list(stage.run(records, context))
