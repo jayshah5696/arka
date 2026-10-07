@@ -38,3 +38,9 @@
 * **Why**: To remove developer friction when configuring rubric YAML files, ensuring syntax errors clearly highlight the offending file, line, and column.
 * **Before**: Threw unformatted raw PyYAML exceptions or missing context on syntax error in rubric files.
 * **After**: Raises `RubricValidationError` with clear file, line, and column hints: `YAML syntax error in [file] at line [line], column [column]: [problem]`.
+
+## 2024-11-20 - Palette: Gracefully handle KeyboardInterrupt in CLI
+* **What**: Added an `except KeyboardInterrupt:` block in `_run_pipeline` in `src/arka/cli.py` to catch Ctrl+C events and provide a graceful exit.
+* **Why**: To remove developer friction by preventing raw Python tracebacks from cluttering the terminal when a user intentionally cancels a long-running pipeline, providing a clean, professional error message instead.
+* **Before**: Hitting Ctrl+C resulted in a raw `KeyboardInterrupt` traceback dumped to `stderr`.
+* **After**: Hitting Ctrl+C cleanly prints `Error: Pipeline execution failed - Pipeline execution interrupted by user` and exits with code 1.

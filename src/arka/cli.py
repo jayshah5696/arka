@@ -173,6 +173,9 @@ def _run_pipeline(
             run_id=resolved_run_id,
             resume=resume,
         )
+    except KeyboardInterrupt:
+        # DX: Gracefully handle Ctrl+C to prevent raw tracebacks and show an actionable error message
+        error_to_report = "Pipeline execution interrupted by user"
     except Exception as exc:
         error_to_report = exc
     finally:

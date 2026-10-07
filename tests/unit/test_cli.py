@@ -315,3 +315,33 @@ def test_cli_supports_version_option(capsys) -> None:
     main(["--version"])
     captured = capsys.readouterr()
     assert "version" in captured.out
+
+
+def test_keyboard_interrupt_handled_gracefully(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    config_path = tmp_path / "custom-config.yaml"
+    config_path.write_text(CONFIG_TEXT)
+    (tmp_path / "seeds.jsonl").write_text('{"instruction":"Hello?","response":"Hi."}\n')
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    class FakePipelineRunner:
+        def __init__(self, project_root: Path) -> None:
+            pass
+
+        def run(self, config, stages, run_id, resume) -> None:
+            raise KeyboardInterrupt()
+
+    monkeypatch.setattr("arka.cli.PipelineRunner", FakePipelineRunner)
+
+    import pytest
+
+    with pytest.raises(SystemExit) as exc:
+        main(["--config", str(config_path)])
+
+    assert exc.value.code == 1
+    out, err = capsys.readouterr()
+    assert (
+        "Error: Pipeline execution failed - Pipeline execution interrupted by user"
+        in err
+    )
