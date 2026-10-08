@@ -165,6 +165,12 @@ def _run_pipeline(
     start_time: float,
 ) -> None:
     """Execute the pipeline stages and display execution summary."""
+    # DX: Print the resolved Run ID explicitly at the start so users can track the run directory immediately
+    click.secho(
+        f"Starting pipeline execution with Run ID: {resolved_run_id}",
+        fg="cyan",
+        bold=True,
+    )
     error_to_report = None
     try:
         PipelineRunner(project_root=project_root).run(
