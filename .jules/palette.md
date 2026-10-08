@@ -1,3 +1,9 @@
+## 2024-11-20 - Palette: Add explicit Run ID log at the start of pipeline execution
+* **What**: Added explicit CLI output in `_run_pipeline` in `src/arka/cli.py` to print the resolved Run ID right before stages begin executing.
+* **Why**: To remove developer friction for long-running pipelines where the Run ID is needed immediately to monitor output logs or prepare for a resume operation, instead of having to wait for the final summary.
+* **Before**: The Run ID was only visible in the final summary after completion or failure.
+* **After**: The CLI explicitly announces `Starting pipeline execution with Run ID: <id>` right before the first stage runs.
+
 ## 2024-06-21 - Added explicit dataset output path to --dry-run / --list-stages
 * **What**: Updated `_dry_run_or_list_stages` in `src/arka/cli.py` to print the expected dataset output file path when running a dry run or listing stages.
 * **Why**: To remove developer friction by explicitly showing where the dataset will end up before the run even starts, improving transparency and understanding of the pipeline.
