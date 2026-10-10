@@ -3,9 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from pypdf import PdfWriter
+from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 from arka.config.loader import ConfigLoader
 from arka.pipeline.models import StageContext
+from arka.pipeline.output import OutputWriter
 from arka.pipeline.source_stages import PDFSourceStage
 from arka.records.models import GroundedChunkRecord
 
@@ -48,7 +51,12 @@ startxref
 """
 
 
-def _ctx(tmp_path: Path, relative_pdf_path: str) -> StageContext:
+def _ctx(
+    tmp_path: Path,
+    relative_pdf_path: str,
+    chunk_size: int = 20,
+    overlap: int = 5,
+) -> StageContext:
     config = ConfigLoader().load_dict(
         {
             "version": "1",
@@ -63,8 +71,8 @@ def _ctx(tmp_path: Path, relative_pdf_path: str) -> StageContext:
                 "type": "pdf",
                 "path": relative_pdf_path,
                 "chunk_strategy": "fixed",
-                "chunk_size_chars": 20,
-                "chunk_overlap_chars": 5,
+                "chunk_size_chars": chunk_size,
+                "chunk_overlap_chars": overlap,
             },
             "generator": {
                 "type": "prompt_based",
@@ -125,3 +133,76 @@ def test_pdf_source_stage_missing_file_raises_not_found(tmp_path: Path) -> None:
 
     assert "PDF source file not found at expected path:" in str(exc.value)
     assert "does_not_exist.pdf" in str(exc.value)
+
+
+def _write_pages(path: Path, texts: list[str]) -> None:
+    writer = PdfWriter()
+    font = DictionaryObject(
+        {
+            NameObject("/Type"): NameObject("/Font"),
+            NameObject("/Subtype"): NameObject("/Type1"),
+            NameObject("/BaseFont"): NameObject("/Helvetica"),
+        }
+    )
+    for text in texts:
+        page = writer.add_blank_page(width=300, height=144)
+        page[NameObject("/Resources")] = DictionaryObject(
+            {NameObject("/Font"): DictionaryObject({NameObject("/F1"): font})}
+        )
+        stream = DecodedStreamObject()
+        stream.set_data(f"BT /F1 12 Tf 72 72 Td ({text}) Tj ET".encode())
+        page[NameObject("/Contents")] = writer._add_object(stream)
+    writer.write(path)
+
+
+def test_pdf_chunk_provenance_tracks_pages_and_trimmed_offsets(tmp_path: Path) -> None:
+    # The first window ends in page 3; the second begins inside page 3.
+    # Page 2 is empty and must keep its original page number.
+    pdf_path = tmp_path / "pages.pdf"
+    _write_pages(pdf_path, ["First page", "", "Second page has text"])
+    ctx = _ctx(tmp_path, "pages.pdf")
+
+    records = PDFSourceStage(project_root=tmp_path).run([], ctx)
+
+    joined = "First page\n\nSecond page has text"
+    assert [(r.payload.page_start, r.payload.page_end) for r in records] == [
+        (1, 3),
+        (3, 3),
+        (3, 3),
+    ]
+    assert records[1].payload.char_start == 15
+    assert records[1].payload.char_end == len(joined)
+    for record in records:
+        payload = record.payload
+        assert joined[payload.char_start : payload.char_end] == payload.text
+        assert record.source.page_start == payload.page_start
+        assert record.source.page_end == payload.page_end
+        assert record.source.char_start == payload.char_start
+        assert record.source.char_end == payload.char_end
+
+    artifact = ctx.work_dir / "data.parquet"
+    writer = OutputWriter()
+    writer.write_parquet(records, artifact)
+    restored = writer.read_parquet(artifact)
+    assert [r.payload for r in restored] == [r.payload for r in records]
+    assert [r.source for r in restored] == [r.source for r in records]
+
+
+def test_pdf_chunk_with_only_page_separator_is_skipped(tmp_path: Path) -> None:
+    pdf_path = tmp_path / "separator.pdf"
+    _write_pages(pdf_path, ["A", "", "B"])
+    ctx = _ctx(tmp_path, "separator.pdf", chunk_size=2, overlap=1)
+
+    records = PDFSourceStage(project_root=tmp_path).run([], ctx)
+
+    assert [r.payload.text for r in records] == ["A", "B", "B"]
+    assert [(r.payload.page_start, r.payload.page_end) for r in records] == [
+        (1, 1),
+        (3, 3),
+        (3, 3),
+    ]
+    assert [(r.payload.char_start, r.payload.char_end) for r in records] == [
+        (0, 1),
+        (3, 4),
+        (3, 4),
+    ]

@@ -141,6 +141,19 @@ Ingests raw text by chunking a PDF file.
 | `chunk_size_chars` | `int` | `3000` | Number of characters per chunk. |
 | `chunk_overlap_chars`| `int` | `300` | Number of overlapping characters between chunks. |
 
+Each chunk reports the first and last pages whose extracted text overlaps it.
+Page numbers start at 1 and include empty pages in their numbering.
+`char_start` and `char_end` are half-open character offsets into the normalized
+document text. Arka strips each page's outer whitespace, joins non-empty pages
+with two newlines, and trims each chunk. Slicing the normalized document at
+these offsets returns the chunk text exactly. The payload and source contain
+the same provenance.
+
+These fields describe extracted text, not coordinates in the PDF. Extraction
+quality and reading order depend on the PDF; OCR is not supported. Corrected
+provenance changes affected record IDs because Arka hashes the full payload.
+The document hash, chunk numbering, and fixed window positions remain unchanged.
+
 ---
 
 ### Normalization Stages

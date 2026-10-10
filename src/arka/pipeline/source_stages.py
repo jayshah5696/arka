@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+from bisect import bisect_left, bisect_right
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -179,6 +180,21 @@ class PDFSourceStage(Stage):
                 "PDF extraction produced no text; scanned or empty PDFs are not supported"
             )
 
+        # Retain original page numbers in the normalized joined text.
+        page_numbers: list[int] = []
+        page_starts: list[int] = []
+        page_ends: list[int] = []
+        offset = 0
+        for page_number, page_text in page_texts:
+            if not page_text:
+                continue
+            if page_numbers:
+                offset += 2  # The separator between non-empty pages.
+            page_numbers.append(page_number)
+            page_starts.append(offset)
+            offset += len(page_text)
+            page_ends.append(offset)
+
         config_hash_value = config_hash(ctx.config)
         source_hash = file_hash(source_path)
         doc_id = source_path.stem
@@ -187,13 +203,15 @@ class PDFSourceStage(Stage):
         step = chunk_size - overlap
         chunks: list[GroundedChunkRecord] = []
 
-        for chunk_index, char_start in enumerate(range(0, len(extracted_text), step)):
-            text = extracted_text[char_start : char_start + chunk_size].strip()
+        for chunk_index, window_start in enumerate(range(0, len(extracted_text), step)):
+            window = extracted_text[window_start : window_start + chunk_size]
+            text = window.strip()
             if not text:
                 continue
+            char_start = window_start + len(window) - len(window.lstrip())
             char_end = char_start + len(text)
-            page_start = 1
-            page_end = len(page_texts)
+            page_start = page_numbers[bisect_right(page_ends, char_start)]
+            page_end = page_numbers[bisect_left(page_starts, char_end) - 1]
             payload = GroundedChunkPayload(
                 text=text,
                 doc_id=doc_id,
