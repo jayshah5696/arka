@@ -21,6 +21,7 @@ _STAGE_MAPPING: dict[str, str] = {
     "language": "arka.pipeline.cheap_filters.LanguageFilterStage",
     "repetition": "arka.pipeline.cheap_filters.RepetitionFilterStage",
     "identity_claim": "arka.pipeline.cheap_filters.IdentityClaimFilterStage",
+    "artifact_filter": "arka.pipeline.artifact_filter.ArtifactFilterStage",
     "sentence_variance": "arka.pipeline.cheap_filters.SentenceVarianceFilterStage",
     "ifd": "arka.pipeline.ifd_stage.IFDFilterStage",
     "labeling_engine": "arka.pipeline.filter_stages.LabelingQualityFilterStage",

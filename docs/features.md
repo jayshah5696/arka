@@ -87,6 +87,12 @@ flowchart TD
 
 Quantity does not equal quality in SFT. Arka passes generated candidates through a gauntlet of configurable filters.
 
+Optional curation stages can reject repeated word loops and foreign model
+identity claims. The generation-artifact stage can strip localized residue
+before deduplication, with events for each edit. Composite selection can reserve
+explicit minimum counts for taxonomy paths and report any unmet constraints.
+See the configuration reference for these opt-in controls and their limits.
+
 * **Heuristic Filters**:
     * **Length Limits**: Enforce strict minimum and maximum character counts for both instructions and responses to prevent abnormally short or truncated outputs.
     * **Language Enforcement**: Uses fast, local models to identify the language of the output and strictly discard anything outside the configured target (e.g., ensuring 100% English outputs).

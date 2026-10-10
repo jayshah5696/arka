@@ -327,6 +327,66 @@ The filter preserves original text and drops with reason `identity_claim`.
 per dropped record. Pattern matches are approximate; inspect drops on your
 generated data before relying on the defaults.
 
+#### `artifact_filter`
+
+Removes localized generation residue and drops records with unreliable text.
+Place this stage immediately after generation, before deduplication and judging.
+
+```yaml
+- type: artifact_filter
+  fields: [instruction, response]
+  max_strips_per_record: 3
+  group_action:
+    openers: strip
+    closers: strip
+    self_reference: drop
+    placeholders: drop
+    tool_fingerprints: drop
+```
+
+`fields` defaults to `[instruction, response]` and also accepts `system`.
+`max_strips_per_record` defaults to 3 and accepts 0 to prohibit stripping.
+`groups` is a mapping from group names to lists of case-insensitive regular
+expressions. Omit it to use the built-ins, or supply it to replace them.
+The default groups are:
+
+- `openers` matches "Certainly!", "Sure!", and "Of course!" at the start.
+- `closers` matches "I hope this helps" and "Would you like me to...?" at the end.
+- `self_reference` matches AI language-model and knowledge-cutoff disclaimers.
+- `placeholders` matches specific unfilled tokens such as `[Your Name]` and `[link here]`.
+- `tool_fingerprints` matches leaked citation markers.
+
+`group_action` overrides the action for each named group. Unspecified openers
+and closers are stripped; other groups, including custom groups, cause drops.
+For example, a custom strip rule can be configured as:
+
+```yaml
+- type: artifact_filter
+  groups: {custom: ['REMOVE_ME']}
+  group_action: {custom: strip}
+  fields: [response]
+```
+
+The matcher protects triple-backtick and triple-tilde code fences, inline code,
+and double-quoted examples. It also protects an unclosed code fence through the
+end of the field. This is a small literal-text guard, not a complete Markdown
+parser. Check your own formatting and domains before relying on the defaults.
+
+Stripping removes only matched spans. Overlapping spans count as one removal;
+duplicate patterns do not count twice. The stage checks the updated text again
+to catch repeated anchored openers. It drops with `artifact_strip_limit` before
+exceeding the configured limit, or `artifact_empty_content` if stripping empties
+an instruction or response. Other drops use `artifact_<group>` reason codes.
+Invalid regexes and matches that consume no text raise an error.
+
+Edits create copies and retain record IDs and lineage. The stage updates
+`content_hash` so exact deduplication uses the cleaned payload. Each edit adds
+a `stripped` event with field names and before/after lengths. `stats.json` reports
+`group_match_counts`, `stripped_count`, `strip_match_count`, and drop counts.
+Group counts include matches that cause drops. `stripped_count` counts edited
+records, including records dropped after an earlier edit. `strip_match_count`
+counts spans actually removed. If this stage is absent, records are unchanged.
+
 #### `semantic_similarity`
 Filters out generations that are too similar to their seed.
 ```yaml
