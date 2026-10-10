@@ -4,11 +4,21 @@ import json
 import logging
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 from arka.config.models import (
+    RepetitionFilterConfig,
     ResolvedConfig,
 )
-from arka.pipeline.cheap_filters import LanguageFilterStage, LengthFilterStage
+from arka.pipeline.cheap_filters import (
+    LanguageFilterStage,
+    LengthFilterStage,
+    RepetitionFilterStage,
+)
 from arka.pipeline.models import StageContext
+from arka.pipeline.output import OutputWriter
+from arka.pipeline.stage_builder import StageBuilder
 from arka.records.models import (
     ConversationPayload,
     ConversationRecord,
@@ -255,3 +265,125 @@ def test_language_filter_empty_text_passes(tmp_path: Path) -> None:
     ctx = _ctx(config, tmp_path, stage.name)
     result = stage.run(records, ctx)
     assert len(result) == 1
+
+
+@pytest.mark.parametrize(
+    ("text", "reason"),
+    [
+        ("hello world " * 60, "repetitive_top_ngram"),
+        ("a" * 100, "long_char_run"),
+        ("!" * 51, "long_char_run"),
+    ],
+)
+def test_repetition_drops_loops_and_reports_reason(
+    tmp_path: Path, text: str, reason: str
+) -> None:
+    config = _base_config(stages=[{"type": "repetition"}])
+    stage = RepetitionFilterStage()
+    ctx = _ctx(config, tmp_path, stage.name)
+
+    assert stage.run([_record("Explain", text)], ctx) == []
+
+    stats = json.loads((ctx.work_dir / "stats.json").read_text())
+    assert stats["drop_reasons"] == {reason: 1}
+    dropped = OutputWriter().read_parquet(ctx.work_dir / "dropped.parquet")
+    assert dropped[0].stage_events[-1].reason_code == reason
+    if reason == "repetitive_top_ngram":
+        assert 0.9 < stats["max_observed_fractions"]["top_2"] <= 1.0
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "hello world " * 3,
+        "x" * 50,
+        " ".join(f"word{i}" for i in range(300)),
+        "\n".join(f"- Step {i}: use option_{i} for task_{i}." for i in range(25)),
+        "\n".join(f"result_{i} = compute(value_{i}, limit={i})" for i in range(25)),
+    ],
+)
+def test_repetition_keeps_short_text_and_non_looping_content(
+    tmp_path: Path, text: str
+) -> None:
+    config = _base_config(stages=[{"type": "repetition"}])
+    stage = RepetitionFilterStage()
+    ctx = _ctx(config, tmp_path, stage.name)
+    record = _record("Explain", text)
+    assert stage.run([record], ctx) == [record]
+
+
+def test_repetition_custom_metrics_and_instruction_scope(tmp_path: Path) -> None:
+    config = _base_config(
+        stages=[
+            {
+                "type": "repetition",
+                "check_fields": ["instruction"],
+                "min_text_chars": 0,
+                "top_ngram_thresholds": {},
+                "dup_ngram_thresholds": {5: 0.5},
+                "max_char_run": 100,
+            }
+        ]
+    )
+    stage = RepetitionFilterStage()
+    ctx = _ctx(config, tmp_path, stage.name)
+    repeated = "alpha beta gamma delta epsilon " * 10
+    assert stage.run([_record(repeated, "Valid response")], ctx) == []
+    stats = json.loads((ctx.work_dir / "stats.json").read_text())
+    assert stats["drop_reasons"] == {"repetitive_dup_ngrams": 1}
+    assert 0.9 < stats["max_observed_fractions"]["dup_5"] <= 1.0
+
+
+def test_repetition_defaults_check_only_response(tmp_path: Path) -> None:
+    config = _base_config(stages=[{"type": "repetition"}])
+    stage = RepetitionFilterStage()
+    record = _record("hello world " * 60, "A normal answer.")
+    assert stage.run([record], _ctx(config, tmp_path, stage.name)) == [record]
+
+
+def test_repetition_absent_is_disabled(tmp_path: Path) -> None:
+    stage = RepetitionFilterStage()
+    config = _base_config()
+    records = [_record("Explain", "a" * 100)]
+    assert stage.run(records, _ctx(config, tmp_path, stage.name)) == records
+
+
+def test_repetition_builder_accepts_unified_config_and_resets_metrics(
+    tmp_path: Path,
+) -> None:
+    config = ResolvedConfig(
+        version="1",
+        llm={
+            "provider": "openai",
+            "model": "test",
+            "api_key": "test",
+            "base_url": "https://api.openai.com/v1",
+        },
+        pipeline=[{"type": "repetition"}],
+        executor={"mode": "threadpool", "max_workers": 1},
+        output={"format": "jsonl", "path": "output.jsonl"},
+    )
+    stage = StageBuilder(config, tmp_path).build()[0]
+    ctx = _ctx(config, tmp_path, stage.name)
+    stage.run([_record("Explain", "hello world " * 60)], ctx)
+    stage.run([_record("Explain", "Short answer")], ctx)
+    stats = json.loads((ctx.work_dir / "stats.json").read_text())
+    assert all(v == 0 for v in stats["max_observed_fractions"].values())
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"min_text_chars": -1},
+        {"max_char_run": 0},
+        {"check_fields": ["unknown"]},
+        {"check_fields": []},
+        {"top_ngram_thresholds": {2: 1.1}},
+        {"dup_ngram_thresholds": {5: -0.1}},
+        {"top_ngram_thresholds": {5: 0.5}},
+        {"dup_ngram_thresholds": {2: 0.5}},
+    ],
+)
+def test_repetition_rejects_invalid_options(options: dict) -> None:
+    with pytest.raises(ValidationError):
+        RepetitionFilterConfig(**options)

@@ -139,6 +139,11 @@
           "title": "Model",
           "type": "string"
         },
+        "batch_size": {
+          "default": 256,
+          "title": "Batch Size",
+          "type": "integer"
+        },
         "api_key": {
           "anyOf": [
             {
@@ -764,6 +769,62 @@
       "title": "PromptBasedGeneratorConfig",
       "type": "object"
     },
+    "RepetitionFilterConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "repetition",
+          "default": "repetition",
+          "title": "Type",
+          "type": "string"
+        },
+        "check_fields": {
+          "items": {
+            "enum": [
+              "instruction",
+              "response",
+              "system"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Check Fields",
+          "type": "array"
+        },
+        "min_text_chars": {
+          "default": 200,
+          "minimum": 0,
+          "title": "Min Text Chars",
+          "type": "integer"
+        },
+        "top_ngram_thresholds": {
+          "additionalProperties": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "title": "Top Ngram Thresholds",
+          "type": "object"
+        },
+        "dup_ngram_thresholds": {
+          "additionalProperties": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "title": "Dup Ngram Thresholds",
+          "type": "object"
+        },
+        "max_char_run": {
+          "default": 50,
+          "minimum": 1,
+          "title": "Max Char Run",
+          "type": "integer"
+        }
+      },
+      "title": "RepetitionFilterConfig",
+      "type": "object"
+    },
     "RewardModelFilterConfig": {
       "additionalProperties": false,
       "properties": {
@@ -1089,6 +1150,7 @@
             "pair_delta": "#/$defs/PairDeltaFilterConfig",
             "pdf_source": "#/$defs/PDFSourceConfig",
             "prompt_based_generator": "#/$defs/PromptBasedGeneratorConfig",
+            "repetition": "#/$defs/RepetitionFilterConfig",
             "reward_model": "#/$defs/RewardModelFilterConfig",
             "seed_source": "#/$defs/SeedSourceConfig",
             "select": "#/$defs/CompositeSelectConfig",
@@ -1132,6 +1194,9 @@
           },
           {
             "$ref": "#/$defs/LanguageFilterConfig"
+          },
+          {
+            "$ref": "#/$defs/RepetitionFilterConfig"
           },
           {
             "$ref": "#/$defs/SentenceVarianceFilterConfig"

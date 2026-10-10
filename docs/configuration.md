@@ -253,6 +253,38 @@ Filters out records that do not match the allowed language.
   allowed: ["en"]
 ```
 
+#### `repetition`
+
+Drops conversation records with long character runs or repeated word sequences.
+Place this stage after generation and length filtering, before LLM judging.
+
+```yaml
+- type: repetition
+  check_fields: [response]
+  min_text_chars: 200
+  top_ngram_thresholds: {2: 0.20, 3: 0.18, 4: 0.16}
+  dup_ngram_thresholds: {5: 0.15, 6: 0.14, 7: 0.13, 8: 0.12, 9: 0.11, 10: 0.10}
+  max_char_run: 50
+```
+
+`check_fields` accepts `instruction`, `response`, and `system`. By default, only
+the response is checked. Character runs longer than `max_char_run` are dropped
+even in short text. `min_text_chars` applies only to word-sequence checks.
+
+Arka splits words on whitespace and preserves case and punctuation. For each
+configured length, `top_ngram_thresholds` limits the fraction of text covered by
+the most frequent repeated word sequence. Ties use the largest covered fraction.
+`dup_ngram_thresholds` limits the fraction covered by all repeated sequences.
+Spans include whitespace between words. Overlapping spans count each character
+once, so fractions stay between 0 and 1. A fraction must exceed its threshold
+to trigger a drop. An empty threshold map disables that family of checks.
+
+The thresholds come from the Gopher repetition rules, adapted to word sequences
+and character coverage. They need validation on your SFT data, especially code
+and lists. The stage makes no LLM calls and adds no dependencies. Its report
+contains drop counts by reason and `max_observed_fractions` for evaluated metrics.
+Dropped records include the field and offending metric in their event details.
+
 #### `canary`
 Filters out generations containing sensitive phrases or secrets.
 ```yaml
