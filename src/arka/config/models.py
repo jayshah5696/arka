@@ -235,11 +235,20 @@ class PairDeltaFilterConfig(StrictModel):
     length_ratio_max: float | None = None
 
 
+class TaxonomyMinimum(StrictModel):
+    factor: str = Field(min_length=1)
+    path: list[Annotated[str, Field(min_length=1)]] = Field(min_length=1)
+    min_count: int = Field(default=1, ge=1)
+
+
 class CompositeSelectConfig(StrictModel):
     type: Literal["select"] = "select"
     target_count: int | None = None
     weights: dict[str, float] = Field(default_factory=dict)
     strategy: str = "top_n"
+    coverage: list[TaxonomyMinimum] = Field(default_factory=list)
+    coverage_policy: Literal["fail_fast", "best_effort"] = "fail_fast"
+    coverage_search_limit: int = Field(default=10000, ge=1)
 
 
 class SemanticSimilarityFilterConfig(StrictModel):

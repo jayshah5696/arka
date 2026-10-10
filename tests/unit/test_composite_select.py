@@ -5,7 +5,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 from arka.config.loader import ConfigLoader
+from arka.config.models import CompositeSelectConfig
 from arka.pipeline.models import StageContext
 from arka.pipeline.scoring_stages import CompositeSelectStage
 from arka.records.models import (
@@ -23,6 +27,7 @@ def _record(
     quality: float | None = None,
     reward_model: float | None = None,
     ifd: float | None = None,
+    taxonomy: dict[str, list[str]] | None = None,
 ) -> ConversationRecord:
     return ConversationRecord(
         id=record_id,
@@ -32,7 +37,12 @@ def _record(
         payload=ConversationPayload(
             instruction=f"Q-{record_id}", response=f"A-{record_id}"
         ),
-        scores=RecordScores(quality=quality, reward_model=reward_model, ifd=ifd),
+        scores=RecordScores(
+            quality=quality,
+            reward_model=reward_model,
+            ifd=ifd,
+            quality_per_dim={"taxonomy_nodes": taxonomy} if taxonomy else {},
+        ),
         config_hash="cfg-1",
         created_at="2026-04-14T00:00:00Z",
     )
@@ -158,3 +168,155 @@ def test_composite_select_passes_all_when_disabled(tmp_path: Path) -> None:
     result = stage.run(all_records, ctx)
 
     assert len(result) == 2
+
+
+def test_coverage_reserves_rare_path_and_fills_by_score(tmp_path: Path) -> None:
+    ctx = _ctx(
+        tmp_path,
+        target_count=2,
+        weights={"quality": 1.0},
+        coverage=[{"factor": "topic", "path": ["science"], "min_count": 1}],
+    )
+    records = [
+        _record("high", quality=1.0),
+        _record("medium", quality=0.8, taxonomy={"topic": ["arts"]}),
+        _record("rare", quality=0.1, taxonomy={"topic": ["science", "physics"]}),
+    ]
+    selected = CompositeSelectStage().run(records, ctx)
+    assert [r.id for r in selected] == ["high", "rare"]
+    stats = json.loads((ctx.work_dir / "stats.json").read_text())
+    assert stats["coverage_status"] == "satisfied"
+    assert stats["unmet_constraints"] == []
+    assert stats["score_difference_from_top_n"] == pytest.approx(-0.7)
+    assert stats["taxonomy_coverage"][0] == {
+        "factor": "topic",
+        "path": ["science"],
+        "min_count": 1,
+        "input_count": 1,
+        "selected_count": 1,
+    }
+
+
+def test_coverage_search_recovers_from_greedy_multifactor_choice(
+    tmp_path: Path,
+) -> None:
+    # Greedy takes AB, leaving C and D for two slots. AC + BD fits two slots.
+    ctx = _ctx(
+        tmp_path,
+        target_count=2,
+        weights={"quality": 1},
+        coverage=[{"factor": f, "path": ["yes"]} for f in "ABCD"],
+    )
+    records = [
+        _record("AB", quality=1, taxonomy={f: ["yes"] for f in "AB"}),
+        _record("AC", quality=0.8, taxonomy={f: ["yes"] for f in "AC"}),
+        _record("BD", quality=0.7, taxonomy={f: ["yes"] for f in "BD"}),
+        _record("C", quality=0.5, taxonomy={"C": ["yes"]}),
+        _record("D", quality=0.4, taxonomy={"D": ["yes"]}),
+    ]
+    selected = CompositeSelectStage().run(records, ctx)
+    assert [r.id for r in selected] == ["AC", "BD"]
+    stats = json.loads((ctx.work_dir / "stats.json").read_text())
+    assert all(entry["selected_count"] == 1 for entry in stats["taxonomy_coverage"])
+
+
+@pytest.mark.parametrize("policy", ["fail_fast", "best_effort"])
+def test_coverage_reports_infeasible_minimums(tmp_path: Path, policy: str) -> None:
+    ctx = _ctx(
+        tmp_path,
+        target_count=1,
+        weights={"quality": 1},
+        coverage=[
+            {"factor": "topic", "path": ["science"]},
+            {"factor": "topic", "path": ["arts"]},
+        ],
+        coverage_policy=policy,
+    )
+    records = [
+        _record("science", quality=1, taxonomy={"topic": ["science"]}),
+        _record("arts", quality=0.5, taxonomy={"topic": ["arts"]}),
+    ]
+    stage = CompositeSelectStage()
+    if policy == "fail_fast":
+        with pytest.raises(ValueError, match="infeasible"):
+            stage.run(records, ctx)
+    else:
+        assert [r.id for r in stage.run(records, ctx)] == ["science"]
+    stats = json.loads((ctx.work_dir / "stats.json").read_text())
+    assert stats["coverage_status"] == "infeasible"
+    assert stats["unmet_constraints"]
+    assert stats["count_out"] == (0 if policy == "fail_fast" else 1)
+
+
+def test_coverage_reports_absent_nodes_even_when_all_records_fit(
+    tmp_path: Path,
+) -> None:
+    ctx = _ctx(
+        tmp_path,
+        target_count=10,
+        weights={},
+        coverage=[{"factor": "topic", "path": ["missing"], "min_count": 2}],
+        coverage_policy="best_effort",
+    )
+    records = [_record("unassigned")]
+    assert CompositeSelectStage().run(records, ctx) == records
+    stats = json.loads((ctx.work_dir / "stats.json").read_text())
+    assert stats["unmet_constraints"][0]["shortfall"] == 2
+    assert stats["taxonomy_coverage"][0]["input_count"] == 0
+
+
+def test_coverage_honors_depth_counts_and_stable_ties(tmp_path: Path) -> None:
+    ctx = _ctx(
+        tmp_path,
+        target_count=2,
+        weights={"quality": 1},
+        coverage=[{"factor": "topic", "path": ["science", "physics"], "min_count": 2}],
+    )
+    records = [
+        _record("wrong-depth", quality=1, taxonomy={"topic": ["physics"]}),
+        _record("first", quality=0.5, taxonomy={"topic": ["science", "physics"]}),
+        _record(
+            "second", quality=0.5, taxonomy={"topic": ["science", "physics", "optics"]}
+        ),
+        _record("third", quality=0.5, taxonomy={"topic": ["science", "physics"]}),
+    ]
+    assert [r.id for r in CompositeSelectStage().run(records, ctx)] == [
+        "first",
+        "second",
+    ]
+
+
+def test_coverage_search_limit_is_reported_as_unresolved(tmp_path: Path) -> None:
+    ctx = _ctx(
+        tmp_path,
+        target_count=2,
+        weights={"quality": 1},
+        coverage=[{"factor": f, "path": ["yes"]} for f in "ABCD"],
+        coverage_policy="best_effort",
+        coverage_search_limit=1,
+    )
+    records = [
+        _record("AB", quality=1, taxonomy={f: ["yes"] for f in "AB"}),
+        _record("AC", quality=0.8, taxonomy={f: ["yes"] for f in "AC"}),
+        _record("BD", quality=0.7, taxonomy={f: ["yes"] for f in "BD"}),
+        _record("C", quality=0.5, taxonomy={"C": ["yes"]}),
+        _record("D", quality=0.4, taxonomy={"D": ["yes"]}),
+    ]
+    CompositeSelectStage().run(records, ctx)
+    stats = json.loads((ctx.work_dir / "stats.json").read_text())
+    assert stats["coverage_status"] == "search_limit"
+    assert stats["unmet_constraints"]
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"coverage": [{"factor": "topic", "path": []}]},
+        {"coverage": [{"factor": "topic", "path": ["science"], "min_count": 0}]},
+        {"coverage_policy": "ignore"},
+        {"coverage_search_limit": 0},
+    ],
+)
+def test_coverage_rejects_invalid_config(options: dict) -> None:
+    with pytest.raises(ValidationError):
+        CompositeSelectConfig(**options)
