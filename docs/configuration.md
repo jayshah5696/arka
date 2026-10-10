@@ -292,6 +292,39 @@ Filters out generations containing sensitive phrases or secrets.
   phrases: ["SECRET_TOKEN"]
 ```
 
+#### `identity_claim`
+
+Drops records containing foreign model or lab identity claims in the configured
+conversation fields. Place it after generation and before LLM judging.
+
+```yaml
+- type: identity_claim
+  check_fields: [response]
+  own_model_names: [Arka-7B]
+  patterns: []
+```
+
+`check_fields` accepts `instruction`, `response`, and `system`, and defaults to
+`[response]`. Instructions do not trigger drops unless explicitly included.
+`own_model_names` defaults to an empty list. A case-insensitive substring match
+for any configured own name in any checked field lets the record pass.
+
+An empty `patterns` list uses built-in first-person and creator pattern groups.
+These cover GPT, ChatGPT, Claude, Gemini, Llama, Qwen, DeepSeek, Mistral, Mixtral,
+Grok, PaLM, Bard, Bing, and Copilot, plus their listed labs. A non-empty list
+replaces the built-ins and reports matches under the `custom` group. Invalid
+regular expressions fail configuration validation. Patterns ignore case.
+
+For matching only, Arka normalizes curly apostrophes and removes known-model
+and known-lab denial clauses such as "I'm not ChatGPT" and "I wasn't trained
+by OpenAI". A later positive claim still triggers a drop. Custom patterns are
+responsible for denial handling for names outside the built-in list.
+
+The filter preserves original text and drops with reason `identity_claim`.
+`stats.json` reports `pattern_group_counts`, counting each matched group once
+per dropped record. Pattern matches are approximate; inspect drops on your
+generated data before relying on the defaults.
+
 #### `semantic_similarity`
 Filters out generations that are too similar to their seed.
 ```yaml

@@ -8,10 +8,12 @@ import pytest
 from pydantic import ValidationError
 
 from arka.config.models import (
+    IdentityClaimFilterConfig,
     RepetitionFilterConfig,
     ResolvedConfig,
 )
 from arka.pipeline.cheap_filters import (
+    IdentityClaimFilterStage,
     LanguageFilterStage,
     LengthFilterStage,
     RepetitionFilterStage,
@@ -387,3 +389,95 @@ def test_repetition_builder_accepts_unified_config_and_resets_metrics(
 def test_repetition_rejects_invalid_options(options: dict) -> None:
     with pytest.raises(ValidationError):
         RepetitionFilterConfig(**options)
+
+
+@pytest.mark.parametrize(
+    ("text", "group"),
+    [
+        ("I am ChatGPT, how can I help?", "first_person"),
+        ("As Qwen, I think this works.", "first_person"),
+        ("I’m Claude.", "first_person"),
+        ("i Am GEMINI", "first_person"),
+        ("I am not Llama, I am GPT-4", "first_person"),
+        ("I was trained by OpenAI.", "creator"),
+        ("I am an Anthropic language model.", "creator"),
+        ("I wasn't trained by OpenAI. I was built by Google DeepMind.", "creator"),
+    ],
+)
+def test_identity_claim_drops_and_reports_pattern_group(
+    tmp_path: Path, text: str, group: str
+) -> None:
+    stage = IdentityClaimFilterStage()
+    config = _base_config(stages=[{"type": "identity_claim"}])
+    ctx = _ctx(config, tmp_path, stage.name)
+    assert stage.run([_record("Who are you?", text)], ctx) == []
+    stats = json.loads((ctx.work_dir / "stats.json").read_text())
+    assert stats["drop_reasons"] == {"identity_claim": 1}
+    assert stats["pattern_group_counts"][group] == 1
+    dropped = OutputWriter().read_parquet(ctx.work_dir / "dropped.parquet")
+    assert dropped[0].stage_events[-1].reason_code == "identity_claim"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "I'm not ChatGPT.",
+        "I am never Llama.",
+        "I am not an OpenAI language model.",
+        "I wasn't trained by OpenAI.",
+        "I was not created by Anthropic.",
+        "I'm never built by Google.",
+        "Explain how ChatGPT works.",
+        "A useful response about the model's attention mechanism.",
+    ],
+)
+def test_identity_claim_keeps_denials_and_normal_responses(
+    tmp_path: Path, text: str
+) -> None:
+    stage = IdentityClaimFilterStage()
+    config = _base_config(stages=[{"type": "identity_claim"}])
+    record = _record("I am Gemini", text)
+    assert stage.run([record], _ctx(config, tmp_path, stage.name)) == [record]
+
+
+def test_identity_claim_own_model_escape_and_custom_replacement(tmp_path: Path) -> None:
+    stage = IdentityClaimFilterStage()
+    config = _base_config(
+        stages=[{"type": "identity_claim", "own_model_names": ["Arka-7B"]}]
+    )
+    record = _record(
+        "Who are you?", "I am not Llama. I am Arka-7B, distilled from ChatGPT."
+    )
+    assert stage.run([record], _ctx(config, tmp_path, stage.name)) == [record]
+    custom = IdentityClaimFilterStage(
+        IdentityClaimFilterConfig(patterns=[r"\bteacherbot\b"])
+    )
+    ctx = _ctx(config, tmp_path, custom.name)
+    kept = _record("Who are you?", "I am Gemini", "kept")
+    assert custom.run([kept, _record("Who?", "I am TeacherBot")], ctx) == [kept]
+    stats = json.loads((ctx.work_dir / "stats.json").read_text())
+    assert stats["pattern_group_counts"] == {"custom": 1}
+
+
+def test_identity_claim_configured_field_and_absent_stage(tmp_path: Path) -> None:
+    record = _record("I am Gemini", "A normal response")
+    stage = IdentityClaimFilterStage()
+    assert stage.run([record], _ctx(_base_config(), tmp_path, stage.name)) == [record]
+    config = _base_config(
+        stages=[{"type": "identity_claim", "check_fields": ["instruction"]}]
+    )
+    assert stage.run([record], _ctx(config, tmp_path, stage.name)) == []
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"patterns": ["["]},
+        {"own_model_names": [""]},
+        {"check_fields": []},
+        {"check_fields": ["unknown"]},
+    ],
+)
+def test_identity_claim_rejects_invalid_config(options: dict) -> None:
+    with pytest.raises(ValidationError):
+        IdentityClaimFilterConfig(**options)
