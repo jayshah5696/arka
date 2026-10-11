@@ -432,6 +432,10 @@ class PDFSourceConfig(StrictModel):
     chunk_strategy: Literal["fixed"] = "fixed"
     chunk_size_chars: int = 3000
     chunk_overlap_chars: int = 300
+    boilerplate_strip: bool = False
+    min_block_bytes: int = Field(default=500, gt=0)
+    min_doc_frequency: int = Field(default=2, ge=2)
+    min_remaining_bytes: int = Field(default=100, ge=0)
 
     @model_validator(mode="after")
     def validate_pdf_options(self) -> PDFSourceConfig:

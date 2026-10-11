@@ -796,6 +796,29 @@
           "default": 300,
           "title": "Chunk Overlap Chars",
           "type": "integer"
+        },
+        "boilerplate_strip": {
+          "default": false,
+          "title": "Boilerplate Strip",
+          "type": "boolean"
+        },
+        "min_block_bytes": {
+          "default": 500,
+          "exclusiveMinimum": 0,
+          "title": "Min Block Bytes",
+          "type": "integer"
+        },
+        "min_doc_frequency": {
+          "default": 2,
+          "minimum": 2,
+          "title": "Min Doc Frequency",
+          "type": "integer"
+        },
+        "min_remaining_bytes": {
+          "default": 100,
+          "minimum": 0,
+          "title": "Min Remaining Bytes",
+          "type": "integer"
         }
       },
       "required": [
