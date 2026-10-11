@@ -92,6 +92,28 @@
           "default": "top_n",
           "title": "Strategy",
           "type": "string"
+        },
+        "coverage": {
+          "items": {
+            "$ref": "#/$defs/TaxonomyMinimum"
+          },
+          "title": "Coverage",
+          "type": "array"
+        },
+        "coverage_policy": {
+          "default": "fail_fast",
+          "enum": [
+            "fail_fast",
+            "best_effort"
+          ],
+          "title": "Coverage Policy",
+          "type": "string"
+        },
+        "coverage_search_limit": {
+          "default": 10000,
+          "minimum": 1,
+          "title": "Coverage Search Limit",
+          "type": "integer"
         }
       },
       "title": "CompositeSelectConfig",
@@ -1039,6 +1061,37 @@
         "taxonomy_path"
       ],
       "title": "TaxonomyGeneratorConfig",
+      "type": "object"
+    },
+    "TaxonomyMinimum": {
+      "additionalProperties": false,
+      "properties": {
+        "factor": {
+          "minLength": 1,
+          "title": "Factor",
+          "type": "string"
+        },
+        "path": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Path",
+          "type": "array"
+        },
+        "min_count": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Min Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "factor",
+        "path"
+      ],
+      "title": "TaxonomyMinimum",
       "type": "object"
     },
     "TransformGeneratorConfig": {

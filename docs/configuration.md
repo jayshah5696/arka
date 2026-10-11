@@ -346,6 +346,50 @@ Ranks and selects top-N elements using composite scores.
     quality: 1.0
 ```
 
+Add `coverage` to reserve minimum counts for explicit taxonomy paths before
+filling the remaining slots by weighted score:
+
+```yaml
+- type: select
+  target_count: 100
+  weights: {quality: 1.0}
+  coverage:
+    - factor: topic
+      path: [science, physics]
+      min_count: 5
+    - factor: format
+      path: [question_answer]
+      min_count: 10
+  coverage_policy: fail_fast
+  coverage_search_limit: 10000
+```
+
+`coverage` defaults to an empty list, which preserves the existing top-N behavior.
+Each entry has a required `factor` and non-empty `path`. `min_count` defaults to
+1. Paths exclude the taxonomy root. Path length specifies the protected depth;
+descendant assignments count toward their parent path. Assignments come only
+from `scores.quality_per_dim.taxonomy_nodes`. Missing assignments count toward
+no minimum. A record can satisfy minimums for several factors or parent paths.
+
+Selection first reserves records that cover the most unmet minimums, with score
+order breaking ties. If this cannot fit the target, Arka searches combinations
+of assignment groups. `coverage_search_limit` bounds this search to 10000 states
+by default. A search limit is reported as `search_limit`, not as proof that the
+constraints are infeasible. The reservation does not optimize the total score
+across all feasible combinations. Remaining slots use the existing weighted
+score, and score ties retain input order. Empty weights give equal scores.
+
+`coverage_policy` is `fail_fast` by default. Unmet constraints stop the stage
+after writing a diagnostic report. `best_effort` keeps the greedy reservation,
+fills available slots, and reports the shortfall. The report contains
+`taxonomy_coverage` with input and selected counts for each configured path,
+`unmet_constraints`, `coverage_status`, and `score_difference_from_top_n`.
+The score difference is the selected total minus the unconstrained top-N total.
+A failed stage emits no selected records and reports a null score difference.
+
+This control preserves requested representation. It does not infer labels or
+guarantee improvements in the trained model.
+
 ---
 
 ## 5. Embeddings (`embeddings`)

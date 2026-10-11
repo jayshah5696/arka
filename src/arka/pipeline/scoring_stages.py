@@ -17,6 +17,8 @@ from arka.pipeline.artifacts import StageArtifacts, StageReport
 from arka.pipeline.models import StageContext
 from arka.pipeline.stages import Stage
 from arka.records.models import ConversationRecord, Record, RecordScores
+from arka.taxonomy.coverage import extract_sampled_from_record
+from arka.taxonomy.selection import reserve_coverage
 
 
 class LabelingScoreStage(Stage):
@@ -415,11 +417,11 @@ class CompositeSelectStage(Stage):
             return records
         select_config = self.config
         weights = select_config.weights
-        if not weights:
+        if not weights and not select_config.coverage:
             return records
 
         target_count = select_config.target_count or len(records)
-        if target_count >= len(records):
+        if target_count >= len(records) and not select_config.coverage:
             return records
 
         scored_pairs: list[tuple[float, Record]] = []
@@ -428,6 +430,10 @@ class CompositeSelectStage(Stage):
             scored_pairs.append((composite, record))
 
         scored_pairs.sort(key=lambda pair: pair[0], reverse=True)
+        if select_config.coverage:
+            return self._select_with_coverage(
+                scored_pairs, ctx, select_config, target_count
+            )
         kept = [record for _, record in scored_pairs[:target_count]]
 
         dropped_with_events = [
@@ -447,6 +453,92 @@ class CompositeSelectStage(Stage):
         )
         return kept
 
+    def _select_with_coverage(
+        self,
+        scored_pairs: list[tuple[float, Record]],
+        ctx: StageContext,
+        config: CompositeSelectConfig,
+        target_count: int,
+    ) -> list[Record]:
+        target_count = min(target_count, len(scored_pairs))
+        memberships: list[frozenset[int]] = []
+        for _, record in scored_pairs:
+            nodes = extract_sampled_from_record(record) or {}
+            memberships.append(
+                frozenset(
+                    i
+                    for i, quota in enumerate(config.coverage)
+                    if isinstance(nodes.get(quota.factor), list)
+                    and nodes[quota.factor][: len(quota.path)] == quota.path
+                )
+            )
+        reservation = reserve_coverage(
+            memberships,
+            tuple(quota.min_count for quota in config.coverage),
+            target_count,
+            config.coverage_search_limit,
+        )
+        selected = set(reservation.indices)
+        for i in range(len(scored_pairs)):
+            if len(selected) >= target_count:
+                break
+            selected.add(i)
+
+        failed = (
+            reservation.status != "satisfied" and config.coverage_policy == "fail_fast"
+        )
+        if failed:
+            selected.clear()
+        coverage = [
+            {
+                **quota.model_dump(),
+                "input_count": sum(q in membership for membership in memberships),
+                "selected_count": sum(q in memberships[i] for i in selected),
+            }
+            for q, quota in enumerate(config.coverage)
+        ]
+        unmet = [
+            {**entry, "shortfall": entry["min_count"] - entry["selected_count"]}
+            for entry in coverage
+            if entry["selected_count"] < entry["min_count"]
+        ]
+        kept = [record for i, (_, record) in enumerate(scored_pairs) if i in selected]
+        dropped = (
+            []
+            if failed
+            else [
+                record.dropped_by(
+                    self.name,
+                    "composite_select",
+                    "not selected after taxonomy reservation",
+                )
+                for i, (_, record) in enumerate(scored_pairs)
+                if i not in selected
+            ]
+        )
+        self._write_artifacts(
+            ctx=ctx,
+            dropped_records=dropped,
+            count_in=len(scored_pairs),
+            count_out=len(kept),
+            taxonomy_coverage=coverage,
+            unmet_constraints=unmet,
+            coverage_status=reservation.status,
+            score_difference_from_top_n=(
+                None
+                if failed
+                else sum(
+                    score for i, (score, _) in enumerate(scored_pairs) if i in selected
+                )
+                - sum(score for score, _ in scored_pairs[:target_count])
+            ),
+        )
+        if failed:
+            raise ValueError(
+                f"Taxonomy coverage constraints are {reservation.status}; see stats.json"
+            )
+        return kept
+
     def _composite_score(self, record: Record, weights: dict[str, float]) -> float:
         total = 0.0
         for field, weight in weights.items():
@@ -463,6 +555,7 @@ class CompositeSelectStage(Stage):
         dropped_records: list[Record],
         count_in: int,
         count_out: int,
+        **extras: Any,
     ) -> None:
         StageArtifacts(ctx).write(
             report=StageReport(
@@ -473,6 +566,7 @@ class CompositeSelectStage(Stage):
                 drop_reasons={"composite_select": len(dropped_records)}
                 if dropped_records
                 else {},
+                **extras,
             ),
             dropped=dropped_records,
         )
