@@ -114,6 +114,12 @@ class OutputWriter:
             "drop_stage": last_event.stage if last_event is not None else None,
             "drop_reason": last_event.reason_code if last_event is not None else None,
             "drop_detail": last_event.details if last_event is not None else None,
+            "decon_benchmark": record.scores.decon_match.benchmark
+            if record.scores.decon_match
+            else None,
+            "decon_score": record.scores.decon_match.score
+            if record.scores.decon_match
+            else None,
         }
 
     def _last_stage_event(self, record: Record) -> StageEvent | None:
@@ -141,6 +147,8 @@ class OutputWriter:
             "drop_stage": pl.String,
             "drop_reason": pl.String,
             "drop_detail": pl.String,
+            "decon_benchmark": pl.String,
+            "decon_score": pl.Float64,
         }
 
     def _storage_row_to_record(self, row: dict[str, Any]) -> Record:

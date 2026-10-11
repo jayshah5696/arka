@@ -27,6 +27,15 @@ class RecordLineage(StrictModel):
     depth: int | None = None
 
 
+class DecontaminationMatch(StrictModel):
+    benchmark: str
+    eval_id: int
+    score: float = Field(ge=0, le=1)
+    field: str
+    window_start: int
+    window_end: int
+
+
 class RecordScores(StrictModel):
     quality: float | None = None
     quality_per_dim: dict[str, Any] = Field(default_factory=dict)
@@ -40,6 +49,7 @@ class RecordScores(StrictModel):
     humanness_per_dim: dict[str, float] | None = None
     humanness_checklist: dict[str, bool] | None = None
     humanness_reasoning: str | None = None
+    decon_match: DecontaminationMatch | None = None
 
 
 class StageEvent(StrictModel):

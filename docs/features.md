@@ -56,6 +56,9 @@ The first step in any synthetic generation pipeline is acquiring high-quality se
 
 ## 2. Generative Engines
 
+PDF sources can remove repeated byte blocks before chunking. This option
+reports removal spans and preserves original page numbers.
+
 Once seeds are normalized, they pass into the generation stage. Arka delegates the actual synthesis to Large Language Models (LLMs) configured via the `llm` block.
 
 * **Prompt-Based Generation**: The most flexible approach. Arka takes a user-defined prompt template (which can inject the seed instruction and response) and uses it to instruct the LLM to generate a *new*, distinct example.
@@ -63,6 +66,10 @@ Once seeds are normalized, they pass into the generation stage. Arka delegates t
 * **LLM & Structured Output**: Arka natively integrates with OpenAI-compatible APIs (including OpenRouter). It strictly enforces JSON schema adherence on the provider side, guaranteeing that the generated artifacts are always parseable and immediately usable.
 
 ## 3. Deduplication Strategies
+
+The `decontaminate` stage checks local benchmark n-grams with configurable
+IDF weighting and word windows. It can drop or flag matches and can report
+calibration curves before you choose a threshold.
 
 LLMs are prone to mode collapse—generating very similar responses for slightly different prompts. To maintain diversity, Arka implements robust deduplication.
 
