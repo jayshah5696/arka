@@ -23,6 +23,7 @@ _STAGE_MAPPING: dict[str, str] = {
     "identity_claim": "arka.pipeline.cheap_filters.IdentityClaimFilterStage",
     "artifact_filter": "arka.pipeline.artifact_filter.ArtifactFilterStage",
     "decontaminate": "arka.pipeline.decontamination.DecontaminateStage",
+    "reasoning_language_gate": "arka.pipeline.reasoning_language.ReasoningLanguageGateStage",
     "sentence_variance": "arka.pipeline.cheap_filters.SentenceVarianceFilterStage",
     "ifd": "arka.pipeline.ifd_stage.IFDFilterStage",
     "labeling_engine": "arka.pipeline.filter_stages.LabelingQualityFilterStage",

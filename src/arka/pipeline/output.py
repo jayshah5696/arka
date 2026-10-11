@@ -95,7 +95,7 @@ class OutputWriter:
         if record.payload.system is not None:
             messages.append({"role": "system", "content": record.payload.system})
         messages.append({"role": "user", "content": record.payload.instruction})
-        messages.append({"role": "assistant", "content": record.payload.response})
+        messages.append({"role": "assistant", "content": self._assistant_text(record)})
         return {"messages": messages}
 
     def _format_alpaca(self, record: Record) -> dict[str, Any]:
@@ -104,8 +104,13 @@ class OutputWriter:
         return {
             "instruction": record.payload.instruction,
             "input": "",
-            "output": record.payload.response,
+            "output": self._assistant_text(record),
         }
+
+    def _assistant_text(self, record: ConversationRecord) -> str:
+        if record.payload.reasoning:
+            return f"<think>\n{record.payload.reasoning}\n</think>\n\n{record.payload.response}"
+        return record.payload.response
 
     def _dropped_storage_row(self, record: Record) -> dict[str, Any]:
         last_event = self._last_stage_event(record)

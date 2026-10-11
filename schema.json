@@ -1004,6 +1004,72 @@
       "title": "PromptBasedGeneratorConfig",
       "type": "object"
     },
+    "ReasoningLanguageGateConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "reasoning_language_gate",
+          "default": "reasoning_language_gate",
+          "title": "Type",
+          "type": "string"
+        },
+        "reference_field": {
+          "default": "instruction",
+          "enum": [
+            "instruction",
+            "response",
+            "system"
+          ],
+          "title": "Reference Field",
+          "type": "string"
+        },
+        "checked_fields": {
+          "items": {
+            "enum": [
+              "reasoning",
+              "response",
+              "instruction",
+              "system"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Checked Fields",
+          "type": "array"
+        },
+        "on_mismatch": {
+          "default": "strip_trace",
+          "enum": [
+            "strip_trace",
+            "drop_record"
+          ],
+          "title": "On Mismatch",
+          "type": "string"
+        },
+        "min_confidence": {
+          "default": 0.6,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Min Confidence",
+          "type": "number"
+        },
+        "lid_model_path": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lid Model Path"
+        }
+      },
+      "title": "ReasoningLanguageGateConfig",
+      "type": "object"
+    },
     "RepetitionFilterConfig": {
       "additionalProperties": false,
       "properties": {
@@ -1419,6 +1485,7 @@
             "pair_delta": "#/$defs/PairDeltaFilterConfig",
             "pdf_source": "#/$defs/PDFSourceConfig",
             "prompt_based_generator": "#/$defs/PromptBasedGeneratorConfig",
+            "reasoning_language_gate": "#/$defs/ReasoningLanguageGateConfig",
             "repetition": "#/$defs/RepetitionFilterConfig",
             "reward_model": "#/$defs/RewardModelFilterConfig",
             "seed_source": "#/$defs/SeedSourceConfig",
@@ -1475,6 +1542,9 @@
           },
           {
             "$ref": "#/$defs/DecontaminateConfig"
+          },
+          {
+            "$ref": "#/$defs/ReasoningLanguageGateConfig"
           },
           {
             "$ref": "#/$defs/SentenceVarianceFilterConfig"

@@ -35,7 +35,9 @@ def test_seed_source_stage_reads_jsonl_into_conversation_records(
     tmp_path: Path,
 ) -> None:
     seed_path = tmp_path / "seeds.jsonl"
-    seed_path.write_text('{"instruction":" Say hello ","response":" Hello "}\n')
+    seed_path.write_text(
+        '{"instruction":" Say hello ","response":" Hello ","reasoning":" Think first "}\n'
+    )
     config = ConfigLoader().load_dict(build_config("./seeds.jsonl"))
     ctx = StageContext(
         run_id="run-1",
@@ -51,6 +53,7 @@ def test_seed_source_stage_reads_jsonl_into_conversation_records(
     assert len(records) == 1
     assert records[0].payload.instruction == "Say hello"
     assert records[0].payload.response == "Hello"
+    assert records[0].payload.reasoning == "Think first"
     assert records[0].source.type == "seed"
     assert records[0].id == records[0].lineage.root_id
     assert len(records[0].id) == 64
@@ -61,7 +64,9 @@ def test_seed_source_stage_reads_jsonl_into_conversation_records(
 
 def test_seed_source_stage_reads_csv_into_conversation_records(tmp_path: Path) -> None:
     seed_path = tmp_path / "seeds.csv"
-    seed_path.write_text("instruction,response\nQuestion,Answer\n")
+    seed_path.write_text(
+        "instruction,response,reasoning\nQuestion,Answer,Think first\n"
+    )
     config = ConfigLoader().load_dict(build_config("./seeds.csv"))
     ctx = StageContext(
         run_id="run-1",
@@ -77,6 +82,7 @@ def test_seed_source_stage_reads_csv_into_conversation_records(tmp_path: Path) -
     assert len(records) == 1
     assert records[0].payload.instruction == "Question"
     assert records[0].payload.response == "Answer"
+    assert records[0].payload.reasoning == "Think first"
 
 
 def test_seed_source_stage_ids_are_content_stable(tmp_path: Path) -> None:

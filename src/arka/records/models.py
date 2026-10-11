@@ -128,6 +128,7 @@ class ConversationPayload(StrictModel):
     response: str
     system: str | None = None
     turns: list[dict[str, Any]] | None = None
+    reasoning: str | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class ConversationRecord(Record):

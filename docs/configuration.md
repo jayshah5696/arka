@@ -324,6 +324,63 @@ as the count of merged removal spans, `pages_affected`, and
 across the page texts, or no text, the stage emits zero chunks and reports
 the empty result. A PDF with no extracted text still raises the existing error.
 
+#### `reasoning_language_gate`
+
+Conversation records can carry a separate optional `reasoning` string. JSONL
+and CSV seed sources preserve it; prompt-based and taxonomy generators preserve
+it when returned in structured JSON. Normalization trims it, and Parquet
+preserves it. Missing reasoning does not change existing payload hashes or
+answer-only exports. No new prompt instruction forces a model to emit reasoning.
+
+ChatML exports retained reasoning as `<think>\nTRACE\n</think>\n\nANSWER` in
+the assistant content. Alpaca uses the same text in `output`. This preserves
+both strings in the conversational `messages` format accepted by
+[Hugging Face TRL](https://huggingface.co/docs/trl/dataset_formats).
+Apply the target model's chat template when preparing training tokens.
+JSONL keeps `reasoning` and `response` separate, so you can adapt them to other
+model-specific reasoning formats. A stripped or absent trace exports only the
+answer, without a think block.
+
+```yaml
+- type: reasoning_language_gate
+  reference_field: instruction
+  checked_fields: [reasoning, response]
+  on_mismatch: strip_trace
+  min_confidence: 0.6
+  lid_model_path: models/lid.176.ftz
+```
+
+Install the optional backend with `uv sync --extra language`. Download a
+language-identification model separately. The compressed `lid.176.ftz` model
+is available from [fastText's official model page](https://fasttext.cc/docs/en/language-identification.html).
+The model has its own CC BY-SA 3.0 license. Model paths resolve relative to the
+configuration file. The stage does not download models or call an LLM.
+To run the optional native integration test, install the language extra and
+set `ARKA_TEST_LID_MODEL` to that local model path before `just check`.
+
+`reference_field` accepts `instruction`, `response`, or `system`.
+`checked_fields` is a non-empty list containing any of `reasoning`, `response`,
+`instruction`, or `system`. The confidence threshold must be between zero and
+one. Both reference and checked-field predictions must reach it before a
+mismatch triggers an action. Empty fields and low-confidence predictions pass
+unjudged. Records without a non-empty trace pass unchanged.
+
+The default `strip_trace` removes reasoning and keeps the answer, even when
+the mismatching checked field is the response. It recomputes the content hash,
+preserves IDs and lineage, and adds `reasoning_stripped` with detected languages
+and confidences. `drop_record` instead writes a `reasoning_language_mismatch`
+drop. LLM healing is not implemented and is rejected as an action.
+
+An unset `lid_model_path` logs a warning, passes records, and reports
+`enabled: false`. A supplied missing or invalid model raises an error;
+it does not silently disable the gate. Missing backend installation also
+raises an error with the install command.
+
+`stats.json` reports `stripped_count`, drop counts, per-field mismatch and
+confident comparison counts, mismatch rates among confident comparisons,
+low-confidence field counts, and `unjudged_reference_count`. Drop details
+and stripping events record the predictions used for the decision.
+
 #### `decontaminate`
 
 Check conversation text against local evaluation JSONL files before `select`:

@@ -21,6 +21,11 @@ dependencies = [
 [project.scripts]
 arka = "arka:main"
 
+[project.optional-dependencies]
+language = [
+    "fasttext>=0.9.3",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

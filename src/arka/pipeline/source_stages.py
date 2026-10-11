@@ -85,6 +85,7 @@ class SeedSourceStage(Stage):
                         response=str(row["response"]),
                         source_path=source_path,
                         config_hash=config_hash,
+                        reasoning=row.get("reasoning"),
                     )
                 )
         return records
@@ -102,6 +103,7 @@ class SeedSourceStage(Stage):
                         response=str(row["response"]),
                         source_path=source_path,
                         config_hash=config_hash,
+                        reasoning=row.get("reasoning"),
                     )
                 )
         return records
@@ -112,13 +114,19 @@ class SeedSourceStage(Stage):
         response: str,
         source_path: Path,
         config_hash: str,
+        reasoning: str | None = None,
     ) -> ConversationRecord:
         # SECURITY: Sanitize seed input by limiting length to mitigate prompt injection and context overflow
         normalized_instruction = sanitize_for_prompt(instruction.strip()[:16384])
         normalized_response = sanitize_for_prompt(response.strip()[:16384])
+        if reasoning is not None and not isinstance(reasoning, str):
+            raise ValueError(f"{source_path}: seed reasoning must be a string or null")
         payload = ConversationPayload(
             instruction=normalized_instruction,
             response=normalized_response,
+            reasoning=sanitize_for_prompt(reasoning.strip()[:16384]) or None
+            if reasoning is not None
+            else None,
         )
         rid = record_id(payload)
         return ConversationRecord(
