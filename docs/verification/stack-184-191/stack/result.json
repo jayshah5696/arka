@@ -1,0 +1,10 @@
+{
+  "status": "passed",
+  "provider_calls": 7,
+  "resume_provider_calls": 0,
+  "export_count": 2,
+  "boilerplate_bytes_removed": 1200,
+  "traces_stripped": 1,
+  "benchmark_leaks_dropped": 1,
+  "real_fasttext_model": "arka-lid.176.ftz"
+}

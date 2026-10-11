@@ -1,0 +1,20 @@
+{
+  "stage": "02c_repetition_filter",
+  "count_in": 6,
+  "count_out": 5,
+  "dropped_count": 1,
+  "drop_reasons": {
+    "repetitive_top_ngram": 1
+  },
+  "max_observed_fractions": {
+    "top_2": 0.6964091403699674,
+    "top_3": 0.9575625680087051,
+    "top_4": 0.9869423286180631,
+    "dup_5": 1.0,
+    "dup_6": 1.0,
+    "dup_7": 1.0,
+    "dup_8": 1.0,
+    "dup_9": 1.0,
+    "dup_10": 1.0
+  }
+}

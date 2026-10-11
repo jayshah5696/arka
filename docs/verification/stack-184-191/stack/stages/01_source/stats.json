@@ -1,0 +1,11 @@
+{
+  "stage": "01_source",
+  "count_in": 0,
+  "count_out": 2,
+  "dropped_count": 0,
+  "drop_reasons": {},
+  "boilerplate_bytes_removed": 1200,
+  "boilerplate_blocks_cut": 2,
+  "pages_affected": 2,
+  "docs_stripped_empty": 0
+}

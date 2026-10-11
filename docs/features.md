@@ -56,6 +56,12 @@ The first step in any synthetic generation pipeline is acquiring high-quality se
 
 ## 2. Generative Engines
 
+Conversation records can preserve a separate reasoning trace. The optional
+`reasoning_language_gate` compares it and the answer against the reference
+language using a local fastText model. It can remove a mismatched trace or
+drop the record. ChatML and Alpaca exports preserve retained traces in think
+blocks, while JSONL and Parquet keep them separate from answers.
+
 PDF sources can remove repeated byte blocks before chunking. This option
 reports removal spans and preserves original page numbers.
 

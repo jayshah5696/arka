@@ -244,7 +244,15 @@ def test_prompt_based_generator_accepts_grounded_chunk_records(tmp_path: Path) -
     ctx = _config(tmp_path, target_count=1, generation_multiplier=1)
     stage = PromptBasedGeneratorStage(
         llm_client=SequentialFakeLLMClient(
-            [_generated_json("Grounded question", "Grounded answer")]
+            [
+                json.dumps(
+                    {
+                        "instruction": "Grounded question",
+                        "response": "Grounded answer",
+                        "reasoning": "A grounded trace.",
+                    }
+                )
+            ]
         )
     )
 
@@ -252,6 +260,7 @@ def test_prompt_based_generator_accepts_grounded_chunk_records(tmp_path: Path) -
 
     assert len(records) == 1
     assert records[0].source.doc_id == "doc-1"
+    assert records[0].payload.reasoning == "A grounded trace."
     assert records[0].source.chunk_id == "doc-1:0"
     assert records[0].lineage.parent_ids == ["chunk-1"]
 

@@ -102,7 +102,7 @@ class _FakeLLM:
         instr = f"call-{self.calls}-instruction"
         resp = f"call-{self.calls}-response"
         text = json.dumps({"instruction": instr, "response": resp})
-        parsed = schema(instruction=instr, response=resp)
+        parsed = schema(instruction=instr, response=resp, reasoning="A valid trace.")
         return LLMOutput(
             text=text,
             parsed=parsed,
@@ -163,6 +163,7 @@ def test_taxonomy_generator_produces_target_count_records(tmp_path: Path) -> Non
     out = stage.run([], ctx)
 
     assert len(out) == 4
+    assert all(r.payload.reasoning == "A valid trace." for r in out)
     assert all(isinstance(r, ConversationRecord) for r in out)
     assert fake.calls == 4
 

@@ -50,6 +50,7 @@ logger = logging.getLogger(__name__)
 class _GeneratedConversation(BaseModel):
     instruction: str
     response: str
+    reasoning: str | None = None
 
 
 _META_PROMPT = (
@@ -213,7 +214,10 @@ class TaxonomyGeneratorStage(Stage):
         return ConversationRecord(
             id=rid,
             content_hash=hashlib.sha256(
-                f"{parsed.instruction}\n{parsed.response}".encode()
+                (
+                    f"{parsed.instruction}\n{parsed.response}"
+                    + (f"\n{parsed.reasoning}" if parsed.reasoning is not None else "")
+                ).encode()
             ).hexdigest(),
             source=RecordSource(type="taxonomy"),
             lineage=RecordLineage(
@@ -224,6 +228,7 @@ class TaxonomyGeneratorStage(Stage):
             payload=ConversationPayload(
                 instruction=parsed.instruction,
                 response=parsed.response,
+                reasoning=parsed.reasoning,
             ),
             scores=RecordScores(
                 quality_per_dim={"taxonomy_nodes": sampled},

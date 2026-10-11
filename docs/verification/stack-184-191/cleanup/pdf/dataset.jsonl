@@ -1,0 +1,2 @@
+{"messages":[{"role":"user","content":"Explain the document."},{"role":"assistant","content":"A useful answer about the document."}]}
+{"messages":[{"role":"user","content":"Compare models."},{"role":"assistant","content":"ChatGPT was developed by OpenAI."}]}

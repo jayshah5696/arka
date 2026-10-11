@@ -1,0 +1,32 @@
+{
+  "stage": "05_composite_select",
+  "count_in": 8,
+  "count_out": 2,
+  "dropped_count": 6,
+  "drop_reasons": {
+    "composite_select": 6
+  },
+  "taxonomy_coverage": [
+    {
+      "factor": "topic",
+      "path": [
+        "science"
+      ],
+      "min_count": 1,
+      "input_count": 1,
+      "selected_count": 1
+    },
+    {
+      "factor": "topic",
+      "path": [
+        "arts"
+      ],
+      "min_count": 1,
+      "input_count": 7,
+      "selected_count": 1
+    }
+  ],
+  "unmet_constraints": [],
+  "coverage_status": "satisfied",
+  "score_difference_from_top_n": 0.0
+}

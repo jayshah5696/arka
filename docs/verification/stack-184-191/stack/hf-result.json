@@ -1,0 +1,13 @@
+{
+  "status": "passed",
+  "dataset_rows": 2,
+  "formats_loaded": [
+    "chatml",
+    "jsonl",
+    "alpaca"
+  ],
+  "tokenizer": "Qwen/Qwen3-0.6B",
+  "retained_reasoning_and_answer": true,
+  "think_blocks": 1,
+  "training_tokens": 66
+}

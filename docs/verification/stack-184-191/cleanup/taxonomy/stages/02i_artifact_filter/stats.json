@@ -1,0 +1,10 @@
+{
+  "stage": "02i_artifact_filter",
+  "count_in": 8,
+  "count_out": 8,
+  "dropped_count": 0,
+  "drop_reasons": {},
+  "group_match_counts": {},
+  "stripped_count": 0,
+  "strip_match_count": 0
+}

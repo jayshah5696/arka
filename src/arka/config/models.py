@@ -297,6 +297,17 @@ class PairDeltaFilterConfig(StrictModel):
     length_ratio_max: float | None = None
 
 
+class ReasoningLanguageGateConfig(StrictModel):
+    type: Literal["reasoning_language_gate"] = "reasoning_language_gate"
+    reference_field: Literal["instruction", "response", "system"] = "instruction"
+    checked_fields: list[Literal["reasoning", "response", "instruction", "system"]] = (
+        Field(default_factory=lambda: ["reasoning", "response"], min_length=1)
+    )
+    on_mismatch: Literal["strip_trace", "drop_record"] = "strip_trace"
+    min_confidence: float = Field(default=0.6, ge=0, le=1)
+    lid_model_path: str | None = Field(default=None, min_length=1)
+
+
 class DecontaminateConfig(StrictModel):
     type: Literal["decontaminate"] = "decontaminate"
     eval_paths: list[Annotated[str, Field(min_length=1)]] = Field(min_length=1)
@@ -377,6 +388,7 @@ FilterStageConfig = Annotated[
     | Annotated[IdentityClaimFilterConfig, Tag("identity_claim")]
     | Annotated[ArtifactFilterConfig, Tag("artifact_filter")]
     | Annotated[DecontaminateConfig, Tag("decontaminate")]
+    | Annotated[ReasoningLanguageGateConfig, Tag("reasoning_language_gate")]
     | Annotated[SentenceVarianceFilterConfig, Tag("sentence_variance")]
     | Annotated[IFDFilterConfig, Tag("ifd")]
     | Annotated[LabelingFilterConfig, Tag("labeling_engine")]
@@ -561,6 +573,7 @@ PipelineStageConfig = Annotated[
     | Annotated[IdentityClaimFilterConfig, Tag("identity_claim")]
     | Annotated[ArtifactFilterConfig, Tag("artifact_filter")]
     | Annotated[DecontaminateConfig, Tag("decontaminate")]
+    | Annotated[ReasoningLanguageGateConfig, Tag("reasoning_language_gate")]
     | Annotated[SentenceVarianceFilterConfig, Tag("sentence_variance")]
     | Annotated[IFDFilterConfig, Tag("ifd")]
     | Annotated[LabelingFilterConfig, Tag("labeling_engine")]

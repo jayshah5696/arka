@@ -1,0 +1,10 @@
+{
+  "stage": "02c_exact_dedup",
+  "count_in": 3,
+  "count_out": 2,
+  "dropped_count": 1,
+  "drop_reasons": {
+    "exact_duplicate": 1
+  },
+  "cluster_count": 1
+}

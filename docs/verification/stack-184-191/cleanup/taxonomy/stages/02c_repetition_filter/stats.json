@@ -1,0 +1,8 @@
+{
+  "stage": "02c_repetition_filter",
+  "count_in": 8,
+  "count_out": 8,
+  "dropped_count": 0,
+  "drop_reasons": {},
+  "max_observed_fractions": {}
+}

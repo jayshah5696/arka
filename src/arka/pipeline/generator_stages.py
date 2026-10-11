@@ -72,6 +72,7 @@ _JSON_OBJECT_PATTERN = re.compile(r"\{.*\}", re.DOTALL)
 class GeneratedConversation(StrictModel):
     instruction: str
     response: str
+    reasoning: str | None = None
 
 
 class RawGeneratorResponse(StrictModel):
@@ -401,6 +402,9 @@ class PromptBasedGeneratorStage(Stage):
         return GeneratedConversation(
             instruction=parsed.instruction.strip(),
             response=parsed.response.strip(),
+            reasoning=parsed.reasoning.strip() or None
+            if parsed.reasoning is not None
+            else None,
         )
 
     def _extract_json_text(self, text: str) -> str:
@@ -431,6 +435,7 @@ class PromptBasedGeneratorStage(Stage):
         conversation_payload = ConversationPayload(
             instruction=payload.instruction,
             response=payload.response,
+            reasoning=payload.reasoning,
         )
         lineage = RecordLineage(
             root_id=parent.lineage.root_id,

@@ -1,0 +1,22 @@
+{
+  "stage": "02j_reasoning_language_gate",
+  "count_in": 4,
+  "count_out": 4,
+  "dropped_count": 0,
+  "drop_reasons": {},
+  "enabled": true,
+  "stripped_count": 1,
+  "field_mismatch_counts": {
+    "reasoning": 1
+  },
+  "field_checked_counts": {
+    "reasoning": 3,
+    "response": 3
+  },
+  "field_mismatch_rates": {
+    "reasoning": 0.3333333333333333,
+    "response": 0.0
+  },
+  "field_low_confidence_counts": {},
+  "unjudged_reference_count": 0
+}

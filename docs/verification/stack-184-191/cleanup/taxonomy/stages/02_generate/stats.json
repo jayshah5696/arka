@@ -1,0 +1,15 @@
+{
+  "stage": "02_generate",
+  "count_in": 0,
+  "count_out": 8,
+  "dropped_count": 0,
+  "drop_reasons": {},
+  "generated_count": 8,
+  "taxonomy_path": "/tmp/arka-verification-20261010-cleanup/taxonomy.json",
+  "strategies": [
+    {
+      "name": "default",
+      "budget": 8
+    }
+  ]
+}
