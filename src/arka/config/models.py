@@ -187,6 +187,30 @@ class LanguageFilterConfig(StrictModel):
     allowed: list[str] = Field(default_factory=lambda: ["en"])
 
 
+class RepetitionFilterConfig(StrictModel):
+    type: Literal["repetition"] = "repetition"
+    check_fields: list[Literal["instruction", "response", "system"]] = Field(
+        default_factory=lambda: ["response"], min_length=1
+    )
+    min_text_chars: int = Field(default=200, ge=0)
+    top_ngram_thresholds: dict[
+        Literal[2, 3, 4], Annotated[float, Field(ge=0, le=1)]
+    ] = Field(default_factory=lambda: {2: 0.20, 3: 0.18, 4: 0.16})
+    dup_ngram_thresholds: dict[
+        Literal[5, 6, 7, 8, 9, 10], Annotated[float, Field(ge=0, le=1)]
+    ] = Field(
+        default_factory=lambda: {
+            5: 0.15,
+            6: 0.14,
+            7: 0.13,
+            8: 0.12,
+            9: 0.11,
+            10: 0.10,
+        }
+    )
+    max_char_run: int = Field(default=50, ge=1)
+
+
 class LabelingFilterConfig(StrictModel):
     type: Literal["labeling_engine"] = "labeling_engine"
     rubric_path: str | None = None
@@ -257,6 +281,7 @@ class ComplexityEloFilterConfig(StrictModel):
 FilterStageConfig = Annotated[
     Annotated[LengthFilterConfig, Tag("length")]
     | Annotated[LanguageFilterConfig, Tag("language")]
+    | Annotated[RepetitionFilterConfig, Tag("repetition")]
     | Annotated[SentenceVarianceFilterConfig, Tag("sentence_variance")]
     | Annotated[IFDFilterConfig, Tag("ifd")]
     | Annotated[LabelingFilterConfig, Tag("labeling_engine")]
@@ -433,6 +458,7 @@ PipelineStageConfig = Annotated[
     | Annotated[NearDedupConfig, Tag("near")]
     | Annotated[LengthFilterConfig, Tag("length")]
     | Annotated[LanguageFilterConfig, Tag("language")]
+    | Annotated[RepetitionFilterConfig, Tag("repetition")]
     | Annotated[SentenceVarianceFilterConfig, Tag("sentence_variance")]
     | Annotated[IFDFilterConfig, Tag("ifd")]
     | Annotated[LabelingFilterConfig, Tag("labeling_engine")]

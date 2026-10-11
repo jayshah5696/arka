@@ -5,17 +5,21 @@ from __future__ import annotations
 import logging
 import re
 import statistics
+from itertools import groupby
 from typing import TYPE_CHECKING
 
 from arka.config.models import (
     LanguageFilterConfig,
     LengthFilterConfig,
+    RepetitionFilterConfig,
     SentenceVarianceFilterConfig,
 )
+from arka.pipeline.artifacts import StageArtifacts, StageReport
 from arka.pipeline.stages import BaseFilterStage
 
 if TYPE_CHECKING:
-    from arka.records.models import ConversationRecord
+    from arka.pipeline.models import StageContext
+    from arka.records.models import ConversationRecord, Record
 
 logger = logging.getLogger(__name__)
 
@@ -128,3 +132,103 @@ class SentenceVarianceFilterStage(BaseFilterStage):
         if cv >= config.min_cv:
             return None
         return ("low_sentence_variance",)
+
+
+def _covered_fraction(spans: list[tuple[int, int]], text_length: int) -> float:
+    """Count characters in matching spans once, including internal whitespace."""
+    covered = 0
+    end = 0
+    for start, stop in sorted(spans):
+        covered += max(0, stop - max(start, end))
+        end = max(end, stop)
+    return covered / text_length
+
+
+class RepetitionFilterStage(BaseFilterStage):
+    """Drop clear character runs or repeated word sequences without LLM calls."""
+
+    name = "02c_repetition_filter"
+    config_type = "repetition"
+    config_class = RepetitionFilterConfig
+
+    def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
+        self.max_observed_fractions: dict[str, float] = {}
+        return super().run(records, ctx)
+
+    def _check_record(
+        self, record: ConversationRecord, config: RepetitionFilterConfig
+    ) -> tuple[str, str] | None:
+        for field in config.check_fields:
+            text = getattr(record.payload, field) or ""
+            # Character runs are reliable even below the n-gram length gate.
+            if any(
+                sum(1 for _ in run) > config.max_char_run for _, run in groupby(text)
+            ):
+                return ("long_char_run", f"field={field}")
+            if len(text) < config.min_text_chars or not text:
+                continue
+
+            words = list(re.finditer(r"\S+", text))
+            failure: tuple[str, str] | None = None
+            for family, thresholds in (
+                ("top", config.top_ngram_thresholds),
+                ("dup", config.dup_ngram_thresholds),
+            ):
+                for n, threshold in thresholds.items():
+                    occurrences: dict[tuple[str, ...], list[tuple[int, int]]] = {}
+                    for i in range(len(words) - n + 1):
+                        key = tuple(word.group() for word in words[i : i + n])
+                        occurrences.setdefault(key, []).append(
+                            (words[i].start(), words[i + n - 1].end())
+                        )
+                    repeated = [
+                        spans for spans in occurrences.values() if len(spans) > 1
+                    ]
+                    if family == "top" and repeated:
+                        max_count = max(len(spans) for spans in repeated)
+                        fraction = max(
+                            _covered_fraction(spans, len(text))
+                            for spans in repeated
+                            if len(spans) == max_count
+                        )
+                    else:
+                        fraction = _covered_fraction(
+                            [span for spans in repeated for span in spans], len(text)
+                        )
+                    metric = f"{family}_{n}"
+                    self.max_observed_fractions[metric] = max(
+                        self.max_observed_fractions.get(metric, 0.0), fraction
+                    )
+                    if fraction > threshold and failure is None:
+                        reason = (
+                            "repetitive_top_ngram"
+                            if family == "top"
+                            else "repetitive_dup_ngrams"
+                        )
+                        failure = (
+                            reason,
+                            f"field={field}, metric={metric}, fraction={fraction:.6f}",
+                        )
+            if failure:
+                return failure
+        return None
+
+    def _write_artifacts(
+        self,
+        ctx: StageContext,
+        count_in: int,
+        count_out: int,
+        dropped: list[Record],
+        drop_reasons: dict[str, int],
+    ) -> None:
+        StageArtifacts(ctx).write(
+            report=StageReport(
+                stage=self.name,
+                count_in=count_in,
+                count_out=count_out,
+                dropped_count=len(dropped),
+                drop_reasons=drop_reasons,
+                max_observed_fractions=self.max_observed_fractions,
+            ),
+            dropped=dropped if dropped else None,
+        )

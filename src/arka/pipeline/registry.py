@@ -19,6 +19,7 @@ _STAGE_MAPPING: dict[str, str] = {
     "near": "arka.pipeline.dedup_stages.NearDedupStage",
     "length": "arka.pipeline.cheap_filters.LengthFilterStage",
     "language": "arka.pipeline.cheap_filters.LanguageFilterStage",
+    "repetition": "arka.pipeline.cheap_filters.RepetitionFilterStage",
     "sentence_variance": "arka.pipeline.cheap_filters.SentenceVarianceFilterStage",
     "ifd": "arka.pipeline.ifd_stage.IFDFilterStage",
     "labeling_engine": "arka.pipeline.filter_stages.LabelingQualityFilterStage",
