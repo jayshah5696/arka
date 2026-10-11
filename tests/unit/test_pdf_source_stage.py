@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,7 @@ from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 from arka.config.loader import ConfigLoader
+from arka.config.models import PDFSourceConfig
 from arka.pipeline.models import StageContext
 from arka.pipeline.output import OutputWriter
 from arka.pipeline.source_stages import PDFSourceStage
@@ -208,4 +210,45 @@ def test_pdf_chunk_with_only_page_separator_is_skipped(tmp_path: Path) -> None:
         (0, 1),
         (3, 4),
         (3, 4),
+    ]
+
+
+@pytest.mark.parametrize("minimum, expected_count", [(1, 2), (100, 0)])
+def test_pdf_boilerplate_cleanup_reports_cuts_and_empty_documents(
+    tmp_path: Path, minimum: int, expected_count: int
+) -> None:
+    header = "Header" * 100
+    _write_pages(tmp_path / "pages.pdf", [header + "A body", "", header + "B body"])
+    ctx = _ctx(tmp_path, "pages.pdf", chunk_size=10, overlap=0)
+    config = PDFSourceConfig(
+        path="pages.pdf",
+        chunk_size_chars=10,
+        chunk_overlap_chars=0,
+        boilerplate_strip=True,
+        min_remaining_bytes=minimum,
+    )
+    records = PDFSourceStage(tmp_path, config).run([], ctx)
+    assert len(records) == expected_count
+    assert all("Header" not in r.payload.text for r in records)
+    if records:
+        assert [(r.source.page_start, r.source.page_end) for r in records] == [
+            (1, 3),
+            (3, 3),
+        ]
+        joined = "A body\n\nB body"
+        assert all(
+            joined[r.payload.char_start : r.payload.char_end] == r.payload.text
+            for r in records
+        )
+    stats = json.loads((ctx.work_dir / "stats.json").read_text())
+    assert stats["boilerplate_bytes_removed"] == 1200
+    assert stats["pages_affected"] == 2
+    assert stats["docs_stripped_empty"] == (expected_count == 0)
+    spans = [
+        json.loads(line)
+        for line in (ctx.work_dir / "boilerplate_spans.jsonl").read_text().splitlines()
+    ]
+    assert [(s["page"], s["start"], s["end"]) for s in spans] == [
+        (1, 0, 600),
+        (3, 0, 600),
     ]

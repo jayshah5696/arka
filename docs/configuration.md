@@ -292,6 +292,38 @@ Filters out generations containing sensitive phrases or secrets.
   phrases: ["SECRET_TOKEN"]
 ```
 
+#### PDF boilerplate removal
+
+Enable repeated-block removal inside `pdf_source`, before chunking:
+
+```yaml
+- type: pdf_source
+  path: report.pdf
+  boilerplate_strip: true
+  min_block_bytes: 500
+  min_doc_frequency: 2
+  min_remaining_bytes: 100
+```
+
+The default `boilerplate_strip: false` preserves existing chunks. The three
+numeric options require positive block size, at least two distinct pages,
+and a non-negative remaining-byte threshold. Detection compares aligned UTF-8
+byte blocks within one PDF. It extends confirmed blocks through identical
+adjacent bytes and merges overlapping cuts. Repeats without a shared aligned
+block can be missed. It removes all detected occurrences, including the first.
+
+Original page numbers remain intact. Chunk character offsets refer to the
+cleaned, trimmed page texts joined with two newlines. `boilerplate_spans.jsonl`
+contains original trimmed-page UTF-8 byte offsets, removed-content BLAKE2b
+hashes, and distinct-page occurrence counts. These byte offsets differ from
+chunk character offsets. No removed text is stored in the span report.
+
+`stats.json` reports `boilerplate_bytes_removed`, `boilerplate_blocks_cut`
+as the count of merged removal spans, `pages_affected`, and
+`docs_stripped_empty`. If cleanup leaves fewer than `min_remaining_bytes`
+across the page texts, or no text, the stage emits zero chunks and reports
+the empty result. A PDF with no extracted text still raises the existing error.
+
 #### `identity_claim`
 
 Drops records containing foreign model or lab identity claims in the configured

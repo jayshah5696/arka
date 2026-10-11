@@ -4,14 +4,17 @@ import csv
 import hashlib
 import json
 from bisect import bisect_left, bisect_right
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
+from arka.common.pdf_boilerplate import strip_boilerplate
 from arka.common.security import sanitize_for_prompt
 from arka.config.models import PDFSourceConfig, SeedSourceConfig
+from arka.pipeline.artifacts import StageArtifacts, StageReport
 from arka.pipeline.models import StageContext
 from arka.pipeline.stages import Stage
 from arka.records.identity import config_hash, content_hash, file_hash, record_id
@@ -180,6 +183,25 @@ class PDFSourceStage(Stage):
                 "PDF extraction produced no text; scanned or empty PDFs are not supported"
             )
 
+        spans = []
+        stripped_empty = False
+        if self.config.boilerplate_strip:
+            page_texts, spans = strip_boilerplate(
+                page_texts, self.config.min_block_bytes, self.config.min_doc_frequency
+            )
+            remaining_bytes = sum(len(text.encode("utf-8")) for _, text in page_texts)
+            stripped_empty = (
+                remaining_bytes < self.config.min_remaining_bytes or not remaining_bytes
+            )
+            ctx.work_dir.mkdir(parents=True, exist_ok=True)
+            (ctx.work_dir / "boilerplate_spans.jsonl").write_text(
+                "".join(json.dumps(asdict(span)) + "\n" for span in spans),
+                encoding="utf-8",
+            )
+            extracted_text = "\n\n".join(text for _, text in page_texts if text)
+            if stripped_empty:
+                extracted_text = ""
+
         # Retain original page numbers in the normalized joined text.
         page_numbers: list[int] = []
         page_starts: list[int] = []
@@ -248,6 +270,18 @@ class PDFSourceStage(Stage):
                     scores=RecordScores(),
                     config_hash=config_hash_value,
                     created_at=datetime.now(UTC).isoformat(),
+                )
+            )
+        if self.config.boilerplate_strip:
+            StageArtifacts(ctx).write(
+                report=StageReport(
+                    stage=self.name,
+                    count_in=0,
+                    count_out=len(chunks),
+                    boilerplate_bytes_removed=sum(s.end - s.start for s in spans),
+                    boilerplate_blocks_cut=len(spans),
+                    pages_affected=len({s.page for s in spans}),
+                    docs_stripped_empty=int(stripped_empty),
                 )
             )
         return chunks
