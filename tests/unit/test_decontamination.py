@@ -117,7 +117,8 @@ def test_window_does_not_combine_distant_chance_matches(tmp_path):
     assert embedded.score == 1
 
 
-def test_calibration_reports_curve_and_preserves_records(tmp_path):
+@pytest.mark.parametrize("contaminated_prefix", [False, True])
+def test_calibration_reports_curve_and_preserves_records(tmp_path, contaminated_prefix):
     path = eval_file(
         tmp_path / "eval.jsonl",
         ["Calculate the total number of red apples in the large basket."],
@@ -125,11 +126,19 @@ def test_calibration_reports_curve_and_preserves_records(tmp_path):
     ctx = context(
         tmp_path, {"type": "decontaminate", "eval_paths": [path], "calibrate": True}
     )
-    originals = [record("Explain how bread rises.")]
+    originals = [
+        record(
+            "Calculate the total number of red apples in the large basket."
+            if contaminated_prefix
+            else "Explain how bread rises."
+        )
+    ]
     assert DecontaminateStage(project_root=tmp_path).run(originals, ctx) == originals
     stats = json.loads((ctx.work_dir / "stats.json").read_text())
     curve = stats["calibration_curve"]
-    assert len(curve) > 1 and all(row["clean_rows_dropped"] == 0 for row in curve)
+    assert len(curve) > 1
+    assert all(row["clean_rows_dropped"] == int(contaminated_prefix) for row in curve)
+    assert curve[-1]["recall"] < 1  # A dictionary substitution is not a perfect match.
     assert any(row["recall"] == 1 for row in curve)
     assert stats["calibration_plant_count"] == 3
     assert stats["dropped_count"] == 0

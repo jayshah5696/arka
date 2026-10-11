@@ -371,7 +371,8 @@ short skipped items, and unscorable items.
 
 To select a threshold, first run with `calibrate: true` and no threshold. It
 keeps records unchanged, plants case-swapped, whitespace-jittered, and one-word
-dictionary substitutions in copies of the first conversation instruction,
+dictionary substitutions in copies of the first conversation instruction
+without indexed overlap, or an empty prefix if none is available,
 and sweeps thresholds from 0.01 to 1.00. The report contains
 `calibration_curve`, plant and input counts, and the highest
 `recommended_threshold` achieving at least 0.99 planted recall, or null if none

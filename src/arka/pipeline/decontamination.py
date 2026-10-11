@@ -242,6 +242,8 @@ class DecontaminateStage(Stage):
                 r.payload.instruction
                 for r in records
                 if isinstance(r, ConversationRecord)
+                and index.match(r.payload.instruction, "instruction", cfg.window_factor)
+                is None
             ),
             "",
         )
