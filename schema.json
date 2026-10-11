@@ -1,5 +1,61 @@
 {
   "$defs": {
+    "ArtifactFilterConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "artifact_filter",
+          "default": "artifact_filter",
+          "title": "Type",
+          "type": "string"
+        },
+        "groups": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "propertyNames": {
+            "minLength": 1
+          },
+          "title": "Groups",
+          "type": "object"
+        },
+        "group_action": {
+          "additionalProperties": {
+            "enum": [
+              "strip",
+              "drop"
+            ],
+            "type": "string"
+          },
+          "title": "Group Action",
+          "type": "object"
+        },
+        "max_strips_per_record": {
+          "default": 3,
+          "minimum": 0,
+          "title": "Max Strips Per Record",
+          "type": "integer"
+        },
+        "fields": {
+          "items": {
+            "enum": [
+              "instruction",
+              "response",
+              "system"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Fields",
+          "type": "array"
+        }
+      },
+      "title": "ArtifactFilterConfig",
+      "type": "object"
+    },
     "CanaryFilterConfig": {
       "additionalProperties": false,
       "properties": {
@@ -1230,6 +1286,7 @@
       "items": {
         "discriminator": {
           "mapping": {
+            "artifact_filter": "#/$defs/ArtifactFilterConfig",
             "canary": "#/$defs/CanaryFilterConfig",
             "complexity_elo": "#/$defs/ComplexityEloFilterConfig",
             "double_critic": "#/$defs/DoubleCriticFilterConfig",
@@ -1295,6 +1352,9 @@
           },
           {
             "$ref": "#/$defs/IdentityClaimFilterConfig"
+          },
+          {
+            "$ref": "#/$defs/ArtifactFilterConfig"
           },
           {
             "$ref": "#/$defs/SentenceVarianceFilterConfig"

@@ -14,6 +14,7 @@ from pydantic import (
 )
 
 from arka.common.models import StrictModel
+from arka.common.text_patterns import DEFAULT_ARTIFACT_GROUPS
 
 
 class OpenAICompatibleConfig(StrictModel):
@@ -234,6 +235,44 @@ class IdentityClaimFilterConfig(StrictModel):
         return self
 
 
+class ArtifactFilterConfig(StrictModel):
+    type: Literal["artifact_filter"] = "artifact_filter"
+    groups: dict[Annotated[str, Field(min_length=1)], list[str]] = Field(
+        default_factory=lambda: {
+            group: list(patterns) for group, patterns in DEFAULT_ARTIFACT_GROUPS.items()
+        }
+    )
+    group_action: dict[str, Literal["strip", "drop"]] = Field(default_factory=dict)
+    max_strips_per_record: int = Field(default=3, ge=0)
+    fields: list[Literal["instruction", "response", "system"]] = Field(
+        default_factory=lambda: ["instruction", "response"], min_length=1
+    )
+
+    @model_validator(mode="after")
+    def validate_patterns(self) -> ArtifactFilterConfig:
+        unknown = set(self.group_action) - set(self.groups)
+        if unknown:
+            raise ValueError(
+                f"Artifact actions reference unknown groups: {sorted(unknown)}"
+            )
+        for group, patterns in self.groups.items():
+            for pattern in patterns:
+                try:
+                    compiled = re.compile(pattern, re.IGNORECASE)
+                except re.error as exc:
+                    raise ValueError(
+                        f"Invalid artifact regex in {group}: {exc}"
+                    ) from exc
+                if compiled.search("") is not None:
+                    raise ValueError(f"Artifact regex in {group} must consume text")
+        return self
+
+    def action_for(self, group: str) -> Literal["strip", "drop"]:
+        return self.group_action.get(
+            group, "strip" if group in ("openers", "closers") else "drop"
+        )
+
+
 class LabelingFilterConfig(StrictModel):
     type: Literal["labeling_engine"] = "labeling_engine"
     rubric_path: str | None = None
@@ -315,6 +354,7 @@ FilterStageConfig = Annotated[
     | Annotated[LanguageFilterConfig, Tag("language")]
     | Annotated[RepetitionFilterConfig, Tag("repetition")]
     | Annotated[IdentityClaimFilterConfig, Tag("identity_claim")]
+    | Annotated[ArtifactFilterConfig, Tag("artifact_filter")]
     | Annotated[SentenceVarianceFilterConfig, Tag("sentence_variance")]
     | Annotated[IFDFilterConfig, Tag("ifd")]
     | Annotated[LabelingFilterConfig, Tag("labeling_engine")]
@@ -493,6 +533,7 @@ PipelineStageConfig = Annotated[
     | Annotated[LanguageFilterConfig, Tag("language")]
     | Annotated[RepetitionFilterConfig, Tag("repetition")]
     | Annotated[IdentityClaimFilterConfig, Tag("identity_claim")]
+    | Annotated[ArtifactFilterConfig, Tag("artifact_filter")]
     | Annotated[SentenceVarianceFilterConfig, Tag("sentence_variance")]
     | Annotated[IFDFilterConfig, Tag("ifd")]
     | Annotated[LabelingFilterConfig, Tag("labeling_engine")]
