@@ -1,0 +1,15 @@
+{
+  "implementation_head": "d72adbe7aceb50ccf3a78d49dbace3693eb4ca1a",
+  "language_model": "lid.176.ftz",
+  "language_model_sha256": "8f3472cfe8738a7b6099e8e999c3cbfae0dcd15696aac7d7738a8039db603e83",
+  "fixture_provider": "actual OpenAI SDK over loopback HTTP with deterministic responses",
+  "quality_audits": {
+    "repetition_500_records": "pending",
+    "identity_1000_records": "pending"
+  },
+  "top_check_excerpt": [
+    "All checks passed!",
+    "TOTAL                                        4518    414    91%",
+    "====================== 481 passed, 232 warnings in 7.77s ======================="
+  ]
+}

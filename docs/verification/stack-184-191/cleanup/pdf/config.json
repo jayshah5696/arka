@@ -1,0 +1,45 @@
+{
+  "version": "1",
+  "llm": {
+    "provider": "openai",
+    "model": "local-fixture",
+    "api_key": "local-fixture",
+    "base_url": "http://127.0.0.1:42545/v1",
+    "timeout_seconds": 10,
+    "max_retries": 1,
+    "supports_json_schema": true
+  },
+  "executor": {
+    "mode": "threadpool",
+    "max_workers": 1
+  },
+  "pipeline": [
+    {
+      "type": "pdf_source",
+      "path": "/tmp/arka-verification-20261010-cleanup/sample.pdf",
+      "chunk_size_chars": 45,
+      "chunk_overlap_chars": 0
+    },
+    {
+      "type": "prompt_based_generator",
+      "target_count": 6,
+      "generation_multiplier": 1
+    },
+    {
+      "type": "artifact_filter"
+    },
+    {
+      "type": "repetition"
+    },
+    {
+      "type": "identity_claim"
+    },
+    {
+      "type": "exact"
+    }
+  ],
+  "output": {
+    "format": "chatml",
+    "path": "dataset.jsonl"
+  }
+}

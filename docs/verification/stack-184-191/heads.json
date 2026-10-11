@@ -1,0 +1,276 @@
+[
+  {
+    "baseRefName": "main",
+    "headRefName": "fix/176-pdf-provenance",
+    "number": 184,
+    "head_sha": "de0cae679add8826bec0ab35f818bf2b80eed77a",
+    "passed": 349,
+    "skipped": 0,
+    "checks": [
+      {
+        "command": [
+          "uv",
+          "sync",
+          "--frozen"
+        ],
+        "exit_code": 0
+      },
+      {
+        "command": [
+          "just",
+          "check"
+        ],
+        "exit_code": 0
+      },
+      {
+        "command": [
+          "uv",
+          "build",
+          "--out-dir",
+          "/tmp/arka-verification-20261010-heads/pr-184/dist"
+        ],
+        "exit_code": 0
+      }
+    ]
+  },
+  {
+    "baseRefName": "fix/176-pdf-provenance",
+    "headRefName": "feat/168-repetition-filter",
+    "number": 185,
+    "head_sha": "847bbd6d671446f158d72947beb2b5eeacb399f3",
+    "passed": 370,
+    "skipped": 0,
+    "checks": [
+      {
+        "command": [
+          "uv",
+          "sync",
+          "--frozen"
+        ],
+        "exit_code": 0
+      },
+      {
+        "command": [
+          "just",
+          "check"
+        ],
+        "exit_code": 0
+      },
+      {
+        "command": [
+          "uv",
+          "build",
+          "--out-dir",
+          "/tmp/arka-verification-20261010-heads/pr-185/dist"
+        ],
+        "exit_code": 0
+      }
+    ]
+  },
+  {
+    "baseRefName": "feat/168-repetition-filter",
+    "headRefName": "feat/177-taxonomy-selection",
+    "number": 186,
+    "head_sha": "5a2482671466c62ac35bcb1a66fe857ab3d7f508",
+    "passed": 383,
+    "skipped": 0,
+    "checks": [
+      {
+        "command": [
+          "uv",
+          "sync",
+          "--frozen"
+        ],
+        "exit_code": 0
+      },
+      {
+        "command": [
+          "just",
+          "check"
+        ],
+        "exit_code": 0
+      },
+      {
+        "command": [
+          "uv",
+          "build",
+          "--out-dir",
+          "/tmp/arka-verification-20261010-heads/pr-186/dist"
+        ],
+        "exit_code": 0
+      }
+    ]
+  },
+  {
+    "baseRefName": "feat/177-taxonomy-selection",
+    "headRefName": "feat/169-identity-claims",
+    "number": 187,
+    "head_sha": "d5c1469a76b5fa41acfe012f3d2e70ae2dd39a62",
+    "passed": 409,
+    "skipped": 0,
+    "checks": [
+      {
+        "command": [
+          "uv",
+          "sync",
+          "--frozen"
+        ],
+        "exit_code": 0
+      },
+      {
+        "command": [
+          "just",
+          "check"
+        ],
+        "exit_code": 0
+      },
+      {
+        "command": [
+          "uv",
+          "build",
+          "--out-dir",
+          "/tmp/arka-verification-20261010-heads/pr-187/dist"
+        ],
+        "exit_code": 0
+      }
+    ]
+  },
+  {
+    "baseRefName": "feat/169-identity-claims",
+    "headRefName": "feat/171-generation-artifacts",
+    "number": 188,
+    "head_sha": "f02452702c13cb7a297e09f8b8a6a7504950e9c0",
+    "passed": 439,
+    "skipped": 0,
+    "checks": [
+      {
+        "command": [
+          "uv",
+          "sync",
+          "--frozen"
+        ],
+        "exit_code": 0
+      },
+      {
+        "command": [
+          "just",
+          "check"
+        ],
+        "exit_code": 0
+      },
+      {
+        "command": [
+          "uv",
+          "build",
+          "--out-dir",
+          "/tmp/arka-verification-20261010-heads/pr-188/dist"
+        ],
+        "exit_code": 0
+      }
+    ]
+  },
+  {
+    "baseRefName": "feat/171-generation-artifacts",
+    "headRefName": "feat/170-pdf-boilerplate",
+    "number": 189,
+    "head_sha": "1fa070f4f558514c082cdd86a33cdcdbe45e9d03",
+    "passed": 448,
+    "skipped": 0,
+    "checks": [
+      {
+        "command": [
+          "uv",
+          "sync",
+          "--frozen"
+        ],
+        "exit_code": 0
+      },
+      {
+        "command": [
+          "just",
+          "check"
+        ],
+        "exit_code": 0
+      },
+      {
+        "command": [
+          "uv",
+          "build",
+          "--out-dir",
+          "/tmp/arka-verification-20261010-heads/pr-189/dist"
+        ],
+        "exit_code": 0
+      }
+    ]
+  },
+  {
+    "baseRefName": "feat/170-pdf-boilerplate",
+    "headRefName": "feat/167-benchmark-decontamination",
+    "number": 190,
+    "head_sha": "b71280b41ac45eaf6b0534a2c23f25c2b1a9616e",
+    "passed": 464,
+    "skipped": 0,
+    "checks": [
+      {
+        "command": [
+          "uv",
+          "sync",
+          "--frozen"
+        ],
+        "exit_code": 0
+      },
+      {
+        "command": [
+          "just",
+          "check"
+        ],
+        "exit_code": 0
+      },
+      {
+        "command": [
+          "uv",
+          "build",
+          "--out-dir",
+          "/tmp/arka-verification-20261010-heads/pr-190/dist"
+        ],
+        "exit_code": 0
+      }
+    ]
+  },
+  {
+    "baseRefName": "feat/167-benchmark-decontamination",
+    "headRefName": "feat/172-reasoning-language-gate",
+    "number": 191,
+    "head_sha": "d72adbe7aceb50ccf3a78d49dbace3693eb4ca1a",
+    "passed": 481,
+    "skipped": 0,
+    "checks": [
+      {
+        "command": [
+          "uv",
+          "sync",
+          "--frozen",
+          "--extra",
+          "language"
+        ],
+        "exit_code": 0
+      },
+      {
+        "command": [
+          "just",
+          "check"
+        ],
+        "exit_code": 0
+      },
+      {
+        "command": [
+          "uv",
+          "build",
+          "--out-dir",
+          "/tmp/arka-verification-20261010-heads/pr-191/dist"
+        ],
+        "exit_code": 0
+      }
+    ]
+  }
+]
