@@ -1,0 +1,12 @@
+{
+  "stage": "02d_identity_claim_filter",
+  "count_in": 5,
+  "count_out": 4,
+  "dropped_count": 1,
+  "drop_reasons": {
+    "identity_claim": 1
+  },
+  "pattern_group_counts": {
+    "first_person": 1
+  }
+}

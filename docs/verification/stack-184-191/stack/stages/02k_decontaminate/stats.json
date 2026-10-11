@@ -1,0 +1,17 @@
+{
+  "stage": "02k_decontaminate",
+  "count_in": 4,
+  "count_out": 3,
+  "dropped_count": 1,
+  "drop_reasons": {
+    "benchmark_overlap": 1
+  },
+  "benchmark_match_counts": {
+    "eval.jsonl": 1
+  },
+  "flagged_count": 0,
+  "indexed_items": 1,
+  "indexed_ngrams": 5,
+  "short_items_skipped": 0,
+  "unscorable_items": 0
+}
