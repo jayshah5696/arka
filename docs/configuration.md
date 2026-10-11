@@ -310,6 +310,8 @@ conversation fields. Place it after generation and before LLM judging.
 for any configured own name in any checked field lets the record pass.
 
 An empty `patterns` list uses built-in first-person and creator pattern groups.
+Creator patterns require a first-person subject, so ordinary discussion such as
+"ChatGPT was developed by OpenAI" passes.
 These cover GPT, ChatGPT, Claude, Gemini, Llama, Qwen, DeepSeek, Mistral, Mixtral,
 Grok, PaLM, Bard, Bing, and Copilot, plus their listed labs. A non-empty list
 replaces the built-ins and reports matches under the `custom` group. Invalid

@@ -428,6 +428,9 @@ def test_identity_claim_drops_and_reports_pattern_group(
         "I was not created by Anthropic.",
         "I'm never built by Google.",
         "Explain how ChatGPT works.",
+        "Gemini is a Google language model.",
+        "ChatGPT was developed by OpenAI.",
+        "The model performs as Qwen does.",
         "A useful response about the model's attention mechanism.",
     ],
 )

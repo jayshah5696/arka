@@ -248,9 +248,12 @@ _LAB_MODEL_CLAIM = rf"(?:an?\s+)?{_LAB_NAMES}\s+(?:ai\s+)?(?:language\s+)?model\
 _IDENTITY_PATTERNS = {
     "first_person": [
         rf"\bi(?:'m|\s+am)\s+(?:an?\s+)?{_MODEL_NAMES}",
-        rf"\bas\s+(?:an?\s+)?{_MODEL_NAMES}",
+        rf"\bas\s+(?:an?\s+)?{_MODEL_NAMES}\s*,?\s*i\b",
     ],
-    "creator": [rf"\b{_CREATOR_CLAIM}", rf"\b{_LAB_MODEL_CLAIM}"],
+    "creator": [
+        rf"\bi(?:'m|\s+(?:am|was|have\s+been))\s+{_CREATOR_CLAIM}",
+        rf"\bi(?:'m|\s+am)\s+{_LAB_MODEL_CLAIM}",
+    ],
 }
 _IDENTITY_DENIAL = re.compile(
     r"\bi(?:'m\s+(?:not|never)|\s+(?:am|was)\s+(?:not|never)|"
