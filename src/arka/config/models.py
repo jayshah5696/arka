@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Annotated, Any, Literal
 
 from pydantic import (
@@ -211,6 +212,28 @@ class RepetitionFilterConfig(StrictModel):
     max_char_run: int = Field(default=50, ge=1)
 
 
+class IdentityClaimFilterConfig(StrictModel):
+    type: Literal["identity_claim"] = "identity_claim"
+    check_fields: list[Literal["instruction", "response", "system"]] = Field(
+        default_factory=lambda: ["response"], min_length=1
+    )
+    own_model_names: list[Annotated[str, Field(min_length=1)]] = Field(
+        default_factory=list
+    )
+    patterns: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_patterns(self) -> IdentityClaimFilterConfig:
+        for pattern in self.patterns:
+            try:
+                re.compile(pattern, re.IGNORECASE)
+            except re.error as exc:
+                raise ValueError(
+                    f"Invalid identity-claim regex {pattern!r}: {exc}"
+                ) from exc
+        return self
+
+
 class LabelingFilterConfig(StrictModel):
     type: Literal["labeling_engine"] = "labeling_engine"
     rubric_path: str | None = None
@@ -291,6 +314,7 @@ FilterStageConfig = Annotated[
     Annotated[LengthFilterConfig, Tag("length")]
     | Annotated[LanguageFilterConfig, Tag("language")]
     | Annotated[RepetitionFilterConfig, Tag("repetition")]
+    | Annotated[IdentityClaimFilterConfig, Tag("identity_claim")]
     | Annotated[SentenceVarianceFilterConfig, Tag("sentence_variance")]
     | Annotated[IFDFilterConfig, Tag("ifd")]
     | Annotated[LabelingFilterConfig, Tag("labeling_engine")]
@@ -468,6 +492,7 @@ PipelineStageConfig = Annotated[
     | Annotated[LengthFilterConfig, Tag("length")]
     | Annotated[LanguageFilterConfig, Tag("language")]
     | Annotated[RepetitionFilterConfig, Tag("repetition")]
+    | Annotated[IdentityClaimFilterConfig, Tag("identity_claim")]
     | Annotated[SentenceVarianceFilterConfig, Tag("sentence_variance")]
     | Annotated[IFDFilterConfig, Tag("ifd")]
     | Annotated[LabelingFilterConfig, Tag("labeling_engine")]

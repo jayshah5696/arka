@@ -9,6 +9,7 @@ from itertools import groupby
 from typing import TYPE_CHECKING
 
 from arka.config.models import (
+    IdentityClaimFilterConfig,
     LanguageFilterConfig,
     LengthFilterConfig,
     RepetitionFilterConfig,
@@ -229,6 +230,98 @@ class RepetitionFilterStage(BaseFilterStage):
                 dropped_count=len(dropped),
                 drop_reasons=drop_reasons,
                 max_observed_fractions=self.max_observed_fractions,
+            ),
+            dropped=dropped if dropped else None,
+        )
+
+
+_MODEL_NAMES = (
+    r"(?:gpt(?:-\d+)?|chatgpt|claude|gemini|llama|qwen|deepseek|mistral|"
+    r"mixtral|grok|palm|bard|bing|copilot)\b"
+)
+_LAB_NAMES = (
+    r"(?:openai|anthropic|google(?:\s+deepmind)?|meta|alibaba|mistral\s+ai|"
+    r"deepseek|xai|microsoft)\b"
+)
+_CREATOR_CLAIM = rf"(?:created|developed|trained|built|made)\s+by\s+{_LAB_NAMES}"
+_LAB_MODEL_CLAIM = rf"(?:an?\s+)?{_LAB_NAMES}\s+(?:ai\s+)?(?:language\s+)?model\b"
+_IDENTITY_PATTERNS = {
+    "first_person": [
+        rf"\bi(?:'m|\s+am)\s+(?:an?\s+)?{_MODEL_NAMES}",
+        rf"\bas\s+(?:an?\s+)?{_MODEL_NAMES}\s*,?\s*i\b",
+    ],
+    "creator": [
+        rf"\bi(?:'m|\s+(?:am|was|have\s+been))\s+{_CREATOR_CLAIM}",
+        rf"\bi(?:'m|\s+am)\s+{_LAB_MODEL_CLAIM}",
+    ],
+}
+_IDENTITY_DENIAL = re.compile(
+    r"\bi(?:'m\s+(?:not|never)|\s+(?:am|was)\s+(?:not|never)|"
+    r"\s+(?:wasn't|amn't|ain't))\s+"
+    rf"(?:(?:an?\s+)?{_MODEL_NAMES}|{_CREATOR_CLAIM}|{_LAB_MODEL_CLAIM})",
+    re.IGNORECASE,
+)
+
+
+class IdentityClaimFilterStage(BaseFilterStage):
+    """Drop foreign identity claims while preserving known-model denials."""
+
+    name = "02d_identity_claim_filter"
+    config_type = "identity_claim"
+    config_class = IdentityClaimFilterConfig
+
+    def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
+        self.pattern_group_counts: dict[str, int] = {}
+        return super().run(records, ctx)
+
+    def _is_active(self, config: IdentityClaimFilterConfig) -> bool:
+        groups = {"custom": config.patterns} if config.patterns else _IDENTITY_PATTERNS
+        self.pattern_groups = {
+            group: [re.compile(pattern, re.IGNORECASE) for pattern in patterns]
+            for group, patterns in groups.items()
+        }
+        return True
+
+    def _check_record(
+        self, record: ConversationRecord, config: IdentityClaimFilterConfig
+    ) -> tuple[str, str] | None:
+        texts = [getattr(record.payload, field) or "" for field in config.check_fields]
+        if any(
+            name.casefold() in text.casefold()
+            for name in config.own_model_names
+            for text in texts
+        ):
+            return None
+        matches: set[str] = set()
+        for text in texts:
+            checked = _IDENTITY_DENIAL.sub("", text.replace("’", "'"))
+            for group, patterns in self.pattern_groups.items():
+                if any(pattern.search(checked) for pattern in patterns):
+                    matches.add(group)
+        if not matches:
+            return None
+        for group in matches:
+            self.pattern_group_counts[group] = (
+                self.pattern_group_counts.get(group, 0) + 1
+            )
+        return ("identity_claim", f"pattern_groups={','.join(sorted(matches))}")
+
+    def _write_artifacts(
+        self,
+        ctx: StageContext,
+        count_in: int,
+        count_out: int,
+        dropped: list[Record],
+        drop_reasons: dict[str, int],
+    ) -> None:
+        StageArtifacts(ctx).write(
+            report=StageReport(
+                stage=self.name,
+                count_in=count_in,
+                count_out=count_out,
+                dropped_count=len(dropped),
+                drop_reasons=drop_reasons,
+                pattern_group_counts=self.pattern_group_counts,
             ),
             dropped=dropped if dropped else None,
         )
