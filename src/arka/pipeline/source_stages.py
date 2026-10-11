@@ -198,8 +198,8 @@ class PDFSourceStage(Stage):
         config_hash_value = config_hash(ctx.config)
         source_hash = file_hash(source_path)
         doc_id = source_path.stem
-        chunk_size = self.config.chunk_size_chars or 3000
-        overlap = self.config.chunk_overlap_chars or 300
+        chunk_size = self.config.chunk_size_chars
+        overlap = self.config.chunk_overlap_chars
         step = chunk_size - overlap
         chunks: list[GroundedChunkRecord] = []
 

@@ -96,10 +96,13 @@ def _ctx(
     )
 
 
-def test_pdf_source_stage_emits_grounded_chunks_with_provenance(tmp_path: Path) -> None:
+@pytest.mark.parametrize("overlap", [0, 5])
+def test_pdf_source_stage_emits_grounded_chunks_with_provenance(
+    tmp_path: Path, overlap: int
+) -> None:
     pdf_path = tmp_path / "sample.pdf"
     pdf_path.write_bytes(_MINIMAL_TEXT_PDF)
-    ctx = _ctx(tmp_path, "./sample.pdf")
+    ctx = _ctx(tmp_path, "./sample.pdf", overlap=overlap)
 
     records = PDFSourceStage(project_root=tmp_path).run([], ctx)
 
