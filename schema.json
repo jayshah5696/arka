@@ -175,6 +175,99 @@
       "title": "CompositeSelectConfig",
       "type": "object"
     },
+    "DecontaminateConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "decontaminate",
+          "default": "decontaminate",
+          "title": "Type",
+          "type": "string"
+        },
+        "eval_paths": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Eval Paths",
+          "type": "array"
+        },
+        "eval_text_field": {
+          "default": "question",
+          "minLength": 1,
+          "title": "Eval Text Field",
+          "type": "string"
+        },
+        "fields": {
+          "items": {
+            "enum": [
+              "instruction",
+              "response",
+              "system"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Fields",
+          "type": "array"
+        },
+        "n": {
+          "default": 5,
+          "minimum": 1,
+          "title": "N",
+          "type": "integer"
+        },
+        "idf": {
+          "default": "per_benchmark",
+          "enum": [
+            "per_benchmark",
+            "global"
+          ],
+          "title": "Idf",
+          "type": "string"
+        },
+        "window_factor": {
+          "default": 8,
+          "minimum": 1,
+          "title": "Window Factor",
+          "type": "integer"
+        },
+        "threshold": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 1,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Threshold"
+        },
+        "calibrate": {
+          "default": false,
+          "title": "Calibrate",
+          "type": "boolean"
+        },
+        "action": {
+          "default": "drop",
+          "enum": [
+            "drop",
+            "flag"
+          ],
+          "title": "Action",
+          "type": "string"
+        }
+      },
+      "required": [
+        "eval_paths"
+      ],
+      "title": "DecontaminateConfig",
+      "type": "object"
+    },
     "DoubleCriticFilterConfig": {
       "additionalProperties": false,
       "description": "Simula \u00a72.2 double-critic. Two independent yes/no critic calls per record.\n\nNo tunable knobs in slice 1 \u2014 the inverse-prompt property is preserved by\nconstruction. Future fields (alternate prompts, majority-of-N, llm_override)\nland here without breaking the YAML schema.",
@@ -1312,6 +1405,7 @@
             "artifact_filter": "#/$defs/ArtifactFilterConfig",
             "canary": "#/$defs/CanaryFilterConfig",
             "complexity_elo": "#/$defs/ComplexityEloFilterConfig",
+            "decontaminate": "#/$defs/DecontaminateConfig",
             "double_critic": "#/$defs/DoubleCriticFilterConfig",
             "evol_instruct_generator": "#/$defs/EvolInstructGeneratorConfig",
             "exact": "#/$defs/ExactDedupConfig",
@@ -1378,6 +1472,9 @@
           },
           {
             "$ref": "#/$defs/ArtifactFilterConfig"
+          },
+          {
+            "$ref": "#/$defs/DecontaminateConfig"
           },
           {
             "$ref": "#/$defs/SentenceVarianceFilterConfig"

@@ -324,6 +324,62 @@ as the count of merged removal spans, `pages_affected`, and
 across the page texts, or no text, the stage emits zero chunks and reports
 the empty result. A PDF with no extracted text still raises the existing error.
 
+#### `decontaminate`
+
+Check conversation text against local evaluation JSONL files before `select`:
+
+```yaml
+- type: decontaminate
+  eval_paths: [evals/math.jsonl, evals/science.jsonl]
+  eval_text_field: question
+  fields: [instruction]
+  n: 5
+  idf: per_benchmark
+  window_factor: 8
+  threshold: 0.9
+  calibrate: false
+  action: drop
+```
+
+Paths resolve relative to the configuration file. `eval_paths` must be non-empty
+and cannot repeat a file. Each non-empty JSONL row must contain a non-empty
+string at `eval_text_field`. Rows shorter than `n` normalized words are counted
+and skipped; files without usable rows fail with file context. Tokenization
+case-folds text and splits on punctuation and underscores. `n` and
+`window_factor` must be positive integers. `fields` is a non-empty list of
+`instruction`, `response`, or `system`, defaulting to `instruction`.
+
+The index considers only shared n-grams. It measures unique matching n-gram
+weight divided by the evaluation item's total unique n-gram weight, following
+the overlap definition in [AllenAI's decon documentation](https://github.com/allenai/decon/blob/main/doc/simple-details.md).
+Arka uses `log((item_count + 1) / (document_frequency + 1))` weights, computed
+per benchmark by default or across all files with `idf: global`. Common n-grams
+have zero weight. A single-item scope uses unit weights. Items with only
+zero-weight n-grams are unscorable and are reported rather than flagged.
+Matches must fit inside `window_factor` times the item's word count. Separate
+fields cannot combine to form a match. This is a question-text matcher, not the
+full decon engine's answer and passage scoring system.
+
+`threshold` must be greater than zero and at most one, and is required unless
+`calibrate: true`. Scores at or above it match. `action: drop` writes
+`benchmark_overlap` drops; `action: flag` keeps the record and appends a flagged
+event. Both store a typed `scores.decon_match` with benchmark, evaluation line
+number, score, field, and normalized word offsets of the matching span.
+`dropped.parquet` also exposes nullable `decon_benchmark` and `decon_score`
+columns. `stats.json` reports per-benchmark match counts, flags, index size,
+short skipped items, and unscorable items.
+
+To select a threshold, first run with `calibrate: true` and no threshold. It
+keeps records unchanged, plants case-swapped, whitespace-jittered, and one-word
+dictionary substitutions in copies of the first conversation instruction,
+and sweeps thresholds from 0.01 to 1.00. The report contains
+`calibration_curve`, plant and input counts, and the highest
+`recommended_threshold` achieving at least 0.99 planted recall, or null if none
+does. `clean_rows_dropped` counts supplied input rows that would match; it is
+not a verified false-positive count unless those rows are known clean.
+Inspect those rows before applying a threshold. Exact n-grams can miss
+substantial paraphrases. Published error rates are not guarantees for Arka.
+
 #### `identity_claim`
 
 Drops records containing foreign model or lab identity claims in the configured

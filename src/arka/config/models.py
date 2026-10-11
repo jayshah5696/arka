@@ -297,6 +297,27 @@ class PairDeltaFilterConfig(StrictModel):
     length_ratio_max: float | None = None
 
 
+class DecontaminateConfig(StrictModel):
+    type: Literal["decontaminate"] = "decontaminate"
+    eval_paths: list[Annotated[str, Field(min_length=1)]] = Field(min_length=1)
+    eval_text_field: str = Field(default="question", min_length=1)
+    fields: list[Literal["instruction", "response", "system"]] = Field(
+        default_factory=lambda: ["instruction"], min_length=1
+    )
+    n: int = Field(default=5, ge=1)
+    idf: Literal["per_benchmark", "global"] = "per_benchmark"
+    window_factor: int = Field(default=8, ge=1)
+    threshold: float | None = Field(default=None, gt=0, le=1)
+    calibrate: bool = False
+    action: Literal["drop", "flag"] = "drop"
+
+    @model_validator(mode="after")
+    def validate_threshold(self) -> DecontaminateConfig:
+        if not self.calibrate and self.threshold is None:
+            raise ValueError("threshold is required unless calibrate is true")
+        return self
+
+
 class TaxonomyMinimum(StrictModel):
     factor: str = Field(min_length=1)
     path: list[Annotated[str, Field(min_length=1)]] = Field(min_length=1)
@@ -355,6 +376,7 @@ FilterStageConfig = Annotated[
     | Annotated[RepetitionFilterConfig, Tag("repetition")]
     | Annotated[IdentityClaimFilterConfig, Tag("identity_claim")]
     | Annotated[ArtifactFilterConfig, Tag("artifact_filter")]
+    | Annotated[DecontaminateConfig, Tag("decontaminate")]
     | Annotated[SentenceVarianceFilterConfig, Tag("sentence_variance")]
     | Annotated[IFDFilterConfig, Tag("ifd")]
     | Annotated[LabelingFilterConfig, Tag("labeling_engine")]
@@ -538,6 +560,7 @@ PipelineStageConfig = Annotated[
     | Annotated[RepetitionFilterConfig, Tag("repetition")]
     | Annotated[IdentityClaimFilterConfig, Tag("identity_claim")]
     | Annotated[ArtifactFilterConfig, Tag("artifact_filter")]
+    | Annotated[DecontaminateConfig, Tag("decontaminate")]
     | Annotated[SentenceVarianceFilterConfig, Tag("sentence_variance")]
     | Annotated[IFDFilterConfig, Tag("ifd")]
     | Annotated[LabelingFilterConfig, Tag("labeling_engine")]
