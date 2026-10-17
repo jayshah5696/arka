@@ -180,6 +180,26 @@ def test_cli_handles_directory_as_config_gracefully(tmp_path: Path, capsys) -> N
     assert "Error: Expected a configuration file, but found a directory at" in err
 
 
+def test_cli_handles_permission_error_gracefully(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    config_path = tmp_path / "private-config.yaml"
+
+    def raise_permission_error(self, path):
+        raise PermissionError
+
+    monkeypatch.setattr("arka.cli.ConfigLoader.load", raise_permission_error)
+
+    import pytest
+
+    with pytest.raises(SystemExit) as exc:
+        main(["--config", str(config_path)])
+
+    assert exc.value.code == 1
+    _, err = capsys.readouterr()
+    assert "Error: Permission denied when reading configuration file at" in err
+
+
 def test_cli_handles_invalid_config_gracefully(tmp_path: Path, capsys) -> None:
     config_path = tmp_path / "invalid-config.yaml"
     config_path.write_text("version: '1'\n")
