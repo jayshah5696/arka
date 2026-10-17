@@ -120,6 +120,20 @@ def _load_config(config_path: Path) -> ResolvedConfig:
             f"Error: Configuration file not found at {config_path}", fg="red", err=True
         )
         sys.exit(1)
+    except IsADirectoryError:
+        click.secho(
+            f"Error: Expected a configuration file, but found a directory at {config_path}",
+            fg="red",
+            err=True,
+        )
+        sys.exit(1)
+    except PermissionError:
+        click.secho(
+            f"Error: Permission denied when reading configuration file at {config_path}",
+            fg="red",
+            err=True,
+        )
+        sys.exit(1)
     except ConfigValidationError as exc:
         click.secho(f"Error: {str(exc)}", fg="red", err=True)
         sys.exit(1)
@@ -175,6 +189,12 @@ def _run_pipeline(
     start_time: float,
 ) -> None:
     """Execute the pipeline stages and display execution summary."""
+    # DX: Print the resolved Run ID explicitly at the start so users can track the run directory immediately
+    click.secho(
+        f"Starting pipeline execution with Run ID: {resolved_run_id}",
+        fg="cyan",
+        bold=True,
+    )
     error_to_report = None
     try:
         PipelineRunner(project_root=project_root).run(

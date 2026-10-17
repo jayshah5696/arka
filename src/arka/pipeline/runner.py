@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
@@ -112,6 +113,7 @@ class PipelineRunner:
                     print(
                         f"\033[36mRunning stage {i}/{len(stages)}: {stage.name} ({count_in} records in)...\033[0m"
                     )
+                    stage_start_time = time.time()
                     try:
                         stage_output = list(stage.run(records, context))
                     except Exception as exc:
@@ -168,6 +170,11 @@ class PipelineRunner:
                             resumed=False,
                             stats_path=run_paths.stage_stats_path(stage.name),
                         )
+                    )
+                    stage_duration = time.time() - stage_start_time
+                    # DX: Provide clear completion feedback and timing for each stage so developers can monitor performance during long runs
+                    print(
+                        f"\033[32mCompleted stage {stage.name} in {stage_duration:.1f}s ({len(records)} records out)\033[0m"
                     )
         except Exception:
             failed_error_payload = RunReporter.serialize_error(
