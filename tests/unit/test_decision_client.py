@@ -83,6 +83,7 @@ def reply(provider, names):
     "provider,endpoint",
     [
         ("openai", "/v1/decisions"),
+        ("openrouter", "/v1/decisions"),
         ("typesafe", "/v1/systemone"),
         ("clef", "/v1/@cf/cloudflare/clef"),
     ],
@@ -120,6 +121,30 @@ def test_wire_formats_and_typed_answers(provider, endpoint):
     assert result.answers["usable"].probability == 0.9
     assert result.answers["quality"].probabilities == {0: 0.25, 1: 0.75}
     assert result.usage.prompt_tokens == 12
+
+
+@pytest.mark.parametrize("reported", [0, 0.0000123])
+def test_reported_cost_takes_precedence_over_configured_price(reported):
+    payload = reply("openai", ["usable"])
+    payload["usage"]["cost"] = reported
+    with DecisionClient(
+        config(input_cost_per_million=999),
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=payload)),
+    ) as client:
+        result = client.decide("evidence", questions()[:1])
+    assert result.usage.cost_usd == reported
+
+
+@pytest.mark.parametrize("reported", [-1, "unknown", True])
+def test_invalid_reported_cost_fails_safely(reported):
+    payload = reply("openai", ["usable"])
+    payload["usage"]["cost"] = reported
+    with DecisionClient(
+        config(),
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, json=payload)),
+    ) as client:
+        with pytest.raises(DecisionClientError):
+            client.decide("evidence", questions()[:1])
 
 
 @pytest.mark.parametrize(

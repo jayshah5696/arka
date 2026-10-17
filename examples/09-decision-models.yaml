@@ -1,6 +1,6 @@
 # WHAT:      Generate candidates and judge them with typed decision answers.
 # WHEN:      Use this to try decision stages without an LLM judge fallback.
-# REQUIRES:  OPENROUTER_API_KEY and OPENAI_API_KEY.
+# REQUIRES:  OPENROUTER_API_KEY.
 # RUN:       uv run arka --config examples/09-decision-models.yaml --run-id decisions
 # ARTIFACTS: runs/<run-id>/... and ./output/09-decision-dataset.jsonl.
 # TEACHES:   Seed gate, best-of-N, shared judge panel, and confidence weights.
@@ -14,14 +14,14 @@ llm:
   base_url: https://openrouter.ai/api/v1
 
 decisions:
-  provider: openai
-  model: gpt-6-luna
-  api_key: ${OPENAI_API_KEY}
-  base_url: https://api.openai.com/v1
+  provider: openrouter
+  model: openai/gpt-6-luna-decisions
+  api_key: ${OPENROUTER_API_KEY}
+  base_url: https://openrouter.ai/api/alpha
   timeout_seconds: 10
   max_retries: 4
   max_state_chars: 24000
-  # Set input_cost_per_million to your current price to report measured cost.
+  # Reported provider cost takes precedence over input_cost_per_million.
 
 executor:
   mode: threadpool

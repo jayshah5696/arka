@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import time
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -182,11 +183,21 @@ class DecisionClient:
                 ):
                     raise ValueError("token usage must contain nonnegative integers")
                 price = self.config.input_cost_per_million
+                cost = usage.get("cost")
+                if cost is not None and (
+                    isinstance(cost, bool)
+                    or not isinstance(cost, (int, float))
+                    or not math.isfinite(cost)
+                    or cost < 0
+                ):
+                    raise ValueError("reported cost must be finite and nonnegative")
+                if cost is None and price is not None:
+                    cost = tokens * price / 1_000_000
                 result.usage = TokenUsage(
                     prompt_tokens=tokens,
                     completion_tokens=output_tokens,
                     total_tokens=tokens + output_tokens,
-                    cost_usd=None if price is None else tokens * price / 1_000_000,
+                    cost_usd=cost,
                 )
                 result.latency_ms = round((time.perf_counter() - started) * 1000)
                 result.requests_sent = 1

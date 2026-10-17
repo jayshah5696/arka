@@ -11,10 +11,10 @@ Start with [the example](../examples/09-decision-models.yaml). Validate it with
 
 ```yaml
 decisions:
-  provider: openai
-  model: gpt-6-luna
-  api_key: ${OPENAI_API_KEY}
-  base_url: https://api.openai.com/v1
+  provider: openrouter
+  model: openai/gpt-6-luna-decisions
+  api_key: ${OPENROUTER_API_KEY}
+  base_url: https://openrouter.ai/api/alpha
   timeout_seconds: 10
   max_retries: 4
   max_state_chars: 24000
@@ -22,13 +22,15 @@ decisions:
 ```
 
 `provider`, `model`, `api_key`, and `base_url` are required. The other values
-shown above are defaults. Set `input_cost_per_million` to the price for your
-model to report input-token cost. Arka does not infer a price from a model name.
+shown above are defaults. Arka uses the provider's reported `usage.cost` when
+available. Otherwise, set `input_cost_per_million` to estimate input-token cost.
+Arka does not infer a price from a model name.
 Both top-level and stage-local API keys are excluded from resolved config files.
 
 | Provider | Model example | Base URL | Appended endpoint |
 | --- | --- | --- | --- |
 | `openai` | `gpt-6-luna` | `https://api.openai.com/v1` | `/decisions` |
+| `openrouter` | `openai/gpt-6-luna-decisions` | `https://openrouter.ai/api/alpha` | `/decisions` |
 | `typesafe` | `jev-latest` | `https://api.typesafe.ai/v1` | `/systemone` |
 | `clef` | `clef` or `clef-flash` | `https://api.cloudflare.com/client/v4/accounts/<account>/ai/run` | `/@cf/cloudflare/<model>` |
 
@@ -38,6 +40,10 @@ score answers contain a full probability distribution and a confidence value.
 Arka rejects missing answers, mismatched types, invalid distributions, and
 provider refusals. It retries connection errors, HTTP 429, HTTP 529, and 5xx
 responses. `max_retries` is the maximum number of attempts, including the first.
+
+OpenRouter uses the Jev question map, while OpenAI's direct endpoint uses a
+question array. Select the matching provider adapter even when both routes
+serve the same model. See the [OpenRouter model documentation](https://openrouter.ai/openai/gpt-6-luna-decisions).
 
 Use `decision_override` to change `provider`, `model`, `base_url`, or `api_key`
 for a stage or an enabled check. New adapters register in
@@ -145,13 +151,21 @@ their existing scale.
 
 ## Artifacts and verification
 
-Each decision stage reports requests, input tokens, cache hits, cost when
-configured, and latency percentiles. The manifest and run report aggregate
+Each decision stage reports requests, input tokens, cache hits, reported or
+estimated cost when available, and latency percentiles. The manifest and run report aggregate
 decision usage. `escalations.parquet` stores escalation events. Set
 `output.on_unresolved_escalation: drop` to exclude unresolved records and save
 them in `unresolved_escalations.parquet`. The default is `keep`.
 
 Run `uv run python scripts/verify_decisions_cli.py` for a local HTTP check of
 the CLI, typed answers, panel reuse, output artifacts, and resume. Run
-`just check` for lint, formatting, and tests. Provider accuracy, calibration,
-and paid live requests require separate measurement on your dataset.
+`just check` for lint, formatting, and tests.
+
+For a small paid experiment, set `OPENROUTER_API_KEY` and run
+`uv run python scripts/verify_decisions_live.py --output /tmp/arka-decisions-live`.
+Choose a new output directory each time. This runs six synthetic examples with
+and without a panel, then checks filtering, cached answers, and resume. It uses
+real HTTP, saves request and response bodies without headers, limits the run to
+48 requests, and fails if a stage tries to call an LLM. See the
+[recorded experiment](verification/2026-10-17-openrouter-decisions.md).
+Representative accuracy and calibration still require your own dataset.
