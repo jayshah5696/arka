@@ -110,6 +110,14 @@ def _load_config(config_path: Path) -> ResolvedConfig:
             f"Error: Configuration file not found at {config_path}", fg="red", err=True
         )
         sys.exit(1)
+    except (IsADirectoryError, PermissionError):
+        # DX: Gracefully handle when a user passes a directory instead of a file for the config path
+        click.secho(
+            f"Error: Expected a configuration file, but found a directory at {config_path}",
+            fg="red",
+            err=True,
+        )
+        sys.exit(1)
     except ConfigValidationError as exc:
         click.secho(f"Error: {str(exc)}", fg="red", err=True)
         sys.exit(1)

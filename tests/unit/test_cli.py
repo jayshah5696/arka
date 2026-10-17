@@ -166,6 +166,20 @@ def test_cli_handles_missing_config_gracefully(tmp_path: Path, capsys) -> None:
     assert "Error: Configuration file not found at" in err
 
 
+def test_cli_handles_directory_as_config_gracefully(tmp_path: Path, capsys) -> None:
+    config_path = tmp_path / "my_config_dir"
+    config_path.mkdir()
+
+    import pytest
+
+    with pytest.raises(SystemExit) as exc:
+        main(["--config", str(config_path)])
+
+    assert exc.value.code == 1
+    out, err = capsys.readouterr()
+    assert "Error: Expected a configuration file, but found a directory at" in err
+
+
 def test_cli_handles_invalid_config_gracefully(tmp_path: Path, capsys) -> None:
     config_path = tmp_path / "invalid-config.yaml"
     config_path.write_text("version: '1'\n")
