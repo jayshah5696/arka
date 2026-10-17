@@ -4,6 +4,8 @@ import os
 import re
 from pathlib import Path
 
+import yaml
+
 from arka.config.loader import ConfigLoader
 
 HEADER_FIELDS = [
@@ -73,11 +75,13 @@ def validate_example_file(path: Path) -> list[str]:
         errors.append(f"{path}: COST must be one of {sorted(ALLOWED_COSTS)}")
 
     if _OPENROUTER_PATTERN.search(raw_text):
-        if "${OPENROUTER_API_KEY}" not in raw_text:
+        raw_llm = (yaml.safe_load(raw_text) or {}).get("llm", {})
+        llm_key = raw_llm.get("api_key", "")
+        if "${OPENROUTER_API_KEY}" not in llm_key:
             errors.append(
                 f"{path}: OpenRouter config must reference OPENROUTER_API_KEY"
             )
-        if "${OPENAI_API_KEY}" in raw_text:
+        if "${OPENAI_API_KEY}" in llm_key:
             errors.append(
                 f"{path}: OpenRouter config must not reference OPENAI_API_KEY"
             )

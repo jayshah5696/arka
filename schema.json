@@ -56,6 +56,56 @@
       "title": "ArtifactFilterConfig",
       "type": "object"
     },
+    "BestOfNConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "decision_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "reject_at": {
+          "default": 0.7,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Reject At",
+          "type": "number"
+        },
+        "keep_per_seed": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Keep Per Seed",
+          "type": "integer"
+        },
+        "min_score": {
+          "anyOf": [
+            {
+              "maximum": 4,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Score"
+        }
+      },
+      "title": "BestOfNConfig",
+      "type": "object"
+    },
     "CanaryFilterConfig": {
       "additionalProperties": false,
       "properties": {
@@ -80,11 +130,71 @@
       "additionalProperties": false,
       "description": "Slice 5 \u2014 Simula \u00a72.3 batch-Elo complexity scoring.\n\nAnnotates each ConversationRecord with a comparable `complexity_elo` and\ndoes NOT drop. Filter or select stages downstream can consume the score.",
       "properties": {
+        "decision_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "accept_at": {
+          "default": 0.85,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Accept At",
+          "type": "number"
+        },
+        "reject_at": {
+          "default": 0.2,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Reject At",
+          "type": "number"
+        },
+        "on_uncertain": {
+          "default": "keep",
+          "enum": [
+            "keep",
+            "drop",
+            "escalate"
+          ],
+          "title": "On Uncertain",
+          "type": "string"
+        },
+        "min_confidence": {
+          "default": 0.5,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Min Confidence",
+          "type": "number"
+        },
         "type": {
           "const": "complexity_elo",
           "default": "complexity_elo",
           "title": "Type",
           "type": "string"
+        },
+        "backend": {
+          "default": "elo",
+          "enum": [
+            "elo",
+            "decision"
+          ],
+          "title": "Backend",
+          "type": "string"
+        },
+        "levels": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10,
+          "minItems": 2,
+          "title": "Levels",
+          "type": "array"
         },
         "batch_size": {
           "default": 5,
@@ -119,6 +229,23 @@
     "CompositeSelectConfig": {
       "additionalProperties": false,
       "properties": {
+        "confidence_weighting": {
+          "default": false,
+          "title": "Confidence Weighting",
+          "type": "boolean"
+        },
+        "tie_break": {
+          "default": "id",
+          "enum": [
+            "id",
+            "confidence"
+          ],
+          "title": "Tie Break",
+          "type": "string"
+        },
+        "label_taxonomy": {
+          "$ref": "#/$defs/TaxonomyLabelConfig"
+        },
         "type": {
           "const": "select",
           "default": "select",
@@ -175,9 +302,253 @@
       "title": "CompositeSelectConfig",
       "type": "object"
     },
+    "DecisionBandConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "decision_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "reject_at": {
+          "default": 0.7,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Reject At",
+          "type": "number"
+        },
+        "lower": {
+          "default": 0.8,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Lower",
+          "type": "number"
+        },
+        "upper": {
+          "default": 0.97,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Upper",
+          "type": "number"
+        }
+      },
+      "title": "DecisionBandConfig",
+      "type": "object"
+    },
+    "DecisionCheckConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "decision_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "reject_at": {
+          "default": 0.7,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Reject At",
+          "type": "number"
+        }
+      },
+      "title": "DecisionCheckConfig",
+      "type": "object"
+    },
+    "DecisionConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "minLength": 1,
+          "title": "Provider",
+          "type": "string"
+        },
+        "model": {
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "api_key": {
+          "format": "password",
+          "title": "Api Key",
+          "type": "string",
+          "writeOnly": true
+        },
+        "base_url": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Base Url",
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "default": 10,
+          "exclusiveMinimum": 0,
+          "title": "Timeout Seconds",
+          "type": "number"
+        },
+        "max_retries": {
+          "default": 4,
+          "minimum": 1,
+          "title": "Max Retries",
+          "type": "integer"
+        },
+        "max_state_chars": {
+          "default": 24000,
+          "minimum": 1,
+          "title": "Max State Chars",
+          "type": "integer"
+        },
+        "input_cost_per_million": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Cost Per Million"
+        }
+      },
+      "required": [
+        "provider",
+        "model",
+        "api_key",
+        "base_url"
+      ],
+      "title": "DecisionConfig",
+      "type": "object"
+    },
+    "DecisionOverride": {
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provider"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "base_url": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "maxLength": 2083,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Base Url"
+        },
+        "api_key": {
+          "anyOf": [
+            {
+              "format": "password",
+              "type": "string",
+              "writeOnly": true
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Api Key"
+        }
+      },
+      "title": "DecisionOverride",
+      "type": "object"
+    },
+    "DecisionPanelConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "decision_panel",
+          "default": "decision_panel",
+          "title": "Type",
+          "type": "string"
+        },
+        "include": {
+          "anyOf": [
+            {
+              "const": "auto",
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "default": "auto",
+          "title": "Include"
+        },
+        "decision_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "DecisionPanelConfig",
+      "type": "object"
+    },
     "DecontaminateConfig": {
       "additionalProperties": false,
       "properties": {
+        "paraphrase_check": {
+          "$ref": "#/$defs/ParaphraseCheckConfig"
+        },
         "type": {
           "const": "decontaminate",
           "default": "decontaminate",
@@ -270,12 +641,63 @@
     },
     "DoubleCriticFilterConfig": {
       "additionalProperties": false,
-      "description": "Simula \u00a72.2 double-critic. Two independent yes/no critic calls per record.\n\nNo tunable knobs in slice 1 \u2014 the inverse-prompt property is preserved by\nconstruction. Future fields (alternate prompts, majority-of-N, llm_override)\nland here without breaking the YAML schema.",
+      "description": "Simula \u00a72.2 double-critic. Two independent yes/no critic calls per record.\n\nDecision mode also keeps the inverse questions in separate requests.",
       "properties": {
+        "decision_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "accept_at": {
+          "default": 0.75,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Accept At",
+          "type": "number"
+        },
+        "reject_at": {
+          "default": 0.4,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Reject At",
+          "type": "number"
+        },
+        "on_uncertain": {
+          "default": "keep",
+          "enum": [
+            "keep",
+            "drop",
+            "escalate"
+          ],
+          "title": "On Uncertain",
+          "type": "string"
+        },
+        "min_confidence": {
+          "default": 0.5,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Min Confidence",
+          "type": "number"
+        },
         "type": {
           "const": "double_critic",
           "default": "double_critic",
           "title": "Type",
+          "type": "string"
+        },
+        "backend": {
+          "default": "llm",
+          "enum": [
+            "llm",
+            "decision"
+          ],
+          "title": "Backend",
           "type": "string"
         },
         "llm_override": {
@@ -386,6 +808,71 @@
     "EvolFilterConfig": {
       "additionalProperties": false,
       "properties": {
+        "decision_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "accept_at": {
+          "default": 0.85,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Accept At",
+          "type": "number"
+        },
+        "reject_at": {
+          "default": 0.2,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Reject At",
+          "type": "number"
+        },
+        "on_uncertain": {
+          "default": "keep",
+          "enum": [
+            "keep",
+            "drop",
+            "escalate"
+          ],
+          "title": "On Uncertain",
+          "type": "string"
+        },
+        "min_confidence": {
+          "default": 0.5,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Min Confidence",
+          "type": "number"
+        },
+        "backend": {
+          "default": "heuristic",
+          "enum": [
+            "heuristic",
+            "decision"
+          ],
+          "title": "Backend",
+          "type": "string"
+        },
+        "refusal_reject_at": {
+          "default": 0.7,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Refusal Reject At",
+          "type": "number"
+        },
+        "evolution_accept_at": {
+          "default": 0.6,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Evolution Accept At",
+          "type": "number"
+        },
         "min_edit_distance_chars": {
           "default": 20,
           "title": "Min Edit Distance Chars",
@@ -410,6 +897,26 @@
     "EvolInstructGeneratorConfig": {
       "additionalProperties": false,
       "properties": {
+        "operator_selection": {
+          "default": "round_robin",
+          "enum": [
+            "round_robin",
+            "decision"
+          ],
+          "title": "Operator Selection",
+          "type": "string"
+        },
+        "decision_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "type": {
           "const": "evol_instruct_generator",
           "default": "evol_instruct_generator",
@@ -512,6 +1019,65 @@
       "title": "ExecutorConfig",
       "type": "object"
     },
+    "FidelityCheckConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "decision_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "accept_at": {
+          "default": 0.85,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Accept At",
+          "type": "number"
+        },
+        "reject_at": {
+          "default": 0.2,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Reject At",
+          "type": "number"
+        },
+        "on_uncertain": {
+          "default": "keep",
+          "enum": [
+            "keep",
+            "drop",
+            "escalate"
+          ],
+          "title": "On Uncertain",
+          "type": "string"
+        },
+        "min_confidence": {
+          "default": 0.5,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Min Confidence",
+          "type": "number"
+        },
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "relabel": {
+          "default": false,
+          "title": "Relabel",
+          "type": "boolean"
+        }
+      },
+      "title": "FidelityCheckConfig",
+      "type": "object"
+    },
     "IFDFilterConfig": {
       "additionalProperties": false,
       "properties": {
@@ -533,6 +1099,58 @@
     "IdentityClaimFilterConfig": {
       "additionalProperties": false,
       "properties": {
+        "decision_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "accept_at": {
+          "default": 0.85,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Accept At",
+          "type": "number"
+        },
+        "reject_at": {
+          "default": 0.2,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Reject At",
+          "type": "number"
+        },
+        "on_uncertain": {
+          "default": "keep",
+          "enum": [
+            "keep",
+            "drop",
+            "escalate"
+          ],
+          "title": "On Uncertain",
+          "type": "string"
+        },
+        "min_confidence": {
+          "default": 0.5,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Min Confidence",
+          "type": "number"
+        },
+        "backend": {
+          "default": "regex",
+          "enum": [
+            "regex",
+            "regex_then_decision",
+            "decision"
+          ],
+          "title": "Backend",
+          "type": "string"
+        },
         "type": {
           "const": "identity_claim",
           "default": "identity_claim",
@@ -670,6 +1288,57 @@
     "LabelingFilterConfig": {
       "additionalProperties": false,
       "properties": {
+        "decision_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "accept_at": {
+          "default": 0.85,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Accept At",
+          "type": "number"
+        },
+        "reject_at": {
+          "default": 0.2,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Reject At",
+          "type": "number"
+        },
+        "on_uncertain": {
+          "default": "keep",
+          "enum": [
+            "keep",
+            "drop",
+            "escalate"
+          ],
+          "title": "On Uncertain",
+          "type": "string"
+        },
+        "min_confidence": {
+          "default": 0.5,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Min Confidence",
+          "type": "number"
+        },
+        "backend": {
+          "default": "llm",
+          "enum": [
+            "llm",
+            "decision"
+          ],
+          "title": "Backend",
+          "type": "string"
+        },
         "type": {
           "const": "labeling_engine",
           "default": "labeling_engine",
@@ -707,6 +1376,83 @@
     "LanguageFilterConfig": {
       "additionalProperties": false,
       "properties": {
+        "decision_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "accept_at": {
+          "default": 0.85,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Accept At",
+          "type": "number"
+        },
+        "reject_at": {
+          "default": 0.2,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Reject At",
+          "type": "number"
+        },
+        "on_uncertain": {
+          "default": "keep",
+          "enum": [
+            "keep",
+            "drop",
+            "escalate"
+          ],
+          "title": "On Uncertain",
+          "type": "string"
+        },
+        "min_confidence": {
+          "default": 0.5,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Min Confidence",
+          "type": "number"
+        },
+        "backend": {
+          "default": "heuristic",
+          "enum": [
+            "heuristic",
+            "fasttext",
+            "decision"
+          ],
+          "title": "Backend",
+          "type": "string"
+        },
+        "check_fields": {
+          "items": {
+            "enum": [
+              "instruction",
+              "response",
+              "system"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Check Fields",
+          "type": "array"
+        },
+        "lid_model_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lid Model Path"
+        },
         "type": {
           "const": "language",
           "default": "language",
@@ -840,6 +1586,15 @@
     "OutputConfig": {
       "additionalProperties": false,
       "properties": {
+        "on_unresolved_escalation": {
+          "default": "keep",
+          "enum": [
+            "keep",
+            "drop"
+          ],
+          "title": "On Unresolved Escalation",
+          "type": "string"
+        },
         "format": {
           "enum": [
             "jsonl",
@@ -864,6 +1619,9 @@
     "PDFSourceConfig": {
       "additionalProperties": false,
       "properties": {
+        "decision_filter": {
+          "$ref": "#/$defs/DecisionCheckConfig"
+        },
         "type": {
           "const": "pdf_source",
           "default": "pdf_source",
@@ -950,14 +1708,99 @@
           ],
           "default": null,
           "title": "Length Ratio Max"
+        },
+        "pairwise_check": {
+          "$ref": "#/$defs/PairwiseCheckConfig"
         }
       },
       "title": "PairDeltaFilterConfig",
       "type": "object"
     },
+    "PairwiseCheckConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "decision_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "reject_at": {
+          "default": 0.7,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Reject At",
+          "type": "number"
+        },
+        "min_preference": {
+          "default": 0.7,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Min Preference",
+          "type": "number"
+        },
+        "swap_order": {
+          "default": true,
+          "title": "Swap Order",
+          "type": "boolean"
+        }
+      },
+      "title": "PairwiseCheckConfig",
+      "type": "object"
+    },
+    "ParaphraseCheckConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "decision_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "reject_at": {
+          "default": 0.7,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Reject At",
+          "type": "number"
+        },
+        "lower": {
+          "default": 0.15,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Lower",
+          "type": "number"
+        }
+      },
+      "title": "ParaphraseCheckConfig",
+      "type": "object"
+    },
     "PromptBasedGeneratorConfig": {
       "additionalProperties": false,
       "properties": {
+        "best_of_n": {
+          "$ref": "#/$defs/BestOfNConfig"
+        },
         "type": {
           "const": "prompt_based_generator",
           "default": "prompt_based_generator",
@@ -1007,6 +1850,33 @@
     "ReasoningLanguageGateConfig": {
       "additionalProperties": false,
       "properties": {
+        "low_confidence_backend": {
+          "default": "skip",
+          "enum": [
+            "skip",
+            "decision"
+          ],
+          "title": "Low Confidence Backend",
+          "type": "string"
+        },
+        "mismatch_at": {
+          "default": 0.7,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Mismatch At",
+          "type": "number"
+        },
+        "decision_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "type": {
           "const": "reasoning_language_gate",
           "default": "reasoning_language_gate",
@@ -1129,6 +1999,57 @@
     "RewardModelFilterConfig": {
       "additionalProperties": false,
       "properties": {
+        "decision_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "accept_at": {
+          "default": 0.85,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Accept At",
+          "type": "number"
+        },
+        "reject_at": {
+          "default": 0.2,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Reject At",
+          "type": "number"
+        },
+        "on_uncertain": {
+          "default": "keep",
+          "enum": [
+            "keep",
+            "drop",
+            "escalate"
+          ],
+          "title": "On Uncertain",
+          "type": "string"
+        },
+        "min_confidence": {
+          "default": 0.5,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Min Confidence",
+          "type": "number"
+        },
+        "backend": {
+          "default": "llm",
+          "enum": [
+            "llm",
+            "decision"
+          ],
+          "title": "Backend",
+          "type": "string"
+        },
         "type": {
           "const": "reward_model",
           "default": "reward_model",
@@ -1162,6 +2083,97 @@
       "title": "RewardModelFilterConfig",
       "type": "object"
     },
+    "SeedGateConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "decision_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "accept_at": {
+          "default": 0.85,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Accept At",
+          "type": "number"
+        },
+        "reject_at": {
+          "default": 0.2,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Reject At",
+          "type": "number"
+        },
+        "on_uncertain": {
+          "default": "keep",
+          "enum": [
+            "keep",
+            "drop",
+            "escalate"
+          ],
+          "title": "On Uncertain",
+          "type": "string"
+        },
+        "min_confidence": {
+          "default": 0.5,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Min Confidence",
+          "type": "number"
+        },
+        "type": {
+          "const": "seed_gate",
+          "default": "seed_gate",
+          "title": "Type",
+          "type": "string"
+        },
+        "min_density": {
+          "anyOf": [
+            {
+              "maximum": 4,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Density"
+        },
+        "domains": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "maxProperties": 254,
+          "title": "Domains",
+          "type": "object"
+        },
+        "allowed_domains": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Domains",
+          "type": "array"
+        }
+      },
+      "title": "SeedGateConfig",
+      "type": "object"
+    },
     "SeedSourceConfig": {
       "additionalProperties": false,
       "properties": {
@@ -1185,6 +2197,9 @@
     "SemanticSimilarityFilterConfig": {
       "additionalProperties": false,
       "properties": {
+        "decision_band": {
+          "$ref": "#/$defs/DecisionBandConfig"
+        },
         "type": {
           "const": "semantic_similarity",
           "default": "semantic_similarity",
@@ -1294,6 +2309,12 @@
     "TaxonomyGeneratorConfig": {
       "additionalProperties": false,
       "properties": {
+        "best_of_n": {
+          "$ref": "#/$defs/BestOfNConfig"
+        },
+        "fidelity_check": {
+          "$ref": "#/$defs/FidelityCheckConfig"
+        },
         "type": {
           "const": "taxonomy_generator",
           "default": "taxonomy_generator",
@@ -1340,6 +2361,55 @@
         "taxonomy_path"
       ],
       "title": "TaxonomyGeneratorConfig",
+      "type": "object"
+    },
+    "TaxonomyLabelConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "decision_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "reject_at": {
+          "default": 0.7,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Reject At",
+          "type": "number"
+        },
+        "taxonomy_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Taxonomy Path"
+        },
+        "min_confidence": {
+          "default": 0.6,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Min Confidence",
+          "type": "number"
+        }
+      },
+      "title": "TaxonomyLabelConfig",
       "type": "object"
     },
     "TaxonomyMinimum": {
@@ -1461,6 +2531,17 @@
     "llm": {
       "$ref": "#/$defs/LLMConfig"
     },
+    "decisions": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DecisionConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
     "executor": {
       "$ref": "#/$defs/ExecutorConfig"
     },
@@ -1471,6 +2552,7 @@
             "artifact_filter": "#/$defs/ArtifactFilterConfig",
             "canary": "#/$defs/CanaryFilterConfig",
             "complexity_elo": "#/$defs/ComplexityEloFilterConfig",
+            "decision_panel": "#/$defs/DecisionPanelConfig",
             "decontaminate": "#/$defs/DecontaminateConfig",
             "double_critic": "#/$defs/DoubleCriticFilterConfig",
             "evol_instruct_generator": "#/$defs/EvolInstructGeneratorConfig",
@@ -1488,6 +2570,7 @@
             "reasoning_language_gate": "#/$defs/ReasoningLanguageGateConfig",
             "repetition": "#/$defs/RepetitionFilterConfig",
             "reward_model": "#/$defs/RewardModelFilterConfig",
+            "seed_gate": "#/$defs/SeedGateConfig",
             "seed_source": "#/$defs/SeedSourceConfig",
             "select": "#/$defs/CompositeSelectConfig",
             "semantic_similarity": "#/$defs/SemanticSimilarityFilterConfig",
@@ -1500,6 +2583,12 @@
         "oneOf": [
           {
             "$ref": "#/$defs/SeedSourceConfig"
+          },
+          {
+            "$ref": "#/$defs/DecisionPanelConfig"
+          },
+          {
+            "$ref": "#/$defs/SeedGateConfig"
           },
           {
             "$ref": "#/$defs/PDFSourceConfig"

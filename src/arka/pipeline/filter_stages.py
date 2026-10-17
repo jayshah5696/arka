@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import statistics
 from pathlib import Path
 from typing import Any
@@ -25,7 +26,6 @@ from arka.pipeline.stages import BaseFilterStage, Stage
 from arka.records.models import (
     ConversationRecord,
     Record,
-    RecordScores,
 )
 
 
@@ -106,11 +106,55 @@ class SemanticSimilarityFilterStage(Stage):
         kept: list[Record] = list(seeds) + list(other)
         dropped: list[Record] = []
         drop_reasons: dict[str, int] = {}
+        decision_results = []
 
         for i, record in enumerate(generated):
             max_sim = float(np.max(sim_matrix[i]))
-            if max_sim > filter_config.threshold:
+            decision_cfg = filter_config.decision_band
+            reason = None
+            if decision_cfg.enabled:
+                if max_sim > decision_cfg.upper:
+                    reason = "high_semantic_similarity"
+                elif max_sim >= decision_cfg.lower:
+                    from arka.decisions.models import YesNoQuestion
+                    from arka.pipeline.decision_stages import (
+                        attach_answers,
+                        record_state,
+                    )
+
+                    nearest = seeds[int(np.argmax(sim_matrix[i]))]
+                    questions = [
+                        YesNoQuestion(
+                            name="semantic_similarity.copies_seed",
+                            instructions="Does the generated example reproduce the seed's specific facts, names, numbers or task and answer, rather than only sharing its topic?",
+                        ),
+                        YesNoQuestion(
+                            name="semantic_similarity.leaks_specifics",
+                            instructions="Does the generated example reveal a specific name, figure, identifier or quote present in the seed?",
+                        ),
+                    ]
+                    with ctx.decision_client(
+                        override=decision_cfg.decision_override
+                    ) as client:
+                        result = client.decide(
+                            json.dumps(
+                                {
+                                    "generated": record_state(record),
+                                    "seed": record_state(nearest),
+                                }
+                            ),
+                            questions,
+                        )
+                    decision_results.append(result)
+                    record = attach_answers(record, result.answers)
+                    if (
+                        max(a.probability for a in result.answers.values())
+                        >= decision_cfg.reject_at
+                    ):
+                        reason = "seed_copy_confirmed"
+            elif max_sim > filter_config.threshold:
                 reason = "high_semantic_similarity"
+            if reason is not None:
                 dropped.append(
                     record.dropped_by(
                         self.name,
@@ -122,13 +166,18 @@ class SemanticSimilarityFilterStage(Stage):
             else:
                 kept.append(record)
 
-        _write_filter_artifacts(
-            ctx,
-            self.name,
-            len(records),
-            len(kept),
-            dropped,
-            drop_reasons,
+        from arka.pipeline.decision_stages import decision_usage
+
+        StageArtifacts(ctx).write(
+            report=StageReport(
+                stage=self.name,
+                count_in=len(records),
+                count_out=len(kept),
+                dropped_count=len(dropped),
+                drop_reasons=drop_reasons,
+                decision_usage=decision_usage(decision_results),
+            ),
+            dropped=dropped if dropped else None,
         )
         return kept
 
@@ -176,6 +225,10 @@ class LabelingQualityFilterStage(Stage):
         if self.config is None or self.config.rubric_path is None:
             return records
         filter_config = self.config
+        if filter_config.backend == "decision":
+            from arka.pipeline.decision_stages import run_decision_stage
+
+            return run_decision_stage(self, records, ctx, filter_config)
         rubric_path = self.project_root / filter_config.rubric_path
         try:
             rubric = RubricLoader().load(rubric_path)
@@ -250,13 +303,18 @@ class LabelingQualityFilterStage(Stage):
             scored_overall.append(result.overall)
             updated_record = record.model_copy(
                 update={
-                    "scores": RecordScores(
-                        quality=result.overall,
-                        quality_per_dim=result.scores,
-                        rubric_hash=result.rubric_hash,
-                        rubric_version=result.rubric_version,
-                        judge_model=result.judge_model,
-                        judge_prompt_hash=result.judge_prompt_hash,
+                    "scores": record.scores.model_copy(
+                        update={
+                            "quality": result.overall,
+                            "quality_per_dim": {
+                                **record.scores.quality_per_dim,
+                                **result.scores,
+                            },
+                            "rubric_hash": result.rubric_hash,
+                            "rubric_version": result.rubric_version,
+                            "judge_model": result.judge_model,
+                            "judge_prompt_hash": result.judge_prompt_hash,
+                        }
                     )
                 }
             )

@@ -11,6 +11,7 @@ from typing import Protocol
 
 from arka.config.models import ReasoningLanguageGateConfig
 from arka.pipeline.artifacts import StageArtifacts, StageReport
+from arka.pipeline.decision_stages import decision_usage
 from arka.pipeline.models import StageContext
 from arka.pipeline.stages import Stage
 from arka.records.identity import content_hash
@@ -87,9 +88,10 @@ class ReasoningLanguageGateStage(Stage):
         low_confidence: Counter[str] = Counter()
         stripped = 0
         unjudged_reference = 0
+        decision_results = []
         for record in records:
             if (
-                detector is None
+                (detector is None and cfg.low_confidence_backend == "skip")
                 or not isinstance(record, ConversationRecord)
                 or not record.payload.reasoning
             ):
@@ -100,24 +102,62 @@ class ReasoningLanguageGateStage(Stage):
                 unjudged_reference += 1
                 kept.append(record)
                 continue
-            reference = detector.predict(reference_text)
-            if reference.confidence < cfg.min_confidence:
+            reference = (
+                detector.predict(reference_text)
+                if detector
+                else LanguagePrediction("unknown", 0)
+            )
+            reference_uncertain = reference.confidence < cfg.min_confidence
+            if reference_uncertain:
                 unjudged_reference += 1
-                kept.append(record)
-                continue
+                if cfg.low_confidence_backend == "skip":
+                    kept.append(record)
+                    continue
             found: dict[str, LanguagePrediction] = {}
+            skipped = []
             for field in dict.fromkeys(cfg.checked_fields):
                 text = getattr(record.payload, field) or ""
                 if not text.strip():
                     continue
-                prediction = detector.predict(text)
-                if prediction.confidence < cfg.min_confidence:
+                prediction = (
+                    detector.predict(text)
+                    if detector
+                    else LanguagePrediction("unknown", 0)
+                )
+                if reference_uncertain or prediction.confidence < cfg.min_confidence:
                     low_confidence[field] += 1
+                    if cfg.low_confidence_backend == "decision":
+                        skipped.append(field)
                     continue
                 checked[field] += 1
                 if prediction.language != reference.language:
                     mismatches[field] += 1
                     found[field] = prediction
+            if skipped:
+                from arka.decisions.models import YesNoQuestion
+                from arka.pipeline.decision_stages import attach_answers, record_state
+
+                questions = [
+                    YesNoQuestion(
+                        name=f"reasoning_language_gate.same_language_{field}",
+                        instructions=f"Is the natural-language prose in {field} in the same language as {cfg.reference_field}? Ignore code, math and quoted terms.",
+                    )
+                    for field in skipped
+                ]
+                with ctx.decision_client(override=cfg.decision_override) as client:
+                    result = client.decide(record_state(record), questions)
+                decision_results.append(result)
+                record = attach_answers(record, result.answers)
+                for field in skipped:
+                    checked[field] += 1
+                    probability = result.answers[
+                        f"reasoning_language_gate.same_language_{field}"
+                    ].probability
+                    if probability < 1 - cfg.mismatch_at:
+                        found[field] = LanguagePrediction(
+                            "decision_mismatch", 1 - probability
+                        )
+                        mismatches[field] += 1
             if not found:
                 kept.append(record)
                 continue
@@ -163,6 +203,7 @@ class ReasoningLanguageGateStage(Stage):
                 },
                 field_low_confidence_counts=dict(low_confidence),
                 unjudged_reference_count=unjudged_reference,
+                decision_usage=decision_usage(decision_results),
             ),
             dropped=dropped,
         )

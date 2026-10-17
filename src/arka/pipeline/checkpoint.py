@@ -77,6 +77,28 @@ class CheckpointManager:
                 """
             )
 
+            self._conn.execute(
+                "CREATE TABLE IF NOT EXISTS decisions_cache (cache_key TEXT PRIMARY KEY, answer TEXT NOT NULL)"
+            )
+
+    def close(self) -> None:
+        with self._lock:
+            self._conn.close()
+
+    def load_decision(self, cache_key: str) -> str | None:
+        with self._lock, self._conn:
+            row = self._conn.execute(
+                "SELECT answer FROM decisions_cache WHERE cache_key = ?", (cache_key,)
+            ).fetchone()
+        return row["answer"] if row is not None else None
+
+    def save_decision(self, cache_key: str, answer: str) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO decisions_cache (cache_key, answer) VALUES (?, ?)",
+                (cache_key, answer),
+            )
+
     def load_embedding(self, text_hash: str) -> bytes | None:
         with self._lock, self._conn:
             row = self._conn.execute(

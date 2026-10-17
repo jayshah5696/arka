@@ -131,12 +131,38 @@ class EvolInstructRoundStage(Stage):
         dropped_records: list[Record] = []
         raw_rows: list[EvolRawRow] = []
         drop_reasons: dict[str, int] = {}
+        decision_results = []
 
         for parent_index, parent in enumerate(frontier):
+            ranked_operators = None
+            if self.config.operator_selection == "decision":
+                from arka.decisions.models import ChoiceQuestion
+                from arka.pipeline.decision_stages import record_state
+                from arka.pipeline.evol_instruct import _OPERATOR_PROMPTS
+
+                question = ChoiceQuestion(
+                    name="evol_instruct_generator.best_operator",
+                    instructions="Which evolution makes the instruction more demanding while keeping it answerable?",
+                    choices={name: _OPERATOR_PROMPTS[name] for name in operators},
+                )
+                with ctx.decision_client(
+                    override=self.config.decision_override
+                ) as client:
+                    result = client.decide(record_state(parent), [question])
+                decision_results.append(result)
+                probabilities = result.answers[question.name].probabilities
+                ranked_operators = sorted(
+                    operators, key=lambda name: (-probabilities[name], name)
+                )
             for branch_index in range(branching_factor):
-                operator = operators[
-                    (parent_index * branching_factor + branch_index) % len(operators)
-                ]
+                operator = (
+                    ranked_operators[branch_index]
+                    if ranked_operators
+                    else operators[
+                        (parent_index * branching_factor + branch_index)
+                        % len(operators)
+                    ]
+                )
                 try:
                     instruction_output = llm_client.complete_structured(
                         messages=build_evol_messages(parent, operator=operator),
@@ -225,15 +251,28 @@ class EvolInstructRoundStage(Stage):
                         usage_response=response_output.usage,
                     )
                 )
-                generated_records.append(
-                    self._build_evolved_record(
-                        parent=parent,
-                        operator=operator,
-                        instruction=evolved_instruction,
-                        response=evolved_response,
-                        config_hash=config_hash,
-                    )
+                candidate = self._build_evolved_record(
+                    parent=parent,
+                    operator=operator,
+                    instruction=evolved_instruction,
+                    response=evolved_response,
+                    config_hash=config_hash,
                 )
+                if self.config.filter.backend == "decision":
+                    from arka.pipeline.decision_checks import check_evolution
+
+                    candidate, reason, result = check_evolution(
+                        candidate, parent, ctx, self.config, self.name
+                    )
+                    decision_results.append(result)
+                    if reason:
+                        dropped_records.append(candidate.dropped_by(self.name, reason))
+                        drop_reasons[reason] = drop_reasons.get(reason, 0) + 1
+                        raw_rows[-1] = raw_rows[-1].model_copy(
+                            update={"dropped_reason": reason}
+                        )
+                        continue
+                generated_records.append(candidate)
 
         self._write_artifacts(
             ctx=ctx,
@@ -244,6 +283,16 @@ class EvolInstructRoundStage(Stage):
             total_out_count=len(records) + len(generated_records),
             drop_reasons=drop_reasons,
         )
+        if decision_results:
+            from arka.pipeline.artifacts import StageArtifacts
+            from arka.pipeline.decision_stages import decision_usage
+
+            report = StageArtifacts.load_report(ctx.work_dir / "stats.json")
+            StageArtifacts(ctx).write(
+                report=report.model_copy(
+                    update={"decision_usage": decision_usage(decision_results)}
+                )
+            )
         return [*records, *generated_records]
 
     def _frontier_records(self, records: list[Record]) -> list[ConversationRecord]:
@@ -293,6 +342,12 @@ class EvolInstructRoundStage(Stage):
         candidate_instruction: str,
         ctx: StageContext,
     ) -> str | None:
+        if self.config.filter.backend == "decision":
+            return (
+                "evol_instruction_too_short"
+                if len(candidate_instruction) < self.config.filter.min_instruction_chars
+                else None
+            )
         if normalized_instruction(candidate_instruction) == normalized_instruction(
             parent.payload.instruction
         ):
@@ -347,7 +402,13 @@ class EvolInstructRoundStage(Stage):
             ),
             lineage=lineage,
             payload=payload,
-            scores=RecordScores(),
+            scores=RecordScores(
+                quality_per_dim={
+                    "seed_domain": parent.scores.quality_per_dim["seed_domain"]
+                }
+                if "seed_domain" in parent.scores.quality_per_dim
+                else {}
+            ),
             config_hash=config_hash,
             created_at=datetime.now(UTC).isoformat(),
         )

@@ -16,6 +16,8 @@ They are organized from simplest to more advanced workflows.
 5. `05-pdf-grounded.yaml` — PDF chunk to grounded generation
 6. `06-dedup-quality-filter.yaml` — dedup + quality filter
 7. `07-resume-debug.yaml` — resume-oriented debug workflow
+8. `08-privacy-guardrails.yaml` checks similarity and canary phrases.
+9. `09-decision-models.yaml` uses seed gating, candidate ranking, and decision judges without an LLM fallback.
 
 ## Seeds and PDFs
 

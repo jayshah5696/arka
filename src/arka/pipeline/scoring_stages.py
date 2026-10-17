@@ -16,7 +16,7 @@ from arka.labeling.rubric import RubricLoader
 from arka.pipeline.artifacts import StageArtifacts, StageReport
 from arka.pipeline.models import StageContext
 from arka.pipeline.stages import Stage
-from arka.records.models import ConversationRecord, Record, RecordScores
+from arka.records.models import ConversationRecord, Record
 from arka.taxonomy.coverage import extract_sampled_from_record
 from arka.taxonomy.selection import reserve_coverage
 
@@ -50,6 +50,17 @@ class LabelingScoreStage(Stage):
         if self.config is None or self.config.rubric_path is None:
             return records
         filter_config = self.config
+        if filter_config.backend == "decision":
+            from arka.pipeline.decision_stages import run_decision_stage
+
+            return run_decision_stage(
+                self,
+                records,
+                ctx,
+                filter_config.model_copy(
+                    update={"min_overall_score": None, "on_uncertain": "keep"}
+                ),
+            )
         if filter_config.rubric_path is None:
             return records
 
@@ -97,13 +108,18 @@ class LabelingScoreStage(Stage):
             scored_overall.append(result.overall)
             updated_record = record.model_copy(
                 update={
-                    "scores": RecordScores(
-                        quality=result.overall,
-                        quality_per_dim=result.scores,
-                        rubric_hash=result.rubric_hash,
-                        rubric_version=result.rubric_version,
-                        judge_model=result.judge_model,
-                        judge_prompt_hash=result.judge_prompt_hash,
+                    "scores": record.scores.model_copy(
+                        update={
+                            "quality": result.overall,
+                            "quality_per_dim": {
+                                **record.scores.quality_per_dim,
+                                **result.scores,
+                            },
+                            "rubric_hash": result.rubric_hash,
+                            "rubric_version": result.rubric_version,
+                            "judge_model": result.judge_model,
+                            "judge_prompt_hash": result.judge_prompt_hash,
+                        }
                     )
                 }
             )
@@ -172,6 +188,11 @@ class RewardModelScoringStage(Stage):
         if self.config is None:
             return records
         reward_config = self.config
+
+        if reward_config.backend == "decision":
+            from arka.pipeline.decision_stages import run_decision_stage
+
+            return run_decision_stage(self, records, ctx, reward_config)
 
         llm_client = self._llm_client or ctx.llm_client(
             override=reward_config.llm_override
@@ -297,8 +318,9 @@ class PairDeltaFilterStage(Stage):
         if self.config is None:
             return records
         pair_config = self.config
+        self._decision_results = []
 
-        parent_by_id: dict[str, Record] = {}
+        parent_by_id: dict[str, Record] = {record.id: record for record in records}
         if parent_records:
             parent_by_id = {record.id: record for record in parent_records}
 
@@ -350,6 +372,21 @@ class PairDeltaFilterStage(Stage):
                 )
                 drop_reasons[reason] = drop_reasons.get(reason, 0) + 1
             else:
+                if (
+                    pair_config.pairwise_check.enabled
+                    and isinstance(record, ConversationRecord)
+                    and isinstance(parent, ConversationRecord)
+                ):
+                    from arka.pipeline.decision_checks import pairwise_preference
+
+                    record, reason, results = pairwise_preference(
+                        record, parent, ctx, pair_config.pairwise_check, self.name
+                    )
+                    self._decision_results.extend(results)
+                    if reason is not None:
+                        dropped_records.append(record.dropped_by(self.name, reason))
+                        drop_reasons[reason] = drop_reasons.get(reason, 0) + 1
+                        continue
                 kept_records.append(record)
 
         self._write_artifacts(
@@ -359,6 +396,15 @@ class PairDeltaFilterStage(Stage):
             count_out=len(kept_records),
             drop_reasons=drop_reasons,
         )
+        if self._decision_results:
+            from arka.pipeline.decision_stages import decision_usage
+
+            report = StageArtifacts.load_report(ctx.work_dir / "stats.json")
+            StageArtifacts(ctx).write(
+                report=report.model_copy(
+                    update={"decision_usage": decision_usage(self._decision_results)}
+                )
+            )
         return kept_records
 
     def _find_parent(
@@ -370,7 +416,9 @@ class PairDeltaFilterStage(Stage):
         return None
 
     def _get_score(self, record: Record, field: str) -> float | None:
-        return getattr(record.scores, field, None)
+        from arka.decisions.scores import score_value
+
+        return score_value(record, field)
 
     def _text_length(self, record: Record) -> int:
         if isinstance(record, ConversationRecord):
@@ -408,14 +456,26 @@ class CompositeSelectStage(Stage):
     name = "05_composite_select"
     stage_action = "selected"
 
-    def __init__(self, config: CompositeSelectConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: CompositeSelectConfig | None = None,
+        project_root: Path | None = None,
+    ) -> None:
         self.config = config
+        self.project_root = project_root or Path.cwd()
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
         self.config = self.get_stage_config(ctx, CompositeSelectConfig, "select")
         if self.config is None:
             return records
         select_config = self.config
+        self._decision_results = []
+        if select_config.label_taxonomy.enabled:
+            from arka.pipeline.decision_checks import label_taxonomy
+
+            records, self._decision_results = label_taxonomy(
+                records, ctx, select_config.label_taxonomy, self.project_root
+            )
         weights = select_config.weights
         if not weights and not select_config.coverage:
             return records
@@ -430,6 +490,12 @@ class CompositeSelectStage(Stage):
             scored_pairs.append((composite, record))
 
         scored_pairs.sort(key=lambda pair: pair[0], reverse=True)
+        if select_config.tie_break == "confidence":
+            scored_pairs.sort(
+                key=lambda pair: (-pair[0], -self._confidence(pair[1]), pair[1].id)
+            )
+        elif any(key.startswith(("decisions.", "quality_per_dim.")) for key in weights):
+            scored_pairs.sort(key=lambda pair: (-pair[0], pair[1].id))
         if select_config.coverage:
             return self._select_with_coverage(
                 scored_pairs, ctx, select_config, target_count
@@ -540,13 +606,26 @@ class CompositeSelectStage(Stage):
         return kept
 
     def _composite_score(self, record: Record, weights: dict[str, float]) -> float:
+        from arka.decisions.scores import score_value
+
         total = 0.0
         for field, weight in weights.items():
-            value = getattr(record.scores, field, None)
+            value = score_value(
+                record,
+                field,
+                normalize=field.startswith("decisions."),
+                confidence_weighting=getattr(
+                    self.config, "confidence_weighting", False
+                ),
+            )
             if value is None:
                 value = 0.0
             total += float(value) * weight
         return total
+
+    def _confidence(self, record: Record) -> float:
+        answers = record.scores.decisions.values()
+        return statistics.fmean(a.confidence for a in answers) if answers else 0.0
 
     def _write_artifacts(
         self,
@@ -557,6 +636,10 @@ class CompositeSelectStage(Stage):
         count_out: int,
         **extras: Any,
     ) -> None:
+        if getattr(self, "_decision_results", None):
+            from arka.pipeline.decision_stages import decision_usage
+
+            extras["decision_usage"] = decision_usage(self._decision_results)
         StageArtifacts(ctx).write(
             report=StageReport(
                 stage=self.name,

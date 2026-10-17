@@ -5,6 +5,7 @@ from typing import Any
 from pydantic import Field
 
 from arka.common.models import StrictModel
+from arka.decisions.models import DecisionAnswer
 
 
 class RecordSource(StrictModel):
@@ -37,6 +38,7 @@ class DecontaminationMatch(StrictModel):
 
 
 class RecordScores(StrictModel):
+    decisions: dict[str, DecisionAnswer] = Field(default_factory=dict)
     quality: float | None = None
     quality_per_dim: dict[str, Any] = Field(default_factory=dict)
     rubric_hash: str | None = None
@@ -120,6 +122,12 @@ class Record(StrictModel):
             action="dropped",
             reason_code=reason_code,
             details=details,
+        )
+
+    def is_escalated(self, stage: str | None = None) -> bool:
+        return any(
+            event.action == "escalated" and (stage is None or event.stage == stage)
+            for event in self.stage_events
         )
 
 

@@ -51,6 +51,16 @@ def _print_summary(
     if cost is not None:
         click.secho(f"Total Cost: ${cost:.6f}")
 
+    decisions = report.get("decision_usage")
+    if decisions is not None:
+        click.secho(
+            f"Decision requests: {decisions['requests']}; input tokens: {decisions['input_tokens']}"
+        )
+        if decisions.get("cost_usd") is not None:
+            click.secho(f"Decision cost: ${decisions['cost_usd']:.6f}")
+        escalation_counts = report.get("escalation_counts", {})
+        click.secho(f"Unresolved escalations: {escalation_counts.get('unresolved', 0)}")
+
     dataset_path = report.get("dataset_path")
     if dataset_path:
         click.secho(f"\nDataset Output: {dataset_path}", fg="green")

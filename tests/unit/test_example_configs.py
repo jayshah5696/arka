@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import yaml
 
 from arka.examples_validation import (
     ALLOWED_COSTS,
@@ -59,8 +60,9 @@ def test_openrouter_configs_reference_openrouter_api_key(config_path: Path) -> N
     if "openrouter.ai" not in raw_text:
         return
 
-    assert "${OPENROUTER_API_KEY}" in raw_text
-    assert "${OPENAI_API_KEY}" not in raw_text
+    llm_key = yaml.safe_load(raw_text)["llm"]["api_key"]
+    assert "${OPENROUTER_API_KEY}" in llm_key
+    assert "${OPENAI_API_KEY}" not in llm_key
 
 
 @pytest.mark.parametrize("config_path", example_yaml_paths(Path(".")))

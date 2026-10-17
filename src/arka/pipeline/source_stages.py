@@ -292,4 +292,40 @@ class PDFSourceStage(Stage):
                     docs_stripped_empty=int(stripped_empty),
                 )
             )
+        if self.config.decision_filter.enabled:
+            from arka.pipeline.decision_checks import filter_pdf_chunks
+            from arka.pipeline.decision_stages import decision_usage
+
+            original_count = len(chunks)
+            chunks, dropped, results = filter_pdf_chunks(
+                chunks, ctx, self.config.decision_filter, self.name
+            )
+            report = StageArtifacts.load_report(ctx.work_dir / "stats.json")
+            extras = (
+                report.model_dump(
+                    exclude={
+                        "stage",
+                        "count_in",
+                        "count_out",
+                        "dropped_count",
+                        "drop_reasons",
+                    }
+                )
+                if report
+                else {}
+            )
+            StageArtifacts(ctx).write(
+                report=StageReport(
+                    stage=self.name,
+                    count_in=original_count,
+                    count_out=len(chunks),
+                    dropped_count=len(dropped),
+                    drop_reasons={"pdf_front_back_matter": len(dropped)}
+                    if dropped
+                    else {},
+                    decision_usage=decision_usage(results),
+                    **extras,
+                ),
+                dropped=dropped,
+            )
         return chunks

@@ -12,6 +12,7 @@ from typing import Literal
 
 from arka.config.models import DecontaminateConfig
 from arka.pipeline.artifacts import StageArtifacts, StageReport
+from arka.pipeline.decision_stages import decision_usage
 from arka.pipeline.models import StageContext
 from arka.pipeline.stages import Stage
 from arka.records.models import ConversationRecord, DecontaminationMatch, Record
@@ -167,6 +168,7 @@ class DecontaminateStage(Stage):
         dropped: list[Record] = []
         matches: Counter[str] = Counter()
         clean_scores: list[float] = []
+        decision_results = []
         for record in records:
             best = None
             if isinstance(record, ConversationRecord):
@@ -177,7 +179,48 @@ class DecontaminateStage(Stage):
                     if found and (best is None or found.score > best.score):
                         best = found
             clean_scores.append(best.score if best else 0.0)
-            if not cfg.calibrate and best and best.score >= cfg.threshold:
+            paraphrase = False
+            if (
+                not cfg.calibrate
+                and cfg.paraphrase_check.enabled
+                and best
+                and cfg.paraphrase_check.lower <= best.score < cfg.threshold
+            ):
+                from arka.decisions.models import YesNoQuestion
+                from arka.pipeline.decision_stages import attach_answers
+
+                item = next(
+                    item
+                    for item in index.items
+                    if item.benchmark == best.benchmark and item.line == best.eval_id
+                )
+                question = YesNoQuestion(
+                    name="decontaminate.same_problem",
+                    instructions="Do these two texts pose the same problem, so an answer to one answers the other, even with changed wording or renamed variables?",
+                )
+                with ctx.decision_client(
+                    override=cfg.paraphrase_check.decision_override
+                ) as client:
+                    result = client.decide(
+                        json.dumps(
+                            {
+                                "record_text": getattr(record.payload, best.field),
+                                "benchmark_text": item.text,
+                            }
+                        ),
+                        [question],
+                    )
+                decision_results.append(result)
+                record = attach_answers(record, result.answers)
+                paraphrase = (
+                    result.answers[question.name].probability
+                    >= cfg.paraphrase_check.reject_at
+                )
+            if (
+                not cfg.calibrate
+                and best
+                and (best.score >= cfg.threshold or paraphrase)
+            ):
                 matches[best.benchmark] += 1
                 record = record.model_copy(
                     update={
@@ -185,15 +228,14 @@ class DecontaminateStage(Stage):
                     }
                 )
                 details = best.model_dump_json()
+                reason = "benchmark_paraphrase" if paraphrase else "benchmark_overlap"
                 if cfg.action == "drop":
-                    dropped.append(
-                        record.dropped_by(self.name, "benchmark_overlap", details)
-                    )
+                    dropped.append(record.dropped_by(self.name, reason, details))
                     continue
                 record = record.with_event(
                     stage=self.name,
                     action="flagged",
-                    reason_code="benchmark_overlap",
+                    reason_code=reason,
                     details=details,
                 )
             kept.append(record)
@@ -209,7 +251,10 @@ class DecontaminateStage(Stage):
                 count_in=len(records),
                 count_out=len(kept),
                 dropped_count=len(dropped),
-                drop_reasons={"benchmark_overlap": len(dropped)} if dropped else {},
+                drop_reasons=dict(
+                    Counter(r.stage_events[-1].reason_code for r in dropped)
+                ),
+                decision_usage=decision_usage(decision_results),
                 benchmark_match_counts=dict(matches),
                 flagged_count=sum(matches.values()) if cfg.action == "flag" else 0,
                 indexed_items=len(index.items),

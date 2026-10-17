@@ -45,6 +45,7 @@ source = { editable = "." }
 dependencies = [
     { name = "click" },
     { name = "fastembed" },
+    { name = "httpx" },
     { name = "numpy" },
     { name = "openai" },
     { name = "polars" },
@@ -71,6 +72,7 @@ requires-dist = [
     { name = "click", specifier = ">=8.3.1" },
     { name = "fastembed", specifier = ">=0.8.0" },
     { name = "fasttext", marker = "extra == 'language'", specifier = ">=0.9.3" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "numpy", specifier = ">=2.4.3" },
     { name = "openai", specifier = ">=2.30.0" },
     { name = "polars", specifier = ">=1.39.3" },

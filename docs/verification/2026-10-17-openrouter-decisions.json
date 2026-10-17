@@ -1,0 +1,114 @@
+{
+  "date": "2026-10-17",
+  "requested_model": "openai/gpt-6-luna-decisions",
+  "served_models": [
+    "openai/gpt-6-luna-decisions-20261006"
+  ],
+  "http_requests_total": 47,
+  "pipeline_comparison_requests": 42,
+  "probe_requests": 1,
+  "cli_requests": 4,
+  "reported_cost_usd": 0,
+  "p50_pipeline_request_latency_ms": 208,
+  "p95_pipeline_request_latency_ms": 329,
+  "all_36_typed_answers_equal": true,
+  "llm_calls_in_instrumented_runs": 0,
+  "runs": {
+    "panel": {
+      "requests": 12,
+      "elapsed_seconds": 2.273,
+      "final_count": 6
+    },
+    "direct": {
+      "requests": 30,
+      "elapsed_seconds": 3.426,
+      "final_count": 6
+    },
+    "filtered": {
+      "requests": 0,
+      "elapsed_seconds": 0.052,
+      "final_count": 3
+    },
+    "resumed": {
+      "requests": 0,
+      "elapsed_seconds": 0.016,
+      "final_count": 6
+    }
+  },
+  "input_tokens": {
+    "panel": 7002,
+    "direct": 7596
+  },
+  "samples": [
+    {
+      "instruction": "What is 2 + 2?",
+      "response": "4",
+      "expected_correct": true,
+      "quality": 4.524,
+      "reward": 8.07,
+      "p_correct": 1,
+      "p_incorrect": 0
+    },
+    {
+      "instruction": "What is 2 + 2?",
+      "response": "5",
+      "expected_correct": false,
+      "quality": 2.2660000000000005,
+      "reward": 1.22,
+      "p_correct": 0,
+      "p_incorrect": 1
+    },
+    {
+      "instruction": "What is the capital of France?",
+      "response": "Paris",
+      "expected_correct": true,
+      "quality": 4.45,
+      "reward": 7.41,
+      "p_correct": 1,
+      "p_incorrect": 0
+    },
+    {
+      "instruction": "What is the capital of France?",
+      "response": "London",
+      "expected_correct": false,
+      "quality": 2.12,
+      "reward": 1.07,
+      "p_correct": 0,
+      "p_incorrect": 1
+    },
+    {
+      "instruction": "What is 7 multiplied by 8?",
+      "response": "56",
+      "expected_correct": true,
+      "quality": 4.698,
+      "reward": 8.6,
+      "p_correct": 1,
+      "p_incorrect": 0
+    },
+    {
+      "instruction": "What is 7 multiplied by 8?",
+      "response": "63",
+      "expected_correct": false,
+      "quality": 2.274,
+      "reward": 1.34,
+      "p_correct": 0,
+      "p_incorrect": 1
+    }
+  ],
+  "cli": {
+    "short_seed": {
+      "p_usable": 0.55,
+      "action": "drop_uncertain",
+      "requests": 1
+    },
+    "rich_seed": {
+      "final_count": 1,
+      "requests": 3,
+      "stages": [
+        "seed_gate",
+        "language",
+        "identity_claim"
+      ]
+    }
+  }
+}

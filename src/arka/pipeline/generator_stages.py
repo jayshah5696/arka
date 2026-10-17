@@ -104,6 +104,8 @@ def compute_prompt_hash(
     llm: LLMConfig,
 ) -> str:
     gen_dict = generator.model_dump(mode="json", exclude_none=True)
+    # Candidate selection does not change generation or its raw response cache.
+    gen_dict.pop("best_of_n", None)
     gen_dict = _remove_nones(gen_dict)
     if "type" in gen_dict:
         type_mapping = {
@@ -217,9 +219,57 @@ class PromptBasedGeneratorStage(Stage):
         responses_path.parent.mkdir(parents=True, exist_ok=True)
 
         written_count = len(existing_rows)
+        from concurrent.futures import ThreadPoolExecutor
+
+        from arka.common.concurrency import bounded_worker_count
+
+        pool = ctx.executor or ThreadPoolExecutor(
+            max_workers=bounded_worker_count(len(pending), ctx.max_workers)
+        )
+        futures = [
+            pool.submit(self._complete_raw, llm_client, item.seed_record, ctx)
+            for item in pending
+        ]
+        try:
+            self._write_pending(
+                pending,
+                futures,
+                responses_path,
+                checkpoint,
+                ctx,
+                prompt_hash,
+                written_count,
+            )
+        finally:
+            if ctx.executor is None:
+                pool.shutdown(wait=True)
+
+        raw = self._load_raw_responses(responses_path)
+        records = self._parse_responses(raw, plan, ctx)
+        checkpoint.save_generator(
+            run_id=ctx.run_id,
+            stage_name=self.name,
+            prompt_hash=prompt_hash,
+            responses_path=responses_path,
+            response_count=len(raw),
+            status="completed",
+        )
+        return records
+
+    def _write_pending(
+        self,
+        pending,
+        futures,
+        responses_path,
+        checkpoint,
+        ctx,
+        prompt_hash,
+        written_count,
+    ):
+        """Write parallel results in plan order and checkpoint each completed row."""
         with responses_path.open("a", encoding="utf-8") as handle:
-            for item in pending:
-                output = self._complete_raw(llm_client, item.seed_record, ctx)
+            for item, future in zip(pending, futures, strict=True):
+                output = future.result()
                 row = RawGeneratorResponse(
                     plan_index=item.plan_index,
                     seed_id=item.seed_record.id,
@@ -243,18 +293,6 @@ class PromptBasedGeneratorStage(Stage):
                     response_count=written_count,
                     status="running",
                 )
-
-        raw = self._load_raw_responses(responses_path)
-        records = self._parse_responses(raw, plan, ctx)
-        checkpoint.save_generator(
-            run_id=ctx.run_id,
-            stage_name=self.name,
-            prompt_hash=prompt_hash,
-            responses_path=responses_path,
-            response_count=len(raw),
-            status="completed",
-        )
-        return records
 
     def _complete_raw(
         self,
@@ -381,6 +419,15 @@ class PromptBasedGeneratorStage(Stage):
                 )
             )
 
+        decision_results = []
+        if self.config is not None and self.config.best_of_n.enabled:
+            from arka.pipeline.decision_checks import best_of_n
+
+            generated_records, decision_dropped, decision_results = best_of_n(
+                generated_records, ctx, self.config.best_of_n, self.name
+            )
+            dropped_records.extend(decision_dropped)
+            drop_reasons["best_of_n_not_selected"] = len(decision_dropped)
         self._write_parse_artifacts(
             ctx=ctx,
             raw_rows=raw_rows,
@@ -389,6 +436,21 @@ class PromptBasedGeneratorStage(Stage):
             dropped_records=dropped_records,
             drop_reasons=drop_reasons,
         )
+        if decision_results:
+            from arka.pipeline.decision_stages import decision_usage
+
+            report = StageArtifacts.load_report(ctx.work_dir / "stats.json")
+            usage = decision_usage(decision_results)
+            report = report.model_copy(
+                update={
+                    "decision_usage": usage,
+                    "cost_usd": (report.model_dump().get("cost_usd") or 0)
+                    + (usage["cost_usd"] or 0)
+                    if usage["cost_usd"] is not None
+                    else report.model_dump().get("cost_usd"),
+                }
+            )
+            StageArtifacts(ctx).write(report=report)
         return generated_records
 
     def _parse_generated_payload(self, text: str) -> GeneratedConversation:
@@ -463,7 +525,13 @@ class PromptBasedGeneratorStage(Stage):
             source=source,
             lineage=lineage,
             payload=conversation_payload,
-            scores=RecordScores(),
+            scores=RecordScores(
+                quality_per_dim={
+                    "seed_domain": parent.scores.quality_per_dim["seed_domain"]
+                }
+                if "seed_domain" in parent.scores.quality_per_dim
+                else {}
+            ),
             config_hash=config_hash,
             created_at=datetime.now(UTC).isoformat(),
         )
