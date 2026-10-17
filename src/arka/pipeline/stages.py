@@ -135,6 +135,15 @@ class BaseFilterStage(Stage):
         if cfg is None:
             return records
 
+        if getattr(cfg, "backend", None) in (
+            "decision",
+            "regex_then_decision",
+            "fasttext",
+        ):
+            from arka.pipeline.decision_stages import run_decision_stage
+
+            return run_decision_stage(self, records, ctx, cfg)
+
         if not self._is_active(cfg):
             return records
 

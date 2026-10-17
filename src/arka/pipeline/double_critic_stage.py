@@ -127,6 +127,10 @@ class DoubleCriticFilterStage(Stage):
         if self.config is None:
             return records
         filter_config = self.config
+        if filter_config.backend == "decision":
+            from arka.pipeline.decision_stages import run_decision_stage
+
+            return run_decision_stage(self, records, ctx, filter_config)
 
         conversation_records: list[ConversationRecord] = [
             r for r in records if isinstance(r, ConversationRecord)

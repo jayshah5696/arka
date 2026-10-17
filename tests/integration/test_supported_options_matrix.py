@@ -260,6 +260,15 @@ def test_supported_source_output_and_executor_matrix_runs_end_to_end(
         judge_payloads=[],
     )
 
+    if executor_mode == "provider_batch":
+        from arka.config.loader import ConfigLoader, ConfigValidationError
+
+        with pytest.raises(
+            ConfigValidationError, match="provider_batch is not implemented"
+        ):
+            ConfigLoader().load(config_path)
+        assert not (tmp_path / "output" / "dataset.jsonl").exists()
+        return
     main(["--config", str(config_path), "--run-id", "matrix-run"])
 
     dataset_path = tmp_path / "output" / "dataset.jsonl"

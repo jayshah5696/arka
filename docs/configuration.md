@@ -1,5 +1,10 @@
 # Configuration Reference
 
+The optional `decisions` client, stage settings, and uncertainty rules are
+documented in [Decision models](decision-models.md). The decision stages have
+no automatic LLM fallback. `executor.mode: provider_batch` is rejected because
+it has no implementation.
+
 Arka is completely configuration-driven. The entirety of a generation run—from LLM credentials to sequential pipeline stages—is defined in a single YAML file. This document details the schema of the Arka configuration, corresponding to the `ResolvedConfig` Pydantic model.
 
 ---

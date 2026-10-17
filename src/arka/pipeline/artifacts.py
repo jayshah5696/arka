@@ -85,6 +85,13 @@ class StageArtifacts:
         extras: dict[str, pl.DataFrame] | None = None,
     ) -> None:
         self._ctx.work_dir.mkdir(parents=True, exist_ok=True)
+        usage = (report.model_extra or {}).get("decision_usage")
+        if (
+            usage
+            and usage.get("cost_usd") is not None
+            and "cost_usd" not in (report.model_extra or {})
+        ):
+            report = report.model_copy(update={"cost_usd": usage["cost_usd"]})
         if dropped is not None:
             # Match the historical behaviour: filter stages skipped writing
             # dropped.parquet entirely when the dropped list was empty, while

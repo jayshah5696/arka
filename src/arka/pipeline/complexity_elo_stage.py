@@ -159,6 +159,10 @@ class ComplexityEloScoringStage(Stage):
         if self.config is None:
             return records
         cfg = self.config
+        if cfg.backend == "decision":
+            from arka.pipeline.decision_stages import run_decision_stage
+
+            return run_decision_stage(self, records, ctx, cfg)
 
         batch_size = getattr(cfg, "batch_size", None) or self.DEFAULT_BATCH_SIZE
         samples_per_record = (

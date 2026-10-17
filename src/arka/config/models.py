@@ -15,6 +15,89 @@ from pydantic import (
 
 from arka.common.models import StrictModel
 from arka.common.text_patterns import DEFAULT_ARTIFACT_GROUPS
+from arka.decisions.models import DecisionConfig, DecisionOverride
+
+
+class DecisionStageOptions(StrictModel):
+    decision_override: DecisionOverride | None = None
+    accept_at: float = Field(default=0.85, ge=0, le=1)
+    reject_at: float = Field(default=0.20, ge=0, le=1)
+    on_uncertain: Literal["keep", "drop", "escalate"] = "keep"
+    min_confidence: float = Field(default=0.5, ge=0, le=1)
+
+    @model_validator(mode="after")
+    def validate_bands(self):
+        if self.reject_at >= self.accept_at:
+            raise ValueError("reject_at must be smaller than accept_at")
+        return self
+
+
+class DecisionPanelConfig(StrictModel):
+    type: Literal["decision_panel"] = "decision_panel"
+    include: Literal["auto"] | list[str] = "auto"
+    decision_override: DecisionOverride | None = None
+
+
+class DecisionCheckConfig(StrictModel):
+    enabled: bool = False
+    decision_override: DecisionOverride | None = None
+    reject_at: float = Field(default=0.70, ge=0, le=1)
+
+
+class BestOfNConfig(DecisionCheckConfig):
+    keep_per_seed: int = Field(default=1, ge=1)
+    min_score: float | None = Field(default=None, ge=0, le=4)
+
+
+class FidelityCheckConfig(DecisionStageOptions):
+    enabled: bool = False
+    relabel: bool = False
+
+
+class DecisionBandConfig(DecisionCheckConfig):
+    lower: float = Field(default=0.80, ge=0, le=1)
+    upper: float = Field(default=0.97, ge=0, le=1)
+
+    @model_validator(mode="after")
+    def validate_bounds(self):
+        if self.lower > self.upper:
+            raise ValueError("lower must not exceed upper")
+        return self
+
+
+class ParaphraseCheckConfig(DecisionCheckConfig):
+    lower: float = Field(default=0.15, ge=0, le=1)
+
+
+class PairwiseCheckConfig(DecisionCheckConfig):
+    min_preference: float = Field(default=0.70, ge=0, le=1)
+    swap_order: bool = True
+
+
+class TaxonomyLabelConfig(DecisionCheckConfig):
+    taxonomy_path: str | None = None
+    min_confidence: float = Field(default=0.60, ge=0, le=1)
+
+    @model_validator(mode="after")
+    def validate_path(self):
+        if self.enabled and not self.taxonomy_path:
+            raise ValueError(
+                "taxonomy_path is required when taxonomy labeling is enabled"
+            )
+        return self
+
+
+class SeedGateConfig(DecisionStageOptions):
+    type: Literal["seed_gate"] = "seed_gate"
+    min_density: float | None = Field(default=None, ge=0, le=4)
+    domains: dict[str, str | None] = Field(default_factory=dict, max_length=254)
+    allowed_domains: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_domains(self):
+        if set(self.allowed_domains) - set(self.domains):
+            raise ValueError("allowed_domains must be present in domains")
+        return self
 
 
 class OpenAICompatibleConfig(StrictModel):
@@ -37,6 +120,14 @@ class LLMConfig(StrictModel):
 class ExecutorConfig(StrictModel):
     mode: Literal["threadpool", "realtime", "provider_batch"] = "threadpool"
     max_workers: int = 4
+
+    @model_validator(mode="after")
+    def reject_provider_batch(self):
+        if self.mode == "provider_batch":
+            raise ValueError(
+                "executor.mode: provider_batch is not implemented; use threadpool"
+            )
+        return self
 
 
 class DataSourceConfig(StrictModel):
@@ -69,7 +160,10 @@ class DataSourceConfig(StrictModel):
         return self
 
 
-class EvolFilterConfig(StrictModel):
+class EvolFilterConfig(DecisionStageOptions):
+    backend: Literal["heuristic", "decision"] = "heuristic"
+    refusal_reject_at: float = Field(default=0.70, ge=0, le=1)
+    evolution_accept_at: float = Field(default=0.60, ge=0, le=1)
     min_edit_distance_chars: int = 20
     min_instruction_chars: int = 20
     refusal_keywords: list[str] = Field(
@@ -184,7 +278,12 @@ class LengthFilterConfig(StrictModel):
     max_response_chars: int = 16384
 
 
-class LanguageFilterConfig(StrictModel):
+class LanguageFilterConfig(DecisionStageOptions):
+    backend: Literal["heuristic", "fasttext", "decision"] = "heuristic"
+    check_fields: list[Literal["instruction", "response", "system"]] = Field(
+        default_factory=lambda: ["instruction", "response"], min_length=1
+    )
+    lid_model_path: str | None = None
     type: Literal["language"] = "language"
     allowed: list[str] = Field(default_factory=lambda: ["en"])
 
@@ -213,7 +312,8 @@ class RepetitionFilterConfig(StrictModel):
     max_char_run: int = Field(default=50, ge=1)
 
 
-class IdentityClaimFilterConfig(StrictModel):
+class IdentityClaimFilterConfig(DecisionStageOptions):
+    backend: Literal["regex", "regex_then_decision", "decision"] = "regex"
     type: Literal["identity_claim"] = "identity_claim"
     check_fields: list[Literal["instruction", "response", "system"]] = Field(
         default_factory=lambda: ["response"], min_length=1
@@ -273,7 +373,8 @@ class ArtifactFilterConfig(StrictModel):
         )
 
 
-class LabelingFilterConfig(StrictModel):
+class LabelingFilterConfig(DecisionStageOptions):
+    backend: Literal["llm", "decision"] = "llm"
     type: Literal["labeling_engine"] = "labeling_engine"
     rubric_path: str | None = None
     min_overall_score: float | None = None
@@ -284,7 +385,8 @@ class IFDFilterConfig(StrictModel):
     min_score: float = 0.2
 
 
-class RewardModelFilterConfig(StrictModel):
+class RewardModelFilterConfig(DecisionStageOptions):
+    backend: Literal["llm", "decision"] = "llm"
     type: Literal["reward_model"] = "reward_model"
     min_score: float | None = None
     llm_override: StageLLMOverride | None = None
@@ -295,9 +397,13 @@ class PairDeltaFilterConfig(StrictModel):
     score_field: str = "quality"
     min_delta: float = 0.30
     length_ratio_max: float | None = None
+    pairwise_check: PairwiseCheckConfig = Field(default_factory=PairwiseCheckConfig)
 
 
 class ReasoningLanguageGateConfig(StrictModel):
+    low_confidence_backend: Literal["skip", "decision"] = "skip"
+    mismatch_at: float = Field(default=0.70, ge=0, le=1)
+    decision_override: DecisionOverride | None = None
     type: Literal["reasoning_language_gate"] = "reasoning_language_gate"
     reference_field: Literal["instruction", "response", "system"] = "instruction"
     checked_fields: list[Literal["reasoning", "response", "instruction", "system"]] = (
@@ -309,6 +415,9 @@ class ReasoningLanguageGateConfig(StrictModel):
 
 
 class DecontaminateConfig(StrictModel):
+    paraphrase_check: ParaphraseCheckConfig = Field(
+        default_factory=ParaphraseCheckConfig
+    )
     type: Literal["decontaminate"] = "decontaminate"
     eval_paths: list[Annotated[str, Field(min_length=1)]] = Field(min_length=1)
     eval_text_field: str = Field(default="question", min_length=1)
@@ -336,6 +445,9 @@ class TaxonomyMinimum(StrictModel):
 
 
 class CompositeSelectConfig(StrictModel):
+    confidence_weighting: bool = False
+    tie_break: Literal["id", "confidence"] = "id"
+    label_taxonomy: TaxonomyLabelConfig = Field(default_factory=TaxonomyLabelConfig)
     type: Literal["select"] = "select"
     target_count: int | None = None
     weights: dict[str, float] = Field(default_factory=dict)
@@ -346,6 +458,7 @@ class CompositeSelectConfig(StrictModel):
 
 
 class SemanticSimilarityFilterConfig(StrictModel):
+    decision_band: DecisionBandConfig = Field(default_factory=DecisionBandConfig)
     type: Literal["semantic_similarity"] = "semantic_similarity"
     threshold: float = 0.9
 
@@ -355,19 +468,20 @@ class CanaryFilterConfig(StrictModel):
     phrases: list[str] = Field(default_factory=list)
 
 
-class DoubleCriticFilterConfig(StrictModel):
+class DoubleCriticFilterConfig(DecisionStageOptions):
     """Simula §2.2 double-critic. Two independent yes/no critic calls per record.
 
-    No tunable knobs in slice 1 — the inverse-prompt property is preserved by
-    construction. Future fields (alternate prompts, majority-of-N, llm_override)
-    land here without breaking the YAML schema.
+    Decision mode also keeps the inverse questions in separate requests.
     """
 
     type: Literal["double_critic"] = "double_critic"
+    backend: Literal["llm", "decision"] = "llm"
+    accept_at: float = Field(default=0.75, ge=0, le=1)
+    reject_at: float = Field(default=0.40, ge=0, le=1)
     llm_override: StageLLMOverride | None = None
 
 
-class ComplexityEloFilterConfig(StrictModel):
+class ComplexityEloFilterConfig(DecisionStageOptions):
     """Slice 5 — Simula §2.3 batch-Elo complexity scoring.
 
     Annotates each ConversationRecord with a comparable `complexity_elo` and
@@ -375,6 +489,19 @@ class ComplexityEloFilterConfig(StrictModel):
     """
 
     type: Literal["complexity_elo"] = "complexity_elo"
+    backend: Literal["elo", "decision"] = "elo"
+    levels: list[str] = Field(
+        default_factory=lambda: [
+            "Trivial: one fact or step",
+            "Simple: a few steps and common knowledge",
+            "Moderate: several steps or domain knowledge",
+            "Hard: multiple reasoning steps and domain expertise",
+            "Expert: deep expertise or synthesis",
+            "Frontier: research-level task",
+        ],
+        min_length=2,
+        max_length=10,
+    )
     batch_size: int = 5
     samples_per_record: int = 4
     k_factor: float = 32.0
@@ -416,6 +543,7 @@ class FiltersConfig(StrictModel):
 
 
 class OutputConfig(StrictModel):
+    on_unresolved_escalation: Literal["keep", "drop"] = "keep"
     format: Literal["jsonl", "chatml", "alpaca"]
     path: str
 
@@ -461,6 +589,7 @@ class SeedSourceConfig(StrictModel):
 
 
 class PDFSourceConfig(StrictModel):
+    decision_filter: DecisionCheckConfig = Field(default_factory=DecisionCheckConfig)
     type: Literal["pdf_source"] = "pdf_source"
     path: str
     chunk_strategy: Literal["fixed"] = "fixed"
@@ -489,6 +618,7 @@ class NormalizeConversationConfig(StrictModel):
 
 
 class PromptBasedGeneratorConfig(StrictModel):
+    best_of_n: BestOfNConfig = Field(default_factory=BestOfNConfig)
     type: Literal["prompt_based_generator"] = "prompt_based_generator"
     target_count: int = 1
     generation_multiplier: int = 1
@@ -526,6 +656,8 @@ class TransformGeneratorConfig(StrictModel):
 
 
 class EvolInstructGeneratorConfig(StrictModel):
+    operator_selection: Literal["round_robin", "decision"] = "round_robin"
+    decision_override: DecisionOverride | None = None
     type: Literal["evol_instruct_generator"] = "evol_instruct_generator"
     target_count: int = 1
     generation_multiplier: int = 1
@@ -544,10 +676,18 @@ class EvolInstructGeneratorConfig(StrictModel):
         unknown = sorted(set(self.operators) - set(SUPPORTED_EVOL_OPERATORS))
         if unknown:
             raise ValueError(f"operators contains unsupported names: {unknown}")
+        if self.operator_selection == "decision" and self.branching_factor > len(
+            set(self.operators)
+        ):
+            raise ValueError(
+                "decision operator selection needs at least branching_factor distinct operators"
+            )
         return self
 
 
 class TaxonomyGeneratorConfig(StrictModel):
+    best_of_n: BestOfNConfig = Field(default_factory=BestOfNConfig)
+    fidelity_check: FidelityCheckConfig = Field(default_factory=FidelityCheckConfig)
     type: Literal["taxonomy_generator"] = "taxonomy_generator"
     target_count: int = 1
     generation_multiplier: int = 1
@@ -559,6 +699,8 @@ class TaxonomyGeneratorConfig(StrictModel):
 
 PipelineStageConfig = Annotated[
     Annotated[SeedSourceConfig, Tag("seed_source")]
+    | Annotated[DecisionPanelConfig, Tag("decision_panel")]
+    | Annotated[SeedGateConfig, Tag("seed_gate")]
     | Annotated[PDFSourceConfig, Tag("pdf_source")]
     | Annotated[NormalizeConversationConfig, Tag("normalize_conversation")]
     | Annotated[PromptBasedGeneratorConfig, Tag("prompt_based_generator")]
@@ -653,11 +795,52 @@ class ResolvedConfig(StrictModel):
     version: str
     run_id: str | None = None
     llm: LLMConfig
+    decisions: DecisionConfig | None = None
     executor: ExecutorConfig
     pipeline: list[PipelineStageConfig] = Field(default_factory=list)
     embeddings: EmbeddingsConfig = Field(default_factory=EmbeddingsConfig)
     labeling_engine: LabelingEngineConfig = Field(default_factory=LabelingEngineConfig)
     output: OutputConfig
+
+    @model_validator(mode="after")
+    def validate_decision_pipeline(self):
+        generator_seen = False
+        for stage in self.pipeline:
+            if (
+                stage.type == "labeling_engine"
+                and stage.backend == "decision"
+                and not stage.rubric_path
+            ):
+                raise ValueError(
+                    "labeling_engine backend decision requires rubric_path"
+                )
+            if stage.type.endswith("generator"):
+                generator_seen = True
+            if stage.type == "seed_gate" and generator_seen:
+                raise ValueError("seed_gate must run before a generator stage")
+            needs_decisions = (
+                getattr(stage, "backend", None) in ("decision", "regex_then_decision")
+                or stage.type in ("seed_gate", "decision_panel")
+                or getattr(stage, "low_confidence_backend", None) == "decision"
+                or getattr(stage, "operator_selection", None) == "decision"
+                or getattr(getattr(stage, "filter", None), "backend", None)
+                == "decision"
+                or any(
+                    getattr(getattr(stage, field, None), "enabled", False)
+                    for field in (
+                        "best_of_n",
+                        "fidelity_check",
+                        "decision_filter",
+                        "decision_band",
+                        "paraphrase_check",
+                        "pairwise_check",
+                        "label_taxonomy",
+                    )
+                )
+            )
+            if needs_decisions and self.decisions is None:
+                raise ValueError(f"decisions config is required for {stage.type}")
+        return self
 
     def get_stage_config(self, stage_type: str) -> Any:
         for stage in self.pipeline:

@@ -179,6 +179,30 @@ def test_labeling_score_stage_annotates_all_records_without_dropping(
     assert stats["quality_distribution"]["mean"] == 3.0
 
 
+def test_labeling_score_keeps_scores_from_earlier_stages(tmp_path):
+    _write_rubric(tmp_path)
+    ctx = _ctx(tmp_path)
+    client = SequentialFakeLLMClient(
+        [
+            JudgeResponse(
+                scores={"instruction_clarity": 5, "response_quality": 5},
+                reasoning="good",
+            )
+        ]
+    )
+    rec = _record("1", "Explain gravity", "Mass attracts mass.")
+    rec = rec.model_copy(
+        update={
+            "scores": RecordScores(
+                ifd=0.7, quality_per_dim={"taxonomy_nodes": {"topic": ["physics"]}}
+            )
+        }
+    )
+    out = LabelingScoreStage(project_root=tmp_path, llm_client=client).run([rec], ctx)
+    assert out[0].scores.ifd == 0.7
+    assert out[0].scores.quality_per_dim["taxonomy_nodes"] == {"topic": ["physics"]}
+
+
 def test_labeling_score_stage_passes_non_conversation_records_unchanged(
     tmp_path: Path,
 ) -> None:

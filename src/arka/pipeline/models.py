@@ -10,6 +10,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from arka.config.models import ResolvedConfig, StageLLMOverride
 
 if TYPE_CHECKING:
+    from arka.decisions.client import DecisionClient
+    from arka.decisions.factory import DecisionClientFactory
+    from arka.decisions.models import DecisionOverride
     from arka.llm.client import LLMClient
     from arka.llm.factory import LLMClientFactory
     from arka.pipeline.checkpoint import CheckpointManager
@@ -29,6 +32,22 @@ class StageContext:
     # Tests can pass a fake; production runs leave it None and the seam
     # falls back to llm.factory.default_factory.
     llm_client_factory: LLMClientFactory | None = field(default=None)
+    decision_client_factory: DecisionClientFactory | None = field(default=None)
+
+    def decision_client(
+        self, *, override: DecisionOverride | None = None
+    ) -> DecisionClient:
+        from arka.decisions.factory import build_decision_client
+
+        if self.config.decisions is None:
+            raise ValueError("decisions config is required for a decision stage")
+        return build_decision_client(
+            self.config.decisions,
+            override,
+            self.decision_client_factory,
+            checkpoint=self.checkpoint_manager,
+            executor=self.executor,
+        )
 
     def llm_client(self, *, override: StageLLMOverride | None = None) -> LLMClient:
         """Build an LLMClient for the current Run, applying any per-Stage override.

@@ -1,5 +1,11 @@
 # Arka Features & Architecture
 
+Arka can use typed decision models for seed gating, generator checks, language
+and identity checks, borderline similarity, judging, and selection. The shared
+client supports OpenAI, TypeSafe, and Clef. A judge panel reuses answers across
+stages, and uncertain records can be kept, dropped, or escalated for review.
+See [Decision models](decision-models.md) for configuration and verification.
+
 Arka (अर्क) is a configuration-driven framework designed from first principles to generate high-quality synthetic data for supervised fine-tuning (SFT). Instead of writing imperative, one-off scripts for every new synthetic dataset, Arka allows you to declaratively define the entire generation pipeline—from raw seed ingestion to final deduplicated, filtered outputs.
 
 This document dives deep into the core capabilities and the architectural stages that data passes through during a run.

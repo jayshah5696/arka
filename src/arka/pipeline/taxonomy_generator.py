@@ -158,6 +158,44 @@ class TaxonomyGeneratorStage(Stage):
         }
         (ctx.work_dir / "stats.json").write_text(json.dumps(stats, indent=2))
 
+        decision_results, decision_dropped = [], []
+        if gen_cfg.fidelity_check.enabled:
+            from arka.pipeline.decision_checks import taxonomy_fidelity
+
+            new_records, dropped, results = taxonomy_fidelity(
+                new_records, ctx, gen_cfg.fidelity_check, self.name
+            )
+            decision_dropped.extend(dropped)
+            decision_results.extend(results)
+        if gen_cfg.best_of_n.enabled:
+            from arka.pipeline.decision_checks import best_of_n
+
+            new_records, dropped, results = best_of_n(
+                new_records,
+                ctx,
+                gen_cfg.best_of_n,
+                self.name,
+                kind="taxonomy_generator",
+            )
+            decision_dropped.extend(dropped)
+            decision_results.extend(results)
+        if decision_results:
+            from collections import Counter
+
+            from arka.pipeline.artifacts import StageArtifacts, StageReport
+            from arka.pipeline.decision_stages import decision_usage
+
+            stats.update(
+                count_out=len(records) + len(new_records),
+                dropped_count=len(decision_dropped),
+                drop_reasons=dict(
+                    Counter(r.stage_events[-1].reason_code for r in decision_dropped)
+                ),
+                decision_usage=decision_usage(decision_results),
+            )
+            StageArtifacts(ctx).write(
+                report=StageReport(**stats), dropped=decision_dropped
+            )
         return list(records) + new_records
 
     def _sample(

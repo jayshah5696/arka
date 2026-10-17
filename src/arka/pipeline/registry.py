@@ -8,6 +8,8 @@ if TYPE_CHECKING:
 
 
 _STAGE_MAPPING: dict[str, str] = {
+    "decision_panel": "arka.pipeline.decision_panel.DecisionPanelStage",
+    "seed_gate": "arka.pipeline.decision_stages.SeedGateStage",
     "seed_source": "arka.pipeline.source_stages.SeedSourceStage",
     "pdf_source": "arka.pipeline.source_stages.PDFSourceStage",
     "normalize_conversation": "arka.pipeline.transforms.NormalizeConversationStage",

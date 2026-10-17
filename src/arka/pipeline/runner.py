@@ -12,6 +12,7 @@ import yaml
 from arka.config.loader import ConfigLoader
 from arka.config.models import ResolvedConfig
 from arka.core.paths import RunPaths
+from arka.decisions.factory import DecisionClientFactory
 from arka.pipeline.artifacts import StageArtifacts, get_extra
 from arka.pipeline.checkpoint import CheckpointManager
 from arka.pipeline.models import RunResult, StageContext, StageErrorInfo, StageStat
@@ -24,8 +25,14 @@ logger = logging.getLogger(__name__)
 
 
 class PipelineRunner:
-    def __init__(self, project_root: Path) -> None:
+    def __init__(
+        self,
+        project_root: Path,
+        *,
+        decision_client_factory: DecisionClientFactory | None = None,
+    ) -> None:
         self.project_root = project_root
+        self.decision_client_factory = decision_client_factory
         self.config_loader = ConfigLoader()
         self.output_writer = OutputWriter()
         self.reporter = RunReporter(
@@ -98,6 +105,7 @@ class PipelineRunner:
                         max_workers=resolved_config.executor.max_workers,
                         executor=shared_executor,
                         checkpoint_manager=checkpoint_manager,
+                        decision_client_factory=self.decision_client_factory,
                     )
                     count_in = len(records)
                     # DX: Provide per-stage progress indication during long runs
@@ -190,8 +198,22 @@ class PipelineRunner:
             run_paths.manifest_path.write_text(json.dumps(manifest, indent=2))
             run_paths.run_report_path.write_text(json.dumps(run_report, indent=2))
             checkpoint_manager.update_run_status(run_id=run_id, status="failed")
+            checkpoint_manager.close()
             raise
 
+        decision_report = self._decision_report(records, stages, run_paths)
+        if resolved_config.output.on_unresolved_escalation == "drop":
+            unresolved = [
+                r.dropped_by("output", "unresolved_escalation")
+                for r in records
+                if r.is_escalated()
+            ]
+            if unresolved:
+                self.output_writer.write_dropped_parquet(
+                    records=unresolved,
+                    path=run_paths.run_dir / "unresolved_escalations.parquet",
+                )
+            records = [r for r in records if not r.is_escalated()]
         output_path = self.project_root / resolved_config.output.path
         dataset_path = self.output_writer.write_jsonl(
             records=records,
@@ -220,9 +242,12 @@ class PipelineRunner:
             config=resolved_config,
             checkpoint_manager=checkpoint_manager,
         )
+        manifest.update(decision_report)
+        run_report.update(decision_report)
         run_paths.manifest_path.write_text(json.dumps(manifest, indent=2))
         run_paths.run_report_path.write_text(json.dumps(run_report, indent=2))
         checkpoint_manager.update_run_status(run_id=run_id, status="completed")
+        checkpoint_manager.close()
 
         return RunResult(
             run_id=run_id,
@@ -238,6 +263,100 @@ class PipelineRunner:
         if isinstance(config, ResolvedConfig):
             return config
         return self.config_loader.load_dict(config)
+
+    def _decision_report(
+        self, records: list[Record], stages: list[Stage], run_paths: RunPaths
+    ) -> dict[str, Any]:
+        import polars as pl
+
+        usage_by_stage = {}
+        escalation_rows = []
+        seen = set()
+        for stage in stages:
+            report = StageArtifacts.load_report(run_paths.stage_stats_path(stage.name))
+            usage = get_extra(report, "decision_usage")
+            if usage is not None:
+                usage_by_stage[stage.name] = usage
+            # Include escalations on records subsequently dropped as well as survivors.
+            path = run_paths.stage_data_path(stage.name)
+            if path.exists():
+                stage_records = self.output_writer.read_parquet(path)
+                for record in stage_records:
+                    for event in record.stage_events:
+                        key = (record.id, event.stage, event.seq)
+                        if event.action != "escalated" or key in seen:
+                            continue
+                        seen.add(key)
+                        details = {}
+                        if event.details:
+                            try:
+                                details = json.loads(event.details)
+                            except (ValueError, TypeError):
+                                pass
+                        answers = details if isinstance(details, dict) else {}
+                        answer_items = [
+                            (name, value)
+                            for name, value in answers.items()
+                            if isinstance(value, dict) and "type" in value
+                        ]
+                        question, answer = min(
+                            answer_items,
+                            key=lambda item: item[1].get(
+                                "confidence",
+                                abs(2 * item[1].get("probability", 0.5) - 1),
+                            ),
+                            default=(None, {}),
+                        )
+                        probability = answer.get("probability")
+                        confidence = answer.get("confidence")
+                        if answer.get("type") == "yes_no":
+                            confidence = abs(2 * probability - 1)
+                        escalation_rows.append(
+                            {
+                                "record_id": record.id,
+                                "stage": event.stage,
+                                "reason_code": event.reason_code,
+                                "details": event.details,
+                                "question": question,
+                                "probability": probability,
+                                "confidence": confidence,
+                                "resolved": False,
+                            }
+                        )
+        if not usage_by_stage and not escalation_rows:
+            return {}
+        schema = {
+            "record_id": pl.String,
+            "stage": pl.String,
+            "reason_code": pl.String,
+            "details": pl.String,
+            "question": pl.String,
+            "probability": pl.Float64,
+            "confidence": pl.Float64,
+            "resolved": pl.Boolean,
+        }
+        pl.DataFrame(escalation_rows, schema=schema).write_parquet(
+            run_paths.run_dir / "escalations.parquet"
+        )
+        costs = [
+            u["cost_usd"]
+            for u in usage_by_stage.values()
+            if u.get("cost_usd") is not None
+        ]
+        return {
+            "decision_usage": {
+                "requests": sum(u.get("requests", 0) for u in usage_by_stage.values()),
+                "input_tokens": sum(
+                    u.get("input_tokens", 0) for u in usage_by_stage.values()
+                ),
+                "cache_hits": sum(
+                    u.get("cache_hits", 0) for u in usage_by_stage.values()
+                ),
+                "cost_usd": sum(costs) if costs else None,
+                "by_stage": usage_by_stage,
+            },
+            "escalation_counts": {"unresolved": len(escalation_rows), "resolved": 0},
+        }
 
     def _config_hash(self, config: ResolvedConfig) -> str:
         from arka.records.identity import config_hash
