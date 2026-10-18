@@ -16,6 +16,9 @@
 - use ask user tool if you want any clarification dont assume
 - Avoid destructive commands or force operations unless explicitly requested.
 - Preserve user changes; do not rewrite unrelated files.
+- Use `.agents/skills/verify-arka/SKILL.md` after changes to CLI behavior, pipeline stages, checkpoints, or exports, and when asked to verify Arka. It drives the installed CLI with local HTTP fixtures and preserves evidence; it does not replace `just check` or `uv build`.
+- Run `just verify` for the default local workflow. Native language and Hugging Face checks are optional recipes with separate prerequisites. Live provider calls require task authorization and are outside the default workflow.
+- When a mapped feature or helper changes, update the verification skill and feature map and run the affected recipe. Use `maintain-verification-skill` for a broader drift audit. Keep verification work separate from product fixes, and report unverified paths.
 - Every assistant response must also be saved as Markdown under:
   `docs/logs/YYYY/MM/YYYY-MM-DD-HH-mm_topic.md`
 - Use short topic suffixes such as `readme`, `agents`, `plan`, `review`.

@@ -10,7 +10,9 @@ Generate tagged records with `taxonomy_generator`, configure `select.coverage`, 
 
 ## Driving it with CLI
 
-Run the cleanup helper. Eight taxonomy-generation requests must export two records, one science and one arts, with saved taxonomy assignments. Inspect `05_composite_select/data.parquet` and stats. Run the stack helper to plant the German Eiffel Tower question and verify one benchmark drop in `02k_decontaminate`.
+Run `just verify`. Under `cleanup/taxonomy/`, eight taxonomy-generation requests must export two records, one science and one arts, with saved taxonomy assignments. Inspect `runs/taxonomy/stages/05_composite_select/data.parquet` and stats. Under `decisions/`, confidence-weighted selection must reduce three scored records to two exports.
+
+With the shared skill's native prerequisites, run `uv run --extra language python scripts/verify_stack_cli.py --output /tmp/arka-native-proof` to plant the German Eiffel Tower question and verify one benchmark drop in `02k_decontaminate`.
 
 Run `uv run pytest tests/unit/test_taxonomy_coverage.py tests/unit/test_decontamination.py tests/integration/test_decontamination_pipeline.py` for infeasible pools, overlapping constraints, drop/flag reports, weighting, and calibration-prefix failures. The taxonomy integration's synthetic stage checks the runner; the HTTP helper proves the user CLI generation path.
 
