@@ -14,11 +14,11 @@ This PR deepens seven module seams so stage execution, configuration binding, ge
 +│   ├── legacy.py               # quarantines 4-section YAML translation and LegacyConfigNamespace
  │   └── models.py               # canonical pipeline stage and runtime configuration models
  ├── llm/
- │   ├── client.py               # adds content-addressed SQLite call cache with separate write and resume-read controls
+ │   ├── client.py               # adds content-addressed SQLite call cache with occurrence-indexed slot keys
  │   └── factory.py              # wires cache_db_path and read_cache through StageContext.llm_client()
  ├── pipeline/
  │   ├── decision_stages.py      # replaces if/elif chains with DecisionStageSpec registry
-+│   ├── generator_engine.py     # streaming per-slot JSONL checkpointing, truncated-tail recovery, post-checks
++│   ├── generator_engine.py     # streaming per-slot JSONL checkpointing, atomic truncated-tail recovery, post-checks
 +│   ├── labeling_evaluator.py   # shared rubric scoring and optional threshold filtering
  │   ├── models.py               # adds StageResult dataclass and StageContext.map_parallel()
  │   ├── registry.py             # declarative StageSpec registry (including labeling_score)
@@ -44,10 +44,10 @@ This PR deepens seven module seams so stage execution, configuration binding, ge
 -      (ctx.work_dir / "stats.json").write_text(...)
 -      re-reads stats.json to patch decision_usage
 +      uses bound self.config (including repeated LabelingScoreConfig stages)
-+      ctx.llm_client(override=...) -> writes SQLite llm_cache on initial run, reads on resume=True
++      ctx.llm_client(override=...) -> writes SQLite llm_cache with occurrence-indexed slot keys, reads on resume=True
 +      ctx.decision_client(override=...)
 +      ctx.map_parallel(items, fn)
-+        PromptBasedGeneratorStage._generate -> execute_generator_slots() (persists each slot as it completes)
++        PromptBasedGeneratorStage._generate -> execute_generator_slots() (persists each slot as it completes without full-file rewrite)
 +        LabelingQualityFilterStage / LabelingScoreStage -> evaluate_labeling()
 +        run_decision_stage() -> DECISION_SPECS[kind]
 +      StageArtifacts(ctx).write(report=StageReport(...)) -> single atomic write
@@ -61,14 +61,14 @@ flowchart LR
     Config["YAML Config"] --> Loader["ConfigLoader + legacy.py"]
     Loader --> Builder["StageBuilder (binds self.config)"]
     Builder --> Context["StageContext (llm_client, decision_client, map_parallel, resume)"]
-    Context --> Gen["generator_engine.py (incremental per-slot flush + raw_responses.jsonl)"]
+    Context --> Gen["generator_engine.py (incremental per-slot flush + atomic repair)"]
     Context --> Eval["DECISION_SPECS + labeling_evaluator.py"]
     Gen --> Artifacts["StageResult + StageArtifacts (single stats.json write)"]
     Eval --> Artifacts
     Artifacts --> Runner["PipelineRunner (manifest.json + dataset.jsonl)"]
 ```
 
-Actual fixture output from `uv run python scripts/verify_decisions_cli.py` and `uv run python scripts/verify_cleanup_cli.py --output /tmp/arka-cleanup-proof-217-v2`:
+Actual fixture output from `uv run python scripts/verify_decisions_cli.py` and `uv run python scripts/verify_cleanup_cli.py --output /tmp/arka-pr217-verify-recheck`:
 
 ```json
 {
@@ -100,8 +100,8 @@ Actual fixture output from `uv run python scripts/verify_decisions_cli.py` and `
 
 1. **Pure `StageResult` execution seam (`src/arka/pipeline/models.py`, `src/arka/pipeline/runner.py`)**: Added frozen `StageResult` with sequence compatibility and `partition_conversations()`. `PipelineRunner` consumes `StageResult` in memory and eliminates double `stats.json` write-then-read-then-rewrite cycles across generator, filter, taxonomy, and Elo stages.
 2. **Composable decision and labeling evaluators (`src/arka/pipeline/decision_stages.py`, `src/arka/pipeline/labeling_evaluator.py`, `src/arka/pipeline/scoring_stages.py`)**: Replaced central `if kind == ...` chains in `decision_questions()` and `judge_answers()` with `DecisionStageSpec` registrations, moved `run_fasttext_language` to `cheap_filters.py`, and unified `LabelingQualityFilterStage` and `LabelingScoreStage` around `evaluate_labeling(drop_below_threshold=...)`. `LabelingScoreStage` resolves `LabelingScoreConfig` directly and retains its bound configuration across repeated `labeling_score` stages.
-3. **Shared generator slot engine (`src/arka/pipeline/generator_engine.py`)**: Extracted parallel slot execution (`execute_generator_slots`), `raw_responses.jsonl` item checkpointing, `StageLLMOverride` resolution (`resolve_generator_llm_client`), and post-generation `fidelity_check` and `best_of_n` hooks (`apply_post_generation_decisions`). Completed slots flush to `raw_responses.jsonl` and update the SQLite checkpoint as each slot finishes so a mid-batch failure never loses completed responses. `load_raw_responses` preserves valid rows before an incomplete final line and raises `ValueError` on corruption elsewhere instead of deleting the checkpoint file.
-4. **Content-addressed SQLite LLM call cache and `ctx.map_parallel` (`src/arka/pipeline/checkpoint.py`, `src/arka/llm/client.py`, `src/arka/pipeline/models.py`, `src/arka/pipeline/runner.py`)**: `PipelineRunner` passes `resume=resume` to `StageContext`. `StageContext.llm_client()` attaches `cache_db_path` whenever `checkpoint_manager` is present so initial runs populate `llm_cache` while keeping `read_cache=False` (preserving independent generation samples), and resumed runs enable `read_cache=True` to recover cached calls from failed stages.
+3. **Shared generator slot engine (`src/arka/pipeline/generator_engine.py`)**: Extracted parallel slot execution (`execute_generator_slots`), `raw_responses.jsonl` item checkpointing, `StageLLMOverride` resolution (`resolve_generator_llm_client`), and post-generation `fidelity_check` and `best_of_n` hooks (`apply_post_generation_decisions`). Completed slots flush to `raw_responses.jsonl` and update the SQLite checkpoint as each slot finishes without rewriting or truncating the file afterward. `load_raw_responses` sorts rows in memory, preserves valid rows before an incomplete final line using an atomic temporary-file replacement (`_atomic_write_jsonl`), and raises `ValueError` on corruption elsewhere instead of deleting the checkpoint file.
+4. **Content-addressed SQLite LLM call cache and `ctx.map_parallel` (`src/arka/pipeline/checkpoint.py`, `src/arka/llm/client.py`, `src/arka/pipeline/models.py`, `src/arka/pipeline/runner.py`)**: `PipelineRunner` passes `resume=resume` to `StageContext`. `StageContext.llm_client()` attaches `cache_db_path` whenever `checkpoint_manager` is present so initial runs populate `llm_cache` while keeping `read_cache=False`, and resumed runs enable `read_cache=True`. `LLMClient` assigns occurrence-indexed cache keys within a client instance so repeated calls with the same prompt (such as multi-branch `EvolInstructRoundStage` generations with the same operator) store and recover independent samples on resume.
 5. **Quarantined legacy config translation and bound stage config (`src/arka/config/legacy.py`, `src/arka/pipeline/stage_builder.py`)**: Moved 4-section config migration and `LegacyConfigNamespace` into `src/arka/config/legacy.py` and bound `stage.config` during `StageBuilder.build()` so multiple stages of the same class in one pipeline never collide.
 6. **Declarative `StageSpec` registry (`src/arka/pipeline/registry.py`)**: Registered all 22 pipeline stage types (including `labeling_score` -> `LabelingScoreStage`) with declarative capability checks (`requires_decisions`, `requires_sequence_scoring`, `requires_embeddings`).
 7. **Typed `Record` annotations and single-event escalations (`src/arka/records/models.py`)**: Added `Record.with_annotation()`, `RecordScores.get_annotation()`, and `Record.with_escalation()` while keeping `scores.quality_per_dim` synchronized for backward compatibility.
@@ -119,8 +119,8 @@ The comparison base is `main` (`7790402`). All existing stage `run(records, ctx)
 
 Checked on branch `t3/pipeline-architecture-review`:
 
-- `just check` (`uv run ruff check .`, `uv run ruff format --check .`, `uv run pytest`): passed (`564 passed, 1 skipped` in 8.95s, `90%` total coverage, `97%` coverage on `generator_engine.py`, including 4 regression tests for mid-batch slot persistence, truncated checkpoint recovery and corruption reporting, runner LLM cache write/resume-read wiring, and repeated `labeling_score` rubrics).
+- `just check` (`uv run ruff check .`, `uv run ruff format --check .`, `uv run pytest`): passed (`566 passed, 1 skipped` in 8.93s, `90%` total coverage, `98%` coverage on `generator_engine.py`, including 6 regression tests covering mid-batch slot persistence, truncated checkpoint recovery and corruption reporting, atomic checkpoint repair without post-batch truncation, runner LLM cache write/resume-read wiring, distinct branch sample recovery for `EvolInstructRoundStage` on resume, and repeated `labeling_score` rubrics).
 - `uv build`: built `dist/arka-0.1.0.tar.gz` and `dist/arka-0.1.0-py3-none-any.whl`.
 - `just validate-examples` and `just dry-run-examples`: all 9 example pipelines validated and dry-ran cleanly.
-- `uv run python scripts/verify_cleanup_cli.py --output /tmp/arka-cleanup-proof-217-v2`: passed end-to-end PDF and taxonomy CLI generation, filtering, lineage, and resume (`14` loopback provider calls on initial run, `0` provider calls on `--resume`, `2` PDF records and `2` taxonomy records exported).
+- `uv run python scripts/verify_cleanup_cli.py --output /tmp/arka-pr217-verify-recheck`: passed end-to-end PDF and taxonomy CLI generation, filtering, lineage, and resume (`14` loopback provider calls on initial run, `0` provider calls on `--resume`, `2` PDF records and `2` taxonomy records exported).
 - `uv run python scripts/verify_decisions_cli.py`: passed end-to-end CLI decision transport, panel batching (`3` seed gate requests + `6` panel/inverse-critic requests, `18` downstream cache hits across labeling, complexity Elo, reward model, and double critic), and `--resume` with zero additional HTTP calls.

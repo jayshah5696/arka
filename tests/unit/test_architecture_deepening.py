@@ -914,3 +914,167 @@ overall_weights:
     assert isinstance(stage_1.config, LabelingScoreConfig)
     assert stage_1.config.rubric_path == "second-rubric.yaml"
     assert stage_0.config.rubric_path == "first-rubric.yaml"
+
+
+def test_review_recheck_1_interrupted_checkpoint_rewrite_and_truncated_repair_are_atomic(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cfg = _minimal_config(tmp_path)
+    raw = tmp_path / "raw.jsonl"
+    ctx = StageContext(
+        run_id="proof",
+        stage_name="gen",
+        work_dir=tmp_path,
+        config=cfg,
+        executor_mode="threadpool",
+        max_workers=1,
+    )
+    original_write_text = Path.write_text
+
+    def fail_rewrite(path: Path, text: str, *args: Any, **kwargs: Any) -> int:
+        if path == raw or path.name.endswith(".tmp"):
+            with path.open("w", encoding="utf-8") as handle:
+                handle.write(text[:10])
+            raise OSError("simulated interrupted rewrite")
+        return original_write_text(path, text, *args, **kwargs)
+
+    with monkeypatch.context() as m:
+        m.setattr(Path, "write_text", fail_rewrite)
+        try:
+            execute_generator_slots(
+                items=["good"],
+                execute_slot_fn=lambda _: SimpleNamespace(
+                    text="paid response", model="fake"
+                ),
+                responses_path=raw,
+                ctx=ctx,
+                stage_name="gen",
+                prompt_hash="h",
+                get_item_id=str,
+            )
+        except OSError:
+            pass
+
+    assert len(load_raw_responses(raw)) == 1
+    assert load_raw_responses(raw)[0].generated_text == "paid response"
+
+    # Truncated-tail repair must also replace atomically via a temporary file
+    valid = {
+        "plan_index": 0,
+        "seed_id": "good",
+        "generated_text": "saved before crash",
+        "prompt_hash": "h",
+        "model": "fake",
+        "latency_ms": 1,
+        "usage": {},
+    }
+    raw_tail = tmp_path / "raw_tail.jsonl"
+    original_write_text(raw_tail, json.dumps(valid) + "\n" + '{"plan_index":1')
+    with monkeypatch.context() as m:
+        m.setattr(Path, "write_text", fail_rewrite)
+        with pytest.raises(OSError, match="simulated interrupted rewrite"):
+            load_raw_responses(raw_tail)
+    # Even after interrupted repair write, the original valid prefix is still recoverable
+    recovered = load_raw_responses(raw_tail)
+    assert len(recovered) == 1
+    assert recovered[0].generated_text == "saved before crash"
+
+
+def test_review_recheck_2_evol_instruct_resume_preserves_distinct_branch_samples(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from dataclasses import replace
+
+    from arka.config.models import EvolInstructGeneratorConfig
+    from arka.llm.client import LLMClient
+    from arka.pipeline.evol_generator_stage import EvolInstructRoundStage
+
+    cfg = _minimal_config(tmp_path)
+    evol_cfg = EvolInstructGeneratorConfig(
+        rounds=1, branching_factor=2, operators=["deepen"]
+    )
+    cfg = cfg.model_copy(
+        update={
+            "pipeline": [evol_cfg],
+            "llm": cfg.llm.model_copy(update={"supports_json_schema": True}),
+        }
+    )
+
+    responses = [
+        json.dumps({"instruction": "Explain gravity with Newtonian formulas."}),
+        json.dumps({"response": "Newtonian gravity is proportional to mass."}),
+        json.dumps(
+            {"instruction": "Compare gravity in Newtonian mechanics and relativity."}
+        ),
+        json.dumps({"response": "Relativity describes spacetime curvature."}),
+    ]
+    call_count = 0
+
+    class FakeCompletions:
+        def create(self, **kwargs: Any) -> Any:
+            nonlocal call_count
+            assert call_count < len(responses), "Unexpected extra provider call"
+            text = responses[call_count]
+            call_count += 1
+            return SimpleNamespace(
+                id=f"req-{call_count}",
+                model="gpt-4o-mini",
+                choices=[
+                    SimpleNamespace(
+                        finish_reason="stop",
+                        message=SimpleNamespace(content=text),
+                    )
+                ],
+                usage=SimpleNamespace(
+                    prompt_tokens=5, completion_tokens=5, total_tokens=10
+                ),
+            )
+
+    sdk = SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions()))
+
+    def factory(
+        config: Any, cache_db_path: Path | None = None, read_cache: bool = True
+    ) -> LLMClient:
+        return LLMClient(
+            config,
+            client_factory=lambda _: sdk,
+            cache_db_path=cache_db_path,
+            read_cache=read_cache,
+        )
+
+    checkpoint = CheckpointManager(tmp_path / "state.db")
+    stage = EvolInstructRoundStage(round_number=1, config=evol_cfg)
+    evol_ctx = StageContext(
+        run_id="proof",
+        stage_name=stage.name,
+        work_dir=tmp_path,
+        config=cfg,
+        executor_mode="threadpool",
+        max_workers=1,
+        checkpoint_manager=checkpoint,
+        llm_client_factory=factory,
+    )
+    parent = _create_record(
+        "seed", instruction="Explain gravity", response="Gravity attracts masses."
+    )
+
+    with monkeypatch.context() as m:
+        m.setattr(
+            stage,
+            "_write_artifacts",
+            lambda **kwargs: (_ for _ in ()).throw(
+                OSError("simulated artifact write failure")
+            ),
+        )
+        with pytest.raises(OSError, match="simulated artifact write failure"):
+            stage.run([parent], evol_ctx)
+
+    assert call_count == 4
+    out = stage.run([parent], replace(evol_ctx, resume=True))
+    assert call_count == 4
+    assert [r.payload.instruction for r in out[1:]] == [
+        "Explain gravity with Newtonian formulas.",
+        "Compare gravity in Newtonian mechanics and relativity.",
+    ]

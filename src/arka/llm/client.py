@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import sqlite3
+import threading
 import time
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -335,6 +336,8 @@ class LLMClient:
         self.cache_db_path = cache_db_path
         self.read_cache = read_cache
         self.cached_calls = 0
+        self._cache_lock = threading.Lock()
+        self._cache_key_counts: dict[str, int] = {}
         self._structured_output_strategies: tuple[StructuredOutputStrategy, ...] = (
             OpenAICompatibleJsonSchemaStrategy(),
             OpenAINativeParseStrategy(),
@@ -364,6 +367,12 @@ class LLMClient:
         }
         content = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+    def _next_cache_key(self, base_key: str) -> str:
+        with self._cache_lock:
+            occurrence = self._cache_key_counts.get(base_key, 0)
+            self._cache_key_counts[base_key] = occurrence + 1
+        return base_key if occurrence == 0 else f"{base_key}:{occurrence}"
 
     def _get_cached_llm(self, cache_key: str) -> str | None:
         if (
@@ -407,21 +416,20 @@ class LLMClient:
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> LLMOutput:
-        if (
-            self.read_cache
-            and self.cache_db_path is not None
-            and self.cache_db_path.exists()
-        ):
-            cache_key = self._compute_cache_key(
+        cache_key: str | None = None
+        if self.cache_db_path is not None:
+            base_key = self._compute_cache_key(
                 messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
-            cached_json = self._get_cached_llm(cache_key)
-            if cached_json is not None:
-                self.cached_calls += 1
-                out = LLMOutput.model_validate_json(cached_json)
-                return out.model_copy(update={"latency_ms": 0})
+            cache_key = self._next_cache_key(base_key)
+            if self.read_cache and self.cache_db_path.exists():
+                cached_json = self._get_cached_llm(cache_key)
+                if cached_json is not None:
+                    self.cached_calls += 1
+                    out = LLMOutput.model_validate_json(cached_json)
+                    return out.model_copy(update={"latency_ms": 0})
         started_at = time.perf_counter()
 
         @retry(
@@ -470,12 +478,7 @@ class LLMClient:
             response=response,
             latency_ms=self._latency_ms(started_at),
         )
-        if self.cache_db_path is not None:
-            cache_key = self._compute_cache_key(
-                messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
+        if cache_key is not None:
             self._save_cached_llm(cache_key, output.model_dump_json(exclude={"parsed"}))
         return output
 
@@ -487,30 +490,29 @@ class LLMClient:
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> LLMOutput:
-        if (
-            self.read_cache
-            and self.cache_db_path is not None
-            and self.cache_db_path.exists()
-        ):
-            cache_key = self._compute_cache_key(
+        cache_key: str | None = None
+        if self.cache_db_path is not None:
+            base_key = self._compute_cache_key(
                 messages,
                 schema=schema,
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
-            cached_json = self._get_cached_llm(cache_key)
-            if cached_json is not None:
-                self.cached_calls += 1
-                out = LLMOutput.model_validate_json(cached_json)
-                parsed = None
-                if out.text is not None:
-                    try:
-                        parsed = schema.model_validate(
-                            json.loads(self._extract_json_text(out.text))
-                        )
-                    except Exception:
-                        pass
-                return out.model_copy(update={"latency_ms": 0, "parsed": parsed})
+            cache_key = self._next_cache_key(base_key)
+            if self.read_cache and self.cache_db_path.exists():
+                cached_json = self._get_cached_llm(cache_key)
+                if cached_json is not None:
+                    self.cached_calls += 1
+                    out = LLMOutput.model_validate_json(cached_json)
+                    parsed = None
+                    if out.text is not None:
+                        try:
+                            parsed = schema.model_validate(
+                                json.loads(self._extract_json_text(out.text))
+                            )
+                        except Exception:
+                            pass
+                    return out.model_copy(update={"latency_ms": 0, "parsed": parsed})
         for strategy in self._structured_output_strategies:
             if not strategy.is_applicable(self):
                 continue
@@ -522,13 +524,7 @@ class LLMClient:
                 max_tokens=max_tokens,
             )
             if output is not None:
-                if self.cache_db_path is not None:
-                    cache_key = self._compute_cache_key(
-                        messages,
-                        schema=schema,
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                    )
+                if cache_key is not None:
                     serialized_output = output
                     if serialized_output.text is None and isinstance(
                         serialized_output.parsed, BaseModel

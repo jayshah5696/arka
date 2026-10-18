@@ -41,6 +41,24 @@ class RawGeneratorResponse(StrictModel):
     usage: TokenUsage = TokenUsage()
 
 
+def _atomic_write_jsonl(responses_path: Path, rows: list[RawGeneratorResponse]) -> None:
+    """Atomically replace responses_path via a sibling temporary file."""
+    responses_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = responses_path.with_name(
+        f".{responses_path.name}.{threading.get_ident()}.tmp"
+    )
+    cleaned = "".join(
+        json.dumps(row.model_dump(mode="json"), separators=(",", ":")) + "\n"
+        for row in rows
+    )
+    try:
+        tmp_path.write_text(cleaned, encoding="utf-8")
+        tmp_path.replace(responses_path)
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+
 def resolve_generator_llm_client(
     ctx: StageContext,
     stage_config: Any,
@@ -65,8 +83,8 @@ def load_raw_responses(responses_path: Path) -> list[RawGeneratorResponse]:
     """Load existing raw generator responses from JSONL.
 
     Preserves valid rows before an incomplete final line (such as an interrupted
-    append) and rewrites the file without the trailing fragment. Raises
-    ValueError if corruption occurs elsewhere.
+    append) and atomically rewrites the file without the trailing fragment.
+    Raises ValueError if corruption occurs elsewhere.
     """
     if not responses_path.exists():
         return []
@@ -95,12 +113,8 @@ def load_raw_responses(responses_path: Path) -> list[RawGeneratorResponse]:
             ) from exc
 
     if truncated_final:
-        cleaned = "".join(
-            json.dumps(row.model_dump(mode="json"), separators=(",", ":")) + "\n"
-            for row in rows
-        )
-        responses_path.write_text(cleaned, encoding="utf-8")
-    return rows
+        _atomic_write_jsonl(responses_path, rows)
+    return sorted(rows, key=lambda row: row.plan_index)
 
 
 def existing_rows_for_prompt(
@@ -213,15 +227,7 @@ def execute_generator_slots(
 
         ctx.map_parallel(pending, _run_slot)
 
-    all_raw = sorted(load_raw_responses(responses_path), key=lambda row: row.plan_index)
-    if pending and responses_path.exists():
-        responses_path.write_text(
-            "".join(
-                json.dumps(row.model_dump(mode="json"), separators=(",", ":")) + "\n"
-                for row in all_raw
-            ),
-            encoding="utf-8",
-        )
+    all_raw = load_raw_responses(responses_path)
     if checkpoint is not None:
         checkpoint.save_generator(
             run_id=ctx.run_id,
