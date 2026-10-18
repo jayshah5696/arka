@@ -30,10 +30,16 @@ from typing import Any
 from pydantic import BaseModel
 
 from arka.config.models import TaxonomyGeneratorConfig
-from arka.llm.client import LLMClient
+from arka.pipeline.artifacts import StageArtifacts, StageReport
+from arka.pipeline.decision_stages import decision_usage
+from arka.pipeline.generator_engine import (
+    apply_post_generation_decisions,
+    resolve_generator_llm_client,
+)
 from arka.pipeline.models import StageContext
 from arka.pipeline.output import OutputWriter
 from arka.pipeline.stages import Stage
+from arka.records.identity import config_hash as compute_config_hash
 from arka.records.models import (
     ConversationPayload,
     ConversationRecord,
@@ -120,7 +126,7 @@ class TaxonomyGeneratorStage(Stage):
         else:
             tax_path = self._project_root / raw_path
         bundle = TaxonomyBundle.from_yaml(tax_path)
-        client = self._llm_client or LLMClient(config=ctx.config.llm)
+        client = resolve_generator_llm_client(ctx, gen_cfg, self._llm_client)
 
         # Allocate per-strategy budgets uniformly. Simula \u00a72.2 supports
         # weighted strategies; that knob is deferred to a follow-up slice.
@@ -141,14 +147,29 @@ class TaxonomyGeneratorStage(Stage):
                 if rec is not None:
                     new_records.append(rec)
 
-        # Persist summary stats so the slice harness can read it like other stages.
-        ctx.work_dir.mkdir(parents=True, exist_ok=True)
+        new_records, decision_dropped, decision_results = (
+            apply_post_generation_decisions(
+                records=new_records,
+                ctx=ctx,
+                stage_config=gen_cfg,
+                stage_name=self.name,
+                kind="taxonomy_generator",
+            )
+        )
+
+        from collections import Counter
+
+        drop_reasons = (
+            dict(Counter(r.stage_events[-1].reason_code for r in decision_dropped))
+            if decision_dropped
+            else {}
+        )
         stats = {
             "stage": self.name,
             "count_in": len(records),
             "count_out": len(records) + len(new_records),
-            "dropped_count": 0,
-            "drop_reasons": {},
+            "dropped_count": len(decision_dropped),
+            "drop_reasons": drop_reasons,
             "generated_count": len(new_records),
             "taxonomy_path": gen_cfg.taxonomy_path,
             "strategies": [
@@ -156,46 +177,12 @@ class TaxonomyGeneratorStage(Stage):
                 for s, b in zip(strategies, budgets, strict=True)
             ],
         }
-        (ctx.work_dir / "stats.json").write_text(json.dumps(stats, indent=2))
-
-        decision_results, decision_dropped = [], []
-        if gen_cfg.fidelity_check.enabled:
-            from arka.pipeline.decision_checks import taxonomy_fidelity
-
-            new_records, dropped, results = taxonomy_fidelity(
-                new_records, ctx, gen_cfg.fidelity_check, self.name
-            )
-            decision_dropped.extend(dropped)
-            decision_results.extend(results)
-        if gen_cfg.best_of_n.enabled:
-            from arka.pipeline.decision_checks import best_of_n
-
-            new_records, dropped, results = best_of_n(
-                new_records,
-                ctx,
-                gen_cfg.best_of_n,
-                self.name,
-                kind="taxonomy_generator",
-            )
-            decision_dropped.extend(dropped)
-            decision_results.extend(results)
         if decision_results:
-            from collections import Counter
+            stats["decision_usage"] = decision_usage(decision_results)
 
-            from arka.pipeline.artifacts import StageArtifacts, StageReport
-            from arka.pipeline.decision_stages import decision_usage
-
-            stats.update(
-                count_out=len(records) + len(new_records),
-                dropped_count=len(decision_dropped),
-                drop_reasons=dict(
-                    Counter(r.stage_events[-1].reason_code for r in decision_dropped)
-                ),
-                decision_usage=decision_usage(decision_results),
-            )
-            StageArtifacts(ctx).write(
-                report=StageReport(**stats), dropped=decision_dropped
-            )
+        StageArtifacts(ctx).write(
+            report=StageReport(**stats), dropped=decision_dropped or None
+        )
         return list(records) + new_records
 
     def _sample(
@@ -249,7 +236,11 @@ class TaxonomyGeneratorStage(Stage):
         seed = json.dumps(sampled, sort_keys=True) + parsed.instruction
         rid = "tax-" + hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
 
-        return ConversationRecord(
+        cfg_hash = "taxonomy"
+        if getattr(ctx, "config", None) is not None:
+            cfg_hash = compute_config_hash(ctx.config)
+
+        rec = ConversationRecord(
             id=rid,
             content_hash=hashlib.sha256(
                 (
@@ -268,9 +259,8 @@ class TaxonomyGeneratorStage(Stage):
                 response=parsed.response,
                 reasoning=parsed.reasoning,
             ),
-            scores=RecordScores(
-                quality_per_dim={"taxonomy_nodes": sampled},
-            ),
-            config_hash="taxonomy",  # hashing taxonomies is a slice-3.5 concern\n
+            scores=RecordScores(),
+            config_hash=cfg_hash,
             created_at=datetime.now(tz=UTC).isoformat(),
         )
+        return rec.with_annotation("taxonomy_nodes", sampled)

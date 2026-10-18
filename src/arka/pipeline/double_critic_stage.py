@@ -18,14 +18,13 @@ Davidson et al. 2026 (Simula, TMLR), §2.2 and §3.1.
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 from arka.common.security import sanitize_for_prompt
-from arka.config.models import DoubleCriticFilterConfig, resolve_llm_override
-from arka.llm.client import LLMClient, LLMClientError
+from arka.config.models import DoubleCriticFilterConfig
+from arka.llm.client import LLMClientError
 from arka.pipeline.filter_stages import _write_filter_artifacts
 from arka.pipeline.models import StageContext
 from arka.pipeline.output import OutputWriter
@@ -152,8 +151,7 @@ class DoubleCriticFilterStage(Stage):
         # the generator (paper's setup; matters most when generator==critic share
         # blind spots). When llm_override is None, falls through to top-level llm.
         override = getattr(filter_config, "llm_override", None)
-        critic_llm_config = resolve_llm_override(ctx.config.llm, override)
-        client = self._llm_client or LLMClient(config=critic_llm_config)
+        client = self._llm_client or ctx.llm_client(override=override)
 
         # Run all 2N critic calls concurrently with the same worker budget the
         # rest of the pipeline uses. Each record's two calls are independent; we
@@ -180,31 +178,29 @@ class DoubleCriticFilterStage(Stage):
                 )
             return parsed
 
-        if getattr(ctx, "executor", None) is not None:
-            pool = ctx.executor
-        else:
-            pool = ThreadPoolExecutor(max_workers=worker_count)
+        # Interleave calls: record 0 yes, record 0 no, record 1 yes, ...
+        # (Order in the task list doesn't affect correctness; grouping per record
+        # keeps results together in the zip below).
+        tasks: list[tuple[str, ConversationRecord]] = []
+        for r in conversation_records:
+            tasks.append((_YES_SYSTEM, r))
+            tasks.append((_NO_SYSTEM, r))
 
-        try:
-            yes_futs = [
-                pool.submit(_call_one, _YES_SYSTEM, r) for r in conversation_records
-            ]
-            no_futs = [
-                pool.submit(_call_one, _NO_SYSTEM, r) for r in conversation_records
-            ]
-            yes_results = [f.result() for f in yes_futs]
-            no_results = [f.result() for f in no_futs]
-        finally:
-            if getattr(ctx, "executor", None) is None:
-                pool.shutdown(wait=True)
+        raw_results = ctx.map_parallel(
+            tasks, lambda pair: _call_one(pair[0], pair[1]), max_workers=worker_count
+        )
+
+        # Pair up: (yes_result, no_result) for each record.
+        paired = [
+            (conversation_records[i], raw_results[2 * i], raw_results[2 * i + 1])
+            for i in range(len(conversation_records))
+        ]
 
         kept: list[Record] = list(non_conv)
         dropped: list[Record] = []
         drop_reasons: dict[str, int] = {}
 
-        for record, yes_r, no_r in zip(
-            conversation_records, yes_results, no_results, strict=True
-        ):
+        for record, yes_r, no_r in paired:
             # Treat any LLM failure as a drop with a distinct reason — we don't
             # silently accept; we don't crash the pipeline on a flaky judge.
             if isinstance(yes_r, LLMClientError) or isinstance(no_r, LLMClientError):
@@ -220,18 +216,7 @@ class DoubleCriticFilterStage(Stage):
                 "yes_reason": yes_r.reason,
                 "no_reason": no_r.reason,
             }
-            updated = record.model_copy(
-                update={
-                    "scores": record.scores.model_copy(
-                        update={
-                            "quality_per_dim": {
-                                **record.scores.quality_per_dim,
-                                "double_critic": audit,
-                            },
-                        }
-                    )
-                }
-            )
+            updated = record.with_annotation("double_critic", audit)
 
             accept = yes_r.verdict == "yes" and no_r.verdict == "no"
             if accept:

@@ -191,6 +191,17 @@ def extract_sampled_from_record(record: Any) -> SampledRecord:
         scores = record.get("scores")
     if scores is None:
         return None
+    if hasattr(scores, "get_annotation"):
+        nodes = scores.get_annotation("taxonomy_nodes")
+        if isinstance(nodes, dict):
+            return nodes
+    annotations = getattr(scores, "annotations", None)
+    if annotations is None and isinstance(scores, dict):
+        annotations = scores.get("annotations")
+    if isinstance(annotations, dict) and "taxonomy_nodes" in annotations:
+        nodes = annotations.get("taxonomy_nodes")
+        if isinstance(nodes, dict):
+            return nodes
     qpd = getattr(scores, "quality_per_dim", None)
     if qpd is None and isinstance(scores, dict):
         qpd = scores.get("quality_per_dim")

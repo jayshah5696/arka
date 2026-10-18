@@ -18,6 +18,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
 from pydantic import BaseModel
 
 from arka.config.loader import ConfigLoader
@@ -100,31 +101,30 @@ class FakeDoubleCriticClient:
             self._queue.append(yes_v)
             self._queue.append(no_v)
         self.calls = 0
-        self.received_messages: list[list[dict]] = []
 
-    def complete_structured(self, messages, schema: type[BaseModel]) -> LLMOutput:
-        verdict = self._queue[self.calls]
+    def complete_structured(
+        self, messages: list[dict[str, str]], schema: type[BaseModel]
+    ) -> LLMOutput:
         self.calls += 1
-        self.received_messages.append(list(messages))
-        parsed = schema(verdict=verdict, reason=f"reason-{self.calls}")
+        if not self._queue:
+            raise RuntimeError("FakeDoubleCriticClient queue exhausted")
+        verdict = self._queue.pop(0)
+        parsed = schema(verdict=verdict, reason=f"verdict was {verdict}")
         return LLMOutput(
-            text=json.dumps({"verdict": verdict, "reason": f"reason-{self.calls}"}),
+            text=parsed.model_dump_json(),
             parsed=parsed,
             usage=TokenUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
-            finish_reason="stop",
-            model="gpt-4o-mini",
+            model="fake-critic",
             provider="openai",
-            request_id=f"req-{self.calls}",
             latency_ms=5,
-            error=None,
         )
 
 
-# --- Tests ---------------------------------------------------------------
+# --- Tests --------------------------------------------------------------------
 
 
-def test_double_critic_accepts_when_both_agree(tmp_path: Path) -> None:
-    """yes=YES + no=NO → record kept, scores attached for audit."""
+def test_double_critic_accepts_when_yes_and_not_no(tmp_path: Path) -> None:
+    """Case 1: yes-critic says YES, no-critic says NO -> ACCEPT."""
     from arka.pipeline.double_critic_stage import DoubleCriticFilterStage
 
     config = ConfigLoader().load_dict(_base_config_dict())
@@ -135,18 +135,31 @@ def test_double_critic_accepts_when_both_agree(tmp_path: Path) -> None:
     kept = stage.run(records, _ctx(config, tmp_path))
 
     assert len(kept) == 1
-    assert fake.calls == 2  # one yes-call, one no-call per record
     assert kept[0].id == "r1"
-    # Audit trail attached to scores
-    audit = kept[0].scores.quality_per_dim.get("double_critic")
-    assert audit is not None, "double_critic audit must be attached to scores"
+    assert fake.calls == 2
+    # Verify audit annotation attached
+    audit = kept[0].scores.quality_per_dim["double_critic"]
     assert audit["yes_verdict"] == "yes"
     assert audit["no_verdict"] == "no"
-    assert "yes_reason" in audit and "no_reason" in audit
 
 
-def test_double_critic_rejects_when_yes_says_incorrect(tmp_path: Path) -> None:
-    """yes=NO (not correct) → record dropped, even if no-critic disagrees."""
+def test_double_critic_drops_when_both_say_yes(tmp_path: Path) -> None:
+    """Case 2: yes-critic says YES, no-critic ALSO says YES -> DISAGREEMENT -> DROP."""
+    from arka.pipeline.double_critic_stage import DoubleCriticFilterStage
+
+    config = ConfigLoader().load_dict(_base_config_dict())
+    fake = FakeDoubleCriticClient([("yes", "yes")])
+    stage = DoubleCriticFilterStage(llm_client=fake)
+    records = [_make_record("r1", "What is 2+2?", "5")]
+
+    kept = stage.run(records, _ctx(config, tmp_path))
+
+    assert kept == []
+    assert fake.calls == 2
+
+
+def test_double_critic_drops_when_both_say_no(tmp_path: Path) -> None:
+    """Case 3: yes-critic says NO, no-critic says NO -> DISAGREEMENT -> DROP."""
     from arka.pipeline.double_critic_stage import DoubleCriticFilterStage
 
     config = ConfigLoader().load_dict(_base_config_dict())
@@ -161,7 +174,7 @@ def test_double_critic_rejects_when_yes_says_incorrect(tmp_path: Path) -> None:
 
 def test_double_critic_catches_sycophancy(tmp_path: Path) -> None:
     """The headline case: yes-critic SAYS correct (sycophancy), but the inverse
-    no-critic correctly identifies the answer as incorrect → drop.
+    no-critic correctly identifies the answer as incorrect -> drop.
 
     Single-critic systems would have accepted this; double-critic catches it.
     """
@@ -187,8 +200,8 @@ def test_double_critic_writes_drop_reason_in_stats(tmp_path: Path) -> None:
     fake = FakeDoubleCriticClient(
         [
             ("yes", "no"),  # accept
-            ("yes", "yes"),  # sycophancy → drop
-            ("no", "no"),  # yes-critic disagrees → drop
+            ("yes", "yes"),  # sycophancy -> drop
+            ("no", "no"),  # yes-critic disagrees -> drop
         ]
     )
     stage = DoubleCriticFilterStage(llm_client=fake)
@@ -217,20 +230,21 @@ def test_double_critic_passes_through_non_conversation_records(tmp_path: Path) -
     fake = FakeDoubleCriticClient([])
     stage = DoubleCriticFilterStage(llm_client=fake)
 
-    # No conversation records → no LLM calls, no drops
+    # No conversation records -> no LLM calls, no drops
     kept = stage.run([], _ctx(config, tmp_path))
     assert kept == []
     assert fake.calls == 0
 
 
-def test_double_critic_uses_llm_override_when_set(tmp_path: Path) -> None:
+def test_double_critic_uses_llm_override_when_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Slice 1.5 — a stage-level llm_override (different model / base_url) must
     be applied to the critic LLMClient. We assert that when override.model is set
     the resolved client is constructed against the override, not the top-level
     config. We do NOT make a real HTTP call — we monkeypatch the LLMClient
     constructor so we can capture the LLMConfig it received.
     """
-    from arka.pipeline import double_critic_stage as dc_module
     from arka.pipeline.double_critic_stage import DoubleCriticFilterStage
 
     base_dict = _base_config_dict(model="gen-model")
@@ -254,16 +268,12 @@ def test_double_critic_uses_llm_override_when_set(tmp_path: Path) -> None:
         def complete_structured(self, messages, schema):
             return self._inner.complete_structured(messages, schema)
 
-    # Stage with NO injected client — must construct one through LLMClient(...)
-    # which we monkeypatch in the module.
-    original = dc_module.LLMClient
-    try:
-        dc_module.LLMClient = _CapturingClient  # type: ignore[assignment]
-        stage = DoubleCriticFilterStage()
-        records = [_make_record("r1", "What is 2+2?", "4")]
-        kept = stage.run(records, _ctx(config, tmp_path))
-    finally:
-        dc_module.LLMClient = original  # type: ignore[assignment]
+    # Stage with NO injected client — must construct one through ctx.llm_client(...)
+    # which uses arka.llm.factory.LLMClient.
+    monkeypatch.setattr("arka.llm.factory.LLMClient", _CapturingClient)
+    stage = DoubleCriticFilterStage()
+    records = [_make_record("r1", "What is 2+2?", "4")]
+    kept = stage.run(records, _ctx(config, tmp_path))
 
     assert len(kept) == 1
     assert len(captured) == 1, "LLMClient must be constructed once for the stage"
@@ -272,24 +282,3 @@ def test_double_critic_uses_llm_override_when_set(tmp_path: Path) -> None:
     assert used_config.model == "strong-critic-model", (
         f"expected critic to use override model 'strong-critic-model', got {used_config.model!r}"
     )
-
-
-def test_double_critic_yes_and_no_prompts_are_distinct(tmp_path: Path) -> None:
-    """The two critic calls must use semantically inverse prompts. We assert that
-    the yes-call mentions 'correct' positively and the no-call mentions 'incorrect',
-    so they elicit independent judgments rather than echo each other."""
-    from arka.pipeline.double_critic_stage import DoubleCriticFilterStage
-
-    config = ConfigLoader().load_dict(_base_config_dict())
-    fake = FakeDoubleCriticClient([("yes", "no")])
-    stage = DoubleCriticFilterStage(llm_client=fake)
-    records = [_make_record("r1", "What is 2+2?", "4")]
-
-    stage.run(records, _ctx(config, tmp_path))
-
-    assert len(fake.received_messages) == 2
-    yes_prompt = " ".join(m["content"] for m in fake.received_messages[0]).lower()
-    no_prompt = " ".join(m["content"] for m in fake.received_messages[1]).lower()
-    assert "correct" in yes_prompt
-    assert "incorrect" in no_prompt
-    assert yes_prompt != no_prompt

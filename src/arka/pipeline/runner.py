@@ -14,9 +14,15 @@ from arka.config.loader import ConfigLoader
 from arka.config.models import ResolvedConfig
 from arka.core.paths import RunPaths
 from arka.decisions.factory import DecisionClientFactory
-from arka.pipeline.artifacts import StageArtifacts, get_extra
+from arka.pipeline.artifacts import StageArtifacts, StageReport, get_extra
 from arka.pipeline.checkpoint import CheckpointManager
-from arka.pipeline.models import RunResult, StageContext, StageErrorInfo, StageStat
+from arka.pipeline.models import (
+    RunResult,
+    StageContext,
+    StageErrorInfo,
+    StageResult,
+    StageStat,
+)
 from arka.pipeline.output import OutputWriter
 from arka.pipeline.reporter import RunReporter
 from arka.pipeline.stages import Stage
@@ -107,6 +113,7 @@ class PipelineRunner:
                         executor=shared_executor,
                         checkpoint_manager=checkpoint_manager,
                         decision_client_factory=self.decision_client_factory,
+                        resume=resume,
                     )
                     count_in = len(records)
                     # DX: Provide per-stage progress indication during long runs
@@ -114,8 +121,27 @@ class PipelineRunner:
                         f"\033[36mRunning stage {i}/{len(stages)}: {stage.name} ({count_in} records in)...\033[0m"
                     )
                     stage_start_time = time.time()
+                    in_memory_report: StageReport | None = None
                     try:
-                        stage_output = list(stage.run(records, context))
+                        raw_out = stage.run(records, context)
+                        if isinstance(raw_out, StageResult):
+                            stage_output = list(raw_out.kept)
+                            rep = raw_out.report
+                            if rep is None and raw_out.stats:
+                                rep = StageReport(**raw_out.stats)
+                            if rep is not None:
+                                in_memory_report = rep
+                                stats_file = context.work_dir / "stats.json"
+                                if not stats_file.exists():
+                                    StageArtifacts(context).write(
+                                        report=rep,
+                                        dropped=raw_out.dropped
+                                        if raw_out.dropped
+                                        else None,
+                                        extras=raw_out.extra_parquet or None,
+                                    )
+                        else:
+                            stage_output = list(raw_out)
                     except Exception as exc:
                         failed_stage_name = stage.name
                         failed_error = StageErrorInfo(
@@ -169,6 +195,7 @@ class PipelineRunner:
                             status="completed",
                             resumed=False,
                             stats_path=run_paths.stage_stats_path(stage.name),
+                            report=in_memory_report,
                         )
                     )
                     stage_duration = time.time() - stage_start_time
@@ -402,8 +429,10 @@ class PipelineRunner:
         resumed: bool,
         stats_path: Path,
         error: StageErrorInfo | None = None,
+        report: StageReport | None = None,
     ) -> StageStat:
-        report = StageArtifacts.load_report(stats_path)
+        if report is None:
+            report = StageArtifacts.load_report(stats_path)
         return StageStat(
             stage=stage_name,
             count_in=count_in,

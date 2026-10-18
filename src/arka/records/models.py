@@ -37,10 +37,31 @@ class DecontaminationMatch(StrictModel):
     window_end: int
 
 
+class EscalationEntry(StrictModel):
+    record_id: str
+    stage: str
+    reason_code: str
+    details: str | None = None
+    question: str | None = None
+    probability: float | None = None
+    confidence: float | None = None
+    resolved: bool = False
+
+
+class RecordAnnotations(StrictModel):
+    taxonomy_nodes: dict[str, list[str]] = Field(default_factory=dict)
+    taxonomy_nodes_requested: dict[str, list[str]] = Field(default_factory=dict)
+    seed_domain: str | None = None
+    double_critic: dict[str, Any] | None = None
+    pair_preference: dict[str, Any] | None = None
+    escalations: list[dict[str, Any]] = Field(default_factory=list)
+
+
 class RecordScores(StrictModel):
     decisions: dict[str, DecisionAnswer] = Field(default_factory=dict)
     quality: float | None = None
     quality_per_dim: dict[str, Any] = Field(default_factory=dict)
+    annotations: dict[str, Any] = Field(default_factory=dict)
     rubric_hash: str | None = None
     rubric_version: str | None = None
     judge_model: str | None = None
@@ -52,6 +73,23 @@ class RecordScores(StrictModel):
     humanness_checklist: dict[str, bool] | None = None
     humanness_reasoning: str | None = None
     decon_match: DecontaminationMatch | None = None
+
+    def get_annotation(self, key: str, default: Any = None) -> Any:
+        if key in self.annotations:
+            return self.annotations[key]
+        return self.quality_per_dim.get(key, default)
+
+    def with_annotation(self, key: str, value: Any) -> RecordScores:
+        new_annotations = dict(self.annotations)
+        new_annotations[key] = value
+        new_qpd = dict(self.quality_per_dim)
+        new_qpd[key] = value
+        return self.model_copy(
+            update={
+                "annotations": new_annotations,
+                "quality_per_dim": new_qpd,
+            }
+        )
 
 
 class StageEvent(StrictModel):
@@ -76,6 +114,15 @@ class Record(StrictModel):
     @property
     def record_type(self) -> str:
         return self.__class__.__name__
+
+    @property
+    def annotations(self) -> dict[str, Any]:
+        return {**self.scores.quality_per_dim, **self.scores.annotations}
+
+    def with_annotation(self, key: str, value: Any) -> Record:
+        return self.model_copy(
+            update={"scores": self.scores.with_annotation(key, value)}
+        )
 
     def export_payload(self) -> dict[str, Any]:
         return self.payload
@@ -105,6 +152,45 @@ class Record(StrictModel):
             seq=len(self.stage_events) + 1,
         )
         return self.model_copy(update={"stage_events": [*self.stage_events, event]})
+
+    def with_escalation(
+        self,
+        *,
+        stage: str,
+        reason_code: str,
+        details: str | None = None,
+        question: str | None = None,
+        probability: float | None = None,
+        confidence: float | None = None,
+    ) -> Record:
+        """Return a copy marked as escalated with structured escalation entry."""
+        entry = {
+            "record_id": self.id,
+            "stage": stage,
+            "reason_code": reason_code,
+            "details": details,
+            "question": question,
+            "probability": probability,
+            "confidence": confidence,
+            "resolved": False,
+        }
+        current_escalations = list(self.scores.annotations.get("escalations", []))
+        current_escalations.append(entry)
+        updated_scores = self.scores.model_copy(
+            update={
+                "annotations": {
+                    **self.scores.annotations,
+                    "escalations": current_escalations,
+                }
+            }
+        )
+        record = self.model_copy(update={"scores": updated_scores})
+        return record.with_event(
+            stage=stage,
+            action="escalated",
+            reason_code=reason_code,
+            details=details,
+        )
 
     def dropped_by(
         self,

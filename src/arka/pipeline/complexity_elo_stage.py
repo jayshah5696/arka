@@ -1,7 +1,7 @@
-"""Slice 5 \u2014 Simula \u00a72.3 calibrated batch-Elo complexity scoring.
+"""Slice 5 — Simula §2.3 calibrated batch-Elo complexity scoring.
 
 For each ConversationRecord we want a `complexity_elo` rating that is
-comparable across datasets. The procedure (Davidson et al. 2026, \u00a72.3):
+comparable across datasets. The procedure (Davidson et al. 2026, §2.3):
 
 1. Sample records into batches of size B such that each record appears K
    times across batches.
@@ -14,7 +14,7 @@ comparable across datasets. The procedure (Davidson et al. 2026, \u00a72.3):
 5. Attach the final rating to
    ``record.scores.quality_per_dim['complexity_elo']``.
 
-The stage **does not drop any records** \u2014 it annotates and passes through.
+The stage **does not drop any records** — it annotates and passes through.
 Filter or select stages downstream consume the score.
 
 Cost: ~K LLM calls per record (each batch is one call). With default
@@ -24,18 +24,17 @@ each returning a rank list of length 5.
 
 from __future__ import annotations
 
-import json
 import math
 import random
 import statistics
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from arka.common.security import sanitize_for_prompt
-from arka.config.models import ComplexityEloFilterConfig, resolve_llm_override
-from arka.llm.client import LLMClient, LLMClientError
+from arka.config.models import ComplexityEloFilterConfig
+from arka.llm.client import LLMClientError
+from arka.pipeline.artifacts import StageArtifacts, StageReport
 from arka.pipeline.models import StageContext
 from arka.pipeline.output import OutputWriter
 from arka.pipeline.stages import Stage
@@ -186,10 +185,8 @@ class ComplexityEloScoringStage(Stage):
         )
 
         # Issue ranker calls in parallel up to ctx.max_workers.
-        client = self._llm_client or LLMClient(
-            config=resolve_llm_override(
-                ctx.config.llm, getattr(cfg, "llm_override", None)
-            )
+        client = self._llm_client or ctx.llm_client(
+            override=getattr(cfg, "llm_override", None)
         )
         record_by_id = {r.id: r for r in conv_records}
         rankings = self._call_ranker_batch(client, batches, record_by_id, ctx)
@@ -204,19 +201,19 @@ class ComplexityEloScoringStage(Stage):
                 for j in range(i + 1, len(ranked_ids)):
                     a_id = ranked_ids[i]
                     b_id = ranked_ids[j]
-                    if a_id not in elos or b_id not in elos:
-                        continue
-                    elos[a_id], elos[b_id] = elo_update_pair(
+                    ra, rb = elo_update_pair(
                         rating_a=elos[a_id],
                         rating_b=elos[b_id],
                         a_wins=True,
                         k=k_factor,
                     )
+                    elos[a_id] = ra
+                    elos[b_id] = rb
 
-        # Attach to records.
+        # Attach final rating to record.scores.quality_per_dim["complexity_elo"]
         out: list[Record] = list(non_conv)
         for r in conv_records:
-            elo = round(elos[r.id], 2)
+            elo = elos[r.id]
             updated = r.model_copy(
                 update={
                     "scores": r.scores.model_copy(
@@ -302,7 +299,7 @@ class ComplexityEloScoringStage(Stage):
             parsed = out.parsed
             if not isinstance(parsed, _BatchRanking):
                 return []
-            # Reject malformed rankings (missing ids, duplicates) silently \u2014
+            # Reject malformed rankings (missing ids, duplicates) silently —
             # those batches just don't contribute Elo updates.
             seen = set()
             valid: list[str] = []
@@ -312,16 +309,7 @@ class ComplexityEloScoringStage(Stage):
                     valid.append(rid)
             return valid
 
-        if getattr(ctx, "executor", None) is not None:
-            pool = ctx.executor
-        else:
-            pool = ThreadPoolExecutor(max_workers=worker_count)
-
-        try:
-            return list(pool.map(_one, batches))
-        finally:
-            if getattr(ctx, "executor", None) is None:
-                pool.shutdown(wait=True)
+        return ctx.map_parallel(batches, _one, max_workers=worker_count)
 
     def _write_artifacts(
         self, ctx: StageContext, *, count_in: int, elos: list[float]
@@ -343,4 +331,4 @@ class ComplexityEloScoringStage(Stage):
             "scored_count": len(elos),
             "complexity_elo_distribution": dist,
         }
-        (ctx.work_dir / "stats.json").write_text(json.dumps(stats, indent=2))
+        StageArtifacts(ctx).write(report=StageReport(**stats))

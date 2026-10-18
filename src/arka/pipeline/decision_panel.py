@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from arka.common.concurrency import bounded_worker_count
 from arka.config.models import DecisionPanelConfig
 from arka.decisions.factory import resolve_decision_config
 from arka.pipeline.artifacts import StageArtifacts, StageReport
@@ -81,14 +79,7 @@ class DecisionPanelStage(Stage):
                     [len(group) for group in groups if group],
                 )
 
-            pool = ctx.executor or ThreadPoolExecutor(
-                max_workers=bounded_worker_count(len(records), ctx.max_workers)
-            )
-            try:
-                evaluated = list(pool.map(evaluate, records))
-            finally:
-                if ctx.executor is None:
-                    pool.shutdown()
+            evaluated = ctx.map_parallel(records, evaluate)
             question_counts = []
             for updated, results, failed, counts in evaluated:
                 out.append(updated)

@@ -5,7 +5,12 @@ from pathlib import Path
 import pytest
 
 from arka.config.loader import ConfigLoader, ConfigValidationError
-from arka.config.models import LLMConfig, StageLLMOverride, resolve_llm_override
+from arka.config.models import (
+    LLMConfig,
+    ResolvedConfig,
+    StageLLMOverride,
+    resolve_llm_override,
+)
 
 CONFIG_YAML = """
 version: "1"
@@ -420,7 +425,7 @@ def test_legacy_config_loader_deprecation_warning() -> None:
         "output": {"format": "jsonl", "path": "./output/dataset.jsonl"},
     }
     with pytest.deprecated_call():
-        ConfigLoader().load_dict(cfg_dict)
+        ResolvedConfig.migrate_old_config(cfg_dict)
 
 
 def test_yaml_syntax_error_includes_filename(tmp_path: Path) -> None:

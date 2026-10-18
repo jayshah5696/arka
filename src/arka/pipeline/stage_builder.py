@@ -32,7 +32,12 @@ class StageBuilder:
                 resolved_config=self.config,
             )
             if isinstance(built, list):
+                for s in built:
+                    if getattr(s, "config", None) is None:
+                        s.config = cfg
                 stages.extend(built)
             else:
+                if getattr(built, "config", None) is None:
+                    built.config = cfg
                 stages.append(built)
         return stages

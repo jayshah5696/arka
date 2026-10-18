@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from arka.common.models import StrictModel
-from arka.pipeline.models import StageContext
+from arka.pipeline.models import StageContext, StageResult
 from arka.records.models import Record
 
 T = TypeVar("T", bound=StrictModel)
@@ -19,10 +19,23 @@ if TYPE_CHECKING:
 class Stage(ABC):
     name: str
     stage_action: str = "transformed"
+    config: Any = None
+
+    def __init__(self, config: Any = None, **kwargs: Any) -> None:
+        self.config = config
 
     @abstractmethod
-    def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
+    def run(
+        self, records: list[Record], ctx: StageContext
+    ) -> list[Record] | StageResult:
         """Transform records for a pipeline stage."""
+
+    @staticmethod
+    def partition_conversations(
+        records: list[Record],
+    ) -> tuple[list[ConversationRecord], list[Record]]:
+        """Partition records into conversation records and passthrough records."""
+        return StageResult.partition_conversations(records)
 
     def get_stage_config(
         self,
@@ -34,10 +47,28 @@ class Stage(ABC):
         """Resolve a stage's configuration from context config or defaults."""
         # 1. Use explicit self.config if already populated and correct type
         current = getattr(self, "config", None)
-        if current is not None and isinstance(current, config_cls):
-            return current
+        if current is not None:
+            if isinstance(current, config_cls):
+                return current
+            if isinstance(current, dict):
+                try:
+                    return config_cls.model_validate(current)
+                except Exception:
+                    pass
+            if hasattr(current, "model_dump"):
+                try:
+                    dct = current.model_dump()
+                    if "type" in dct and "type" in config_cls.model_fields:
+                        default_type = config_cls.model_fields["type"].default
+                        if isinstance(default_type, str):
+                            dct["type"] = default_type
+                    valid_fields = set(config_cls.model_fields.keys())
+                    filtered_dct = {k: v for k, v in dct.items() if k in valid_fields}
+                    return config_cls.model_validate(filtered_dct)
+                except Exception:
+                    pass
 
-        # 2. Try to resolve from context config
+        # 2. Try to resolve from context config (fallback for bare stage instantiation in tests)
         if ctx.config is not None:
             # 2a. Check legacy config properties/namespaces first for compatibility
             if legacy_field is not None:
@@ -53,8 +84,13 @@ class Stage(ABC):
                 if legacy_cfg is not None:
                     if isinstance(legacy_cfg, config_cls):
                         return legacy_cfg
-                    if hasattr(legacy_cfg, "dict"):
+                    if hasattr(legacy_cfg, "model_dump"):
+                        dct = legacy_cfg.model_dump()
+                    elif hasattr(legacy_cfg, "dict"):
                         dct = legacy_cfg.dict()
+                    else:
+                        dct = None
+                    if dct is not None:
                         if "type" in dct:
                             t_map = {
                                 "seeds": "seed_source",
@@ -112,7 +148,14 @@ class Stage(ABC):
             kwargs["config"] = config
         if "project_root" in sig.parameters:
             kwargs["project_root"] = project_root
-        return cls(**kwargs)
+        instance = cls(**kwargs)
+        if isinstance(instance, Stage) and getattr(instance, "config", None) is None:
+            instance.config = config
+        elif isinstance(instance, list):
+            for item in instance:
+                if isinstance(item, Stage) and getattr(item, "config", None) is None:
+                    item.config = config
+        return instance
 
 
 class BaseFilterStage(Stage):
@@ -121,7 +164,7 @@ class BaseFilterStage(Stage):
     stage_action: str = "filtered"
 
     def __init__(self, config: Any | None = None) -> None:
-        self.config = config
+        super().__init__(config=config)
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
         from arka.records.models import ConversationRecord
