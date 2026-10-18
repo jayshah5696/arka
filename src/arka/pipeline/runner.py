@@ -26,6 +26,7 @@ from arka.pipeline.models import (
 from arka.pipeline.output import OutputWriter
 from arka.pipeline.reporter import RunReporter
 from arka.pipeline.stages import Stage
+from arka.privacy.runtime import build_policy
 from arka.records.models import Record, StageEvent
 
 logger = logging.getLogger(__name__)
@@ -54,7 +55,22 @@ class PipelineRunner:
         resume: bool = False,
     ) -> RunResult:
         resolved_config = self._resolve_config(config)
+        privacy = build_policy(resolved_config.pii, self.project_root)
+        # Check before opening existing artifacts or overwriting resolved config.
+        policy_path = self.project_root / "runs" / run_id / "pii_policy.json"
+        policy_identity = privacy.fingerprint if privacy else None
+        if policy_path.exists():
+            if json.loads(policy_path.read_text())["fingerprint"] != policy_identity:
+                raise ValueError("PII policy changed; use a new run ID")
+        elif (
+            privacy is not None
+            and (policy_path.parent / "config.resolved.yaml").exists()
+        ):
+            raise ValueError(
+                "PII policy is absent from existing artifacts; use a new run ID"
+            )
         run_paths = RunPaths.bootstrap(root_dir=self.project_root, run_id=run_id)
+        policy_path.write_text(json.dumps({"fingerprint": policy_identity}))
         checkpoint_manager = CheckpointManager(run_paths.sqlite_path)
         config_hash = self._config_hash(resolved_config)
         timestamp = datetime.now(UTC).isoformat()
@@ -114,6 +130,7 @@ class PipelineRunner:
                         checkpoint_manager=checkpoint_manager,
                         decision_client_factory=self.decision_client_factory,
                         resume=resume,
+                        privacy=privacy,
                     )
                     count_in = len(records)
                     # DX: Provide per-stage progress indication during long runs
@@ -123,6 +140,10 @@ class PipelineRunner:
                     stage_start_time = time.time()
                     in_memory_report: StageReport | None = None
                     try:
+                        if privacy is not None:
+                            # Reset aggregates for this attempt, preserving completed resumes.
+                            for name in ("pii_report.json", "pii_dropped.parquet"):
+                                (stage_dir / name).unlink(missing_ok=True)
                         raw_out = stage.run(records, context)
                         if isinstance(raw_out, StageResult):
                             stage_output = list(raw_out.kept)
@@ -142,11 +163,14 @@ class PipelineRunner:
                                     )
                         else:
                             stage_output = list(raw_out)
+                        stage_output = context.protect_records(stage_output)
                     except Exception as exc:
                         failed_stage_name = stage.name
                         failed_error = StageErrorInfo(
                             type=exc.__class__.__name__,
-                            message=str(exc),
+                            message="Stage failed while PII protection was enabled"
+                            if privacy
+                            else str(exc),
                         )
                         stage_stats.append(
                             self._build_stage_stat(
@@ -170,8 +194,8 @@ class PipelineRunner:
                         # DX: Wrap stage failures with the stage name to improve error visibility in CLI
                         record_str = "record was" if count_in == 1 else "records were"
                         raise RuntimeError(
-                            f"Stage '{stage.name}' failed - {exc}. {count_in} {record_str} lost."
-                        ) from exc
+                            f"Stage '{stage.name}' failed - {failed_error.message}. {count_in} {record_str} lost."
+                        ) from None
 
                     records = self._append_stage_events(
                         records=stage_output,
@@ -431,16 +455,30 @@ class PipelineRunner:
         error: StageErrorInfo | None = None,
         report: StageReport | None = None,
     ) -> StageStat:
+        from collections import Counter
+
+        from arka.privacy.models import PIIReport
+
         if report is None:
             report = StageArtifacts.load_report(stats_path)
+        pii_path = stats_path.parent / "pii_report.json"
+        pii_report = (
+            PIIReport.model_validate_json(pii_path.read_text())
+            if pii_path.exists()
+            else None
+        )
+        reasons = Counter(report.drop_reasons if report else {})
+        if pii_report:
+            reasons.update(pii_report.drop_reasons)
         return StageStat(
             stage=stage_name,
             count_in=count_in,
             count_out=count_out,
             status=status,
             resumed=resumed,
-            dropped_count=report.dropped_count if report else 0,
-            drop_reasons=dict(report.drop_reasons) if report else {},
+            dropped_count=(report.dropped_count if report else 0)
+            + (pii_report.dropped_count if pii_report else 0),
+            drop_reasons=dict(reasons),
             quality_distribution=self._normalize_quality_distribution(
                 get_extra(report, "quality_distribution")
             ),

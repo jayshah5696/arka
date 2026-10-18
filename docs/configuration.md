@@ -5,6 +5,8 @@ documented in [Decision models](decision-models.md). The decision stages have
 no automatic LLM fallback. `executor.mode: provider_batch` is rejected because
 it has no implementation.
 
+The optional top-level `pii` policy protects source and generated text before storage and later model calls. See [PII protection](pii.md) for GLiNER2 setup, supported coverage, rejection rules and resume behavior.
+
 Arka is completely configuration-driven. The entirety of a generation run—from LLM credentials to sequential pipeline stages—is defined in a single YAML file. This document details the schema of the Arka configuration, corresponding to the `ResolvedConfig` Pydantic model.
 
 ---
@@ -26,6 +28,7 @@ classDiagram
     ResolvedConfig *-- EmbeddingsConfig : embeddings
     ResolvedConfig *-- LabelingEngineConfig : labeling_engine
     ResolvedConfig *-- OutputConfig : output
+    ResolvedConfig *-- PIIConfig : pii
 ```
 
 Here is an outline of the top-level keys in YAML:

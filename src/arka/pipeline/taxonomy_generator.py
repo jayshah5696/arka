@@ -23,6 +23,7 @@ import hashlib
 import json
 import logging
 import random
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -140,12 +141,20 @@ class TaxonomyGeneratorStage(Stage):
             budgets[i % len(budgets)] += 1
 
         new_records: list[Record] = []
+        privacy_dropped: list[Record] = []
+        privacy_costs = []
+        self._privacy_costs = privacy_costs
         for strategy, budget in zip(strategies, budgets, strict=True):
             for _ in range(budget):
                 sampled = self._sample(bundle, strategy)
                 rec = self._generate_one(client, sampled, ctx)
                 if rec is not None:
-                    new_records.append(rec)
+                    if rec.stage_events and rec.stage_events[-1].action == "dropped":
+                        privacy_dropped.append(rec)
+                    else:
+                        new_records.append(rec)
+
+        privacy_drops = Counter(r.stage_events[-1].reason_code for r in privacy_dropped)
 
         new_records, decision_dropped, decision_results = (
             apply_post_generation_decisions(
@@ -157,19 +166,17 @@ class TaxonomyGeneratorStage(Stage):
             )
         )
 
-        from collections import Counter
-
-        drop_reasons = (
-            dict(Counter(r.stage_events[-1].reason_code for r in decision_dropped))
-            if decision_dropped
-            else {}
+        drop_reasons = dict(
+            Counter(r.stage_events[-1].reason_code for r in decision_dropped)
+            + privacy_drops
         )
         stats = {
             "stage": self.name,
             "count_in": len(records),
             "count_out": len(records) + len(new_records),
-            "dropped_count": len(decision_dropped),
+            "dropped_count": len(decision_dropped) + len(privacy_dropped),
             "drop_reasons": drop_reasons,
+            "cost_usd": sum(privacy_costs) if privacy_costs else None,
             "generated_count": len(new_records),
             "taxonomy_path": gen_cfg.taxonomy_path,
             "strategies": [
@@ -181,7 +188,7 @@ class TaxonomyGeneratorStage(Stage):
             stats["decision_usage"] = decision_usage(decision_results)
 
         StageArtifacts(ctx).write(
-            report=StageReport(**stats), dropped=decision_dropped or None
+            report=StageReport(**stats), dropped=[*privacy_dropped, *decision_dropped]
         )
         return list(records) + new_records
 
@@ -222,7 +229,19 @@ class TaxonomyGeneratorStage(Stage):
             kwargs.pop("max_tokens", None)
             output = client.complete_structured(**kwargs)
 
+        if output.usage.cost_usd is not None:
+            self._privacy_costs.append(output.usage.cost_usd)
         parsed = output.parsed
+        if (
+            not isinstance(parsed, _GeneratedConversation)
+            and output.privacy is not None
+            and output.privacy.drop_reason
+        ):
+            # Keep an explicit audit record for an unparseable rejection. It
+            # contains no provider fragment and never enters the kept dataset.
+            parsed = _GeneratedConversation(
+                instruction="[PII_UNPARSEABLE_RESPONSE]", response=""
+            )
         if not isinstance(parsed, _GeneratedConversation):
             logger.warning(
                 "TaxonomyGeneratorStage: LLM did not return a parsed conversation; "
@@ -263,4 +282,9 @@ class TaxonomyGeneratorStage(Stage):
             config_hash=cfg_hash,
             created_at=datetime.now(tz=UTC).isoformat(),
         )
-        return rec.with_annotation("taxonomy_nodes", sampled)
+        rec = rec.with_annotation("taxonomy_nodes", sampled)
+        if output.privacy is not None and output.privacy.drop_reason:
+            return rec.dropped_by(
+                self.name, output.privacy.drop_reason, output.privacy.model_dump_json()
+            )
+        return rec

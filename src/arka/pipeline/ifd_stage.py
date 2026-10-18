@@ -44,7 +44,7 @@ class IFDFilterStage(Stage):
             return records
         filter_config = self.config
 
-        llm_client = self._llm_client or ctx.llm_client()
+        llm_client = ctx.guard_llm(self._llm_client or ctx.llm_client())
         if not llm_client.supports_sequence_scoring():
             raise ValueError(
                 "IFD requires provider/model response-scoring capability; "

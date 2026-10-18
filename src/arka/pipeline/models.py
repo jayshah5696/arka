@@ -4,7 +4,7 @@ from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -17,7 +17,10 @@ if TYPE_CHECKING:
     from arka.llm.client import LLMClient
     from arka.llm.factory import LLMClientFactory
     from arka.pipeline.checkpoint import CheckpointManager
+    from arka.privacy.policy import PIIPolicy
     from arka.records.models import ConversationRecord, Record
+
+RecordT = TypeVar("RecordT", bound="Record")
 
 
 @dataclass(frozen=True)
@@ -82,6 +85,35 @@ class StageContext:
     llm_client_factory: LLMClientFactory | None = field(default=None)
     decision_client_factory: DecisionClientFactory | None = field(default=None)
     resume: bool = False
+    privacy: PIIPolicy | None = field(default=None)
+
+    def guard_llm(self, client: Any, *, retain_rejected_output: bool = False) -> Any:
+        from arka.llm.client import LLMClient
+        from arka.privacy.boundaries import ProtectedLLMClient
+
+        if self.privacy is None:
+            return client
+        if isinstance(client, ProtectedLLMClient):
+            if (
+                client.policy is self.privacy
+                and client.retain_rejected_output == retain_rejected_output
+            ):
+                return client
+            client = client.client
+        if isinstance(client, LLMClient):
+            # Native caching happens before this wrapper can protect provider output.
+            # Protected stage and generator artifacts still support resume.
+            client.cache_db_path = None
+        return ProtectedLLMClient(
+            client, self.privacy, retain_rejected_output=retain_rejected_output
+        )
+
+    def protect_records(self, records: list[RecordT]) -> list[RecordT]:
+        from arka.privacy.records import protect_records
+
+        if self.privacy is None:
+            return records
+        return protect_records(records, self.privacy, self.work_dir, self.stage_name)
 
     def decision_client(
         self, *, override: DecisionOverride | None = None
@@ -114,12 +146,14 @@ class StageContext:
             else None
         )
 
-        return build_client(
-            base_config=self.config.llm,
-            override=override,
-            factory=self.llm_client_factory,
-            cache_db_path=cache_db_path,
-            read_cache=self.resume,
+        return self.guard_llm(
+            build_client(
+                base_config=self.config.llm,
+                override=override,
+                factory=self.llm_client_factory,
+                cache_db_path=cache_db_path,
+                read_cache=self.resume,
+            )
         )
 
     def map_parallel(

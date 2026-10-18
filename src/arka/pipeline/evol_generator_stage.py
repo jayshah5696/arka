@@ -122,7 +122,9 @@ class EvolInstructRoundStage(Stage):
             )
             return records
 
-        llm_client = self._llm_client or ctx.llm_client()
+        llm_client = ctx.guard_llm(
+            self._llm_client or ctx.llm_client(), retain_rejected_output=True
+        )
         operators = self.config.operators
         branching_factor = self.config.branching_factor or 1
         config_hash = self._config_hash(ctx)
@@ -170,6 +172,29 @@ class EvolInstructRoundStage(Stage):
                         temperature=self.config.temperature,
                         max_tokens=self.config.max_tokens,
                     )
+                    if (
+                        instruction_output.privacy is not None
+                        and instruction_output.privacy.drop_reason
+                    ):
+                        reason = instruction_output.privacy.drop_reason
+                        raw_rows.append(
+                            EvolRawRow(
+                                parent_id=parent.id,
+                                round=self.round_number,
+                                operator=operator,
+                                dropped_reason=reason,
+                                usage_instruction=instruction_output.usage,
+                            )
+                        )
+                        dropped_records.append(
+                            parent.dropped_by(
+                                self.name,
+                                reason,
+                                instruction_output.privacy.model_dump_json(),
+                            )
+                        )
+                        drop_reasons[reason] = drop_reasons.get(reason, 0) + 1
+                        continue
                     evolved_instruction = self._parse_instruction_output(
                         instruction_output.parsed,
                         instruction_output.text,
@@ -210,6 +235,31 @@ class EvolInstructRoundStage(Stage):
                         temperature=self.config.temperature,
                         max_tokens=self.config.max_tokens,
                     )
+                    if (
+                        response_output.privacy is not None
+                        and response_output.privacy.drop_reason
+                    ):
+                        reason = response_output.privacy.drop_reason
+                        raw_rows.append(
+                            EvolRawRow(
+                                parent_id=parent.id,
+                                round=self.round_number,
+                                operator=operator,
+                                instruction_text=evolved_instruction,
+                                dropped_reason=reason,
+                                usage_instruction=instruction_output.usage,
+                                usage_response=response_output.usage,
+                            )
+                        )
+                        dropped_records.append(
+                            parent.dropped_by(
+                                self.name,
+                                reason,
+                                response_output.privacy.model_dump_json(),
+                            )
+                        )
+                        drop_reasons[reason] = drop_reasons.get(reason, 0) + 1
+                        continue
                     evolved_response = self._parse_response_output(
                         response_output.parsed,
                         response_output.text,
