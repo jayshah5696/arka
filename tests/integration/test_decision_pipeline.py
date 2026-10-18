@@ -663,7 +663,7 @@ def test_decontamination_decides_ngram_near_miss(tmp_path, monkeypatch):
     assert len(calls) == 1
 
 
-def test_parallel_generation_preserves_raw_order_and_resumes(tmp_path):
+def test_parallel_generation_restores_plan_order_and_resumes(tmp_path):
     import threading
     import time
 
@@ -701,11 +701,17 @@ def test_parallel_generation_preserves_raw_order_and_resumes(tmp_path):
     out = stage.run([record()], ctx)
     assert len(out) == 4
     assert peak == 2
-    assert [
+    # Slots append as they finish; loading restores plan order for parsing.
+    assert sorted(
         json.loads(line)["plan_index"]
         for line in (tmp_path / "raw_responses.jsonl").read_text().splitlines()
+    ) == [0, 1, 2, 3]
+    assert [
+        row.plan_index
+        for row in stage._load_raw_responses(tmp_path / "raw_responses.jsonl")
     ] == [0, 1, 2, 3]
-    assert len(stage.run([record()], ctx)) == 4
+    resumed = stage.run([record()], ctx)
+    assert [(r.id, r.payload) for r in resumed] == [(r.id, r.payload) for r in out]
     assert calls == 4
 
 

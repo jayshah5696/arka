@@ -10,7 +10,9 @@ Supply optional reasoning in seed or generated records. Add `reasoning_language_
 
 ## Driving it with CLI
 
-Run the stack helper with `ARKA_TEST_LID_MODEL` set, then the HF helper against that output. A German trace survives; an English trace on German content strips; an absent trace remains absent. Expect two deduplicated exports, one retained trace, and one answer-only record. Inspect canonical fields, Parquet payloads, `hf-rendered.txt`, and `hf-result.json`. HF must load all exports and Qwen3 must render exactly one think block whose token decode contains trace and answer.
+The default `just verify` checks answer-only ChatML datasets and byte-identical resume. It does not prove reasoning-language behavior or HF compatibility.
+
+For that optional coverage, follow the shared skill's native and HF commands. Run the stack helper with `ARKA_TEST_LID_MODEL` set, then the HF helper against that output. A German trace survives; an English trace on German content strips; an absent trace remains absent. Expect two deduplicated exports, one retained trace, and one answer-only record. Inspect canonical fields, Parquet payloads, `hf-rendered.txt`, and `hf-result.json`. HF must load all exports and Qwen3 must render exactly one think block whose token decode contains trace and answer.
 
 Run `uv run --extra language pytest tests/integration/test_reasoning_language_pipeline.py` with the same model variable to prove native seed ingestion and resume separately.
 

@@ -6,6 +6,7 @@ contains resolved config, stage artifacts, the dataset, and request payloads.
 
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import tempfile
@@ -19,7 +20,15 @@ import yaml
 
 def main() -> None:
     root = Path(__file__).resolve().parents[1]
-    work = Path(tempfile.mkdtemp(prefix="arka-decisions-"))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path, help="New evidence directory")
+    args = parser.parse_args()
+    if args.output:
+        work = args.output.resolve()
+        work.mkdir(parents=True, exist_ok=False)
+    else:
+        work = Path(tempfile.mkdtemp(prefix="arka-decisions-"))
+    print(f"Evidence: {work}", flush=True)
     requests = []
     lock = threading.Lock()
 
@@ -164,13 +173,28 @@ def main() -> None:
             work / "runs/decision-cli/stages/03_double_critic/data.parquet"
         )
         assert scored.height == 3
-        assert len((work / "dataset.jsonl").read_text().splitlines()) == 2
+        before = (work / "dataset.jsonl").read_bytes()
+        assert len(before.splitlines()) == 2
         resumed = subprocess.run(
             [*command, "--resume"], cwd=work, capture_output=True, text=True, timeout=60
         )
+        (work / "resume.log").write_text(resumed.stdout + resumed.stderr)
         assert resumed.returncode == 0, resumed.stdout + resumed.stderr
         assert len(requests) == 9
+        assert (work / "dataset.jsonl").read_bytes() == before
         (work / "requests.json").write_text(json.dumps(requests, indent=2))
+        (work / "result.json").write_text(
+            json.dumps(
+                {
+                    "status": "passed",
+                    "provider_calls": 9,
+                    "export_count": 2,
+                    "resume_provider_calls": 0,
+                    "resume_identical_bytes": True,
+                },
+                indent=2,
+            )
+        )
         print(f"Verified CLI decisions and resume. Evidence: {work}")
     finally:
         server.shutdown()

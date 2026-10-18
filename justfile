@@ -23,6 +23,9 @@ check:
 matrix:
     uv run pytest -q tests/integration/test_supported_options_matrix.py
 
+verify *args:
+    uv run python scripts/verify_local.py {{args}}
+
 validate-examples:
     uv run python scripts/validate_examples.py
 

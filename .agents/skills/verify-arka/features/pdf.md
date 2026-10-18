@@ -10,7 +10,9 @@ Set `pdf_source` in the config and run `uv run arka --config PATH --run-id NAME`
 
 ## Driving it with CLI
 
-Run the cleanup and stack helpers from the shared skill. The cleanup helper creates pages 1 and 3 with empty page 2 and checks chunk slices against extracted text. The stack helper creates two pages with a repeated 600-byte header and checks 1,200 removed bytes, retained body text, and page provenance. Read `runs/*/stages/01_source/data.parquet`, `stats.json`, and `boilerplate_spans.jsonl`. Resume must preserve export bytes.
+Run `just verify` for the default cleanup helper. It creates pages 1 and 3 with empty page 2 and checks chunk slices against extracted text. Inspect `cleanup/pdf/runs/pdf/stages/01_source/data.parquet` and the final dataset. Resume must preserve export bytes.
+
+The optional native stack helper creates two pages with a repeated 600-byte header and checks 1,200 removed bytes, retained body text, and page provenance. Inspect its source Parquet, `stats.json`, and `boilerplate_spans.jsonl`. Use the shared skill's native prerequisites first.
 
 ## Gotchas
 
