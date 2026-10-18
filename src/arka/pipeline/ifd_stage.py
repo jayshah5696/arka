@@ -24,19 +24,7 @@ class IFDFilterStage(Stage):
         project_root: Path,
         resolved_config: Any,
     ) -> IFDFilterStage:
-        from arka.pipeline.models import StageContext
-
-        validate_ifd_capability(
-            config,
-            StageContext(
-                run_id="validation",
-                stage_name=cls.name,
-                work_dir=project_root / "runs" / "validation" / "stages" / cls.name,
-                config=resolved_config,
-                executor_mode=resolved_config.executor.mode,
-                max_workers=resolved_config.executor.max_workers,
-            ),
-        )
+        validate_ifd_capability(config, resolved_config)
         return cls(config=config, project_root=project_root)
 
     def __init__(

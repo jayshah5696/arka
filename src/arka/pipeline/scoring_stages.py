@@ -11,9 +11,8 @@ from arka.config.models import (
     PairDeltaFilterConfig,
     RewardModelFilterConfig,
 )
-from arka.labeling.engine import LabelingEngine
-from arka.labeling.rubric import RubricLoader
 from arka.pipeline.artifacts import StageArtifacts, StageReport
+from arka.pipeline.labeling_evaluator import evaluate_labeling, quality_distribution
 from arka.pipeline.models import StageContext
 from arka.pipeline.stages import Stage
 from arka.records.models import ConversationRecord, Record
@@ -45,121 +44,21 @@ class LabelingScoreStage(Stage):
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
         self.config = self.get_stage_config(
-            ctx, LabelingFilterConfig, "labeling_engine"
-        )
-        if self.config is None or self.config.rubric_path is None:
-            return records
-        filter_config = self.config
-        if filter_config.backend == "decision":
-            from arka.pipeline.decision_stages import run_decision_stage
-
-            return run_decision_stage(
-                self,
-                records,
-                ctx,
-                filter_config.model_copy(
-                    update={"min_overall_score": None, "on_uncertain": "keep"}
-                ),
-            )
-        if filter_config.rubric_path is None:
-            return records
-
-        rubric_path = self.project_root / filter_config.rubric_path
-        if not rubric_path.exists():
-            # DX: Raise FileNotFoundError explicitly instead of generic ValueError when rubric file is missing
-            raise FileNotFoundError(
-                f"filters.labeling_engine.rubric_path points to a missing file: {rubric_path}"
-            )
-        rubric = RubricLoader().load(rubric_path)
-        llm_client = self._llm_client or ctx.llm_client()
-        engine = LabelingEngine(llm_client=llm_client)
-
-        conversation_records: list[ConversationRecord] = [
-            record for record in records if isinstance(record, ConversationRecord)
-        ]
-        if not conversation_records:
-            self._write_artifacts(ctx=ctx, scored_count=0, scored_overall=[])
-            return records
-
-        pairs = [
-            (record.payload.instruction, record.payload.response)
-            for record in conversation_records
-        ]
-        results = engine.label_batch(
-            pairs=pairs,
-            rubric=rubric,
-            max_workers=ctx.max_workers,
-            executor=getattr(ctx, "executor", None),
-        )
-
-        result_by_id = {
-            record.id: result
-            for record, result in zip(conversation_records, results, strict=True)
-        }
-
-        scored_records: list[Record] = []
-        scored_overall: list[float] = []
-
-        for record in records:
-            if not isinstance(record, ConversationRecord):
-                scored_records.append(record)
-                continue
-            result = result_by_id[record.id]
-            scored_overall.append(result.overall)
-            updated_record = record.model_copy(
-                update={
-                    "scores": record.scores.model_copy(
-                        update={
-                            "quality": result.overall,
-                            "quality_per_dim": {
-                                **record.scores.quality_per_dim,
-                                **result.scores,
-                            },
-                            "rubric_hash": result.rubric_hash,
-                            "rubric_version": result.rubric_version,
-                            "judge_model": result.judge_model,
-                            "judge_prompt_hash": result.judge_prompt_hash,
-                        }
-                    )
-                }
-            )
-            scored_records.append(updated_record)
-
-        self._write_artifacts(
+            ctx, LabelingFilterConfig, "labeling_score"
+        ) or self.get_stage_config(ctx, LabelingFilterConfig, "labeling_engine")
+        return evaluate_labeling(
+            stage=self,
+            records=records,
             ctx=ctx,
-            scored_count=len(conversation_records),
-            scored_overall=scored_overall,
-        )
-        return scored_records
-
-    def _write_artifacts(
-        self,
-        *,
-        ctx: StageContext,
-        scored_count: int,
-        scored_overall: list[float],
-    ) -> None:
-        StageArtifacts(ctx).write(
-            report=StageReport(
-                stage=self.name,
-                count_in=scored_count,
-                count_out=scored_count,
-                scored_count=scored_count,
-                quality_distribution=self._quality_distribution(scored_overall),
-            ),
+            config=self.config,
+            project_root=self.project_root,
+            llm_client=self._llm_client,
+            drop_below_threshold=False,
+            missing_file_exc_cls=FileNotFoundError,
         )
 
     def _quality_distribution(self, scores: list[float]) -> dict[str, float] | None:
-        if not scores:
-            return None
-        mean_score = statistics.fmean(scores)
-        std_score = statistics.pstdev(scores) if len(scores) > 1 else 0.0
-        return {
-            "mean": round(mean_score, 4),
-            "std": round(std_score, 4),
-            "min": round(min(scores), 4),
-            "max": round(max(scores), 4),
-        }
+        return quality_distribution(scores)
 
 
 class RewardModelScoringStage(Stage):
@@ -389,22 +288,20 @@ class PairDeltaFilterStage(Stage):
                         continue
                 kept_records.append(record)
 
+        decision_usage_data = None
+        if self._decision_results:
+            from arka.pipeline.decision_stages import decision_usage
+
+            decision_usage_data = decision_usage(self._decision_results)
+
         self._write_artifacts(
             ctx=ctx,
             dropped_records=dropped_records,
             count_in=len(records),
             count_out=len(kept_records),
             drop_reasons=drop_reasons,
+            decision_usage=decision_usage_data,
         )
-        if self._decision_results:
-            from arka.pipeline.decision_stages import decision_usage
-
-            report = StageArtifacts.load_report(ctx.work_dir / "stats.json")
-            StageArtifacts(ctx).write(
-                report=report.model_copy(
-                    update={"decision_usage": decision_usage(self._decision_results)}
-                )
-            )
         return kept_records
 
     def _find_parent(
@@ -433,16 +330,20 @@ class PairDeltaFilterStage(Stage):
         count_in: int,
         count_out: int,
         drop_reasons: dict[str, int],
+        decision_usage: dict[str, Any] | None = None,
     ) -> None:
+        report_data: dict[str, Any] = {
+            "stage": self.name,
+            "count_in": count_in,
+            "count_out": count_out,
+            "dropped_count": len(dropped_records),
+            "drop_reasons": drop_reasons,
+        }
+        if decision_usage is not None:
+            report_data["decision_usage"] = decision_usage
         StageArtifacts(ctx).write(
-            report=StageReport(
-                stage=self.name,
-                count_in=count_in,
-                count_out=count_out,
-                dropped_count=len(dropped_records),
-                drop_reasons=drop_reasons,
-            ),
-            dropped=dropped_records,
+            report=StageReport(**report_data),
+            dropped=dropped_records if dropped_records else None,
         )
 
 

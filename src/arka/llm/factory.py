@@ -24,6 +24,8 @@ still work.
 
 from __future__ import annotations
 
+import inspect
+from pathlib import Path
 from typing import Protocol
 
 from arka.config.models import LLMConfig, StageLLMOverride, resolve_llm_override
@@ -45,7 +47,7 @@ class LLMClientFactory(Protocol):
     def __call__(self, config: LLMConfig) -> LLMClient: ...
 
 
-def default_factory(config: LLMConfig) -> LLMClient:
+def default_factory(config: LLMConfig, cache_db_path: Path | None = None) -> LLMClient:
     """The production LLMClientFactory. Builds a real LLMClient.
 
     Looks up ``LLMClient`` on this module rather than capturing it at import
@@ -54,7 +56,10 @@ def default_factory(config: LLMConfig) -> LLMClient:
     """
     import arka.llm.factory as factory_module
 
-    return factory_module.LLMClient(config=config)
+    try:
+        return factory_module.LLMClient(config=config, cache_db_path=cache_db_path)
+    except TypeError:
+        return factory_module.LLMClient(config=config)
 
 
 def build_client(
@@ -62,6 +67,7 @@ def build_client(
     base_config: LLMConfig,
     override: StageLLMOverride | None = None,
     factory: LLMClientFactory | None = None,
+    cache_db_path: Path | None = None,
 ) -> LLMClient:
     """Resolve any per-Stage override against the base LLMConfig and build a client.
 
@@ -69,4 +75,12 @@ def build_client(
     ``factory`` defaults to :func:`default_factory`; tests inject their own.
     """
     effective = resolve_llm_override(base_config, override)
-    return (factory or default_factory)(effective)
+    if factory is not None:
+        try:
+            sig = inspect.signature(factory)
+            if "cache_db_path" in sig.parameters:
+                return factory(effective, cache_db_path=cache_db_path)
+        except Exception:
+            pass
+        return factory(effective)
+    return default_factory(effective, cache_db_path=cache_db_path)

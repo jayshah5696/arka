@@ -5,8 +5,10 @@ from __future__ import annotations
 import logging
 import re
 import statistics
+from collections import Counter
 from itertools import groupby
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from arka.config.models import (
     IdentityClaimFilterConfig,
@@ -20,6 +22,7 @@ from arka.pipeline.stages import BaseFilterStage
 
 if TYPE_CHECKING:
     from arka.pipeline.models import StageContext
+    from arka.pipeline.stages import Stage
     from arka.records.models import ConversationRecord, Record
 
 logger = logging.getLogger(__name__)
@@ -325,3 +328,60 @@ class IdentityClaimFilterStage(BaseFilterStage):
             ),
             dropped=dropped if dropped else None,
         )
+
+
+def run_fasttext_language(
+    stage: Stage,
+    records: list[Record],
+    ctx: StageContext,
+    config: Any,
+    project_root: Path,
+) -> list[Record]:
+    """Execute language filtering using the FastText LID model."""
+    from arka.pipeline.decision_stages import apply_uncertain
+    from arka.pipeline.reasoning_language import FastTextDetector
+    from arka.records.models import ConversationRecord
+
+    if config.lid_model_path is None:
+        raise ValueError("language backend fasttext requires lid_model_path")
+    detector = FastTextDetector(project_root / config.lid_model_path)
+    kept, dropped = [], []
+    for record in records:
+        if not isinstance(record, ConversationRecord):
+            kept.append(record)
+            continue
+        predictions = [
+            detector.predict(getattr(record.payload, field))
+            for field in config.check_fields
+            if getattr(record.payload, field)
+        ]
+        confident = [
+            p.language for p in predictions if p.confidence >= config.min_confidence
+        ]
+        reason = (
+            "language_field_disagreement"
+            if len(set(confident)) > 1
+            else "language_mismatch"
+            if set(confident) - set(config.allowed)
+            else None
+        )
+        if reason is not None:
+            dropped.append(record.dropped_by(stage.name, reason))
+        elif any(p.confidence < config.min_confidence for p in predictions):
+            updated, keep = apply_uncertain(
+                record, stage.name, config, "language_uncertain"
+            )
+            (kept if keep else dropped).append(updated)
+        else:
+            kept.append(record)
+    StageArtifacts(ctx).write(
+        report=StageReport(
+            stage=stage.name,
+            count_in=len(records),
+            count_out=len(kept),
+            dropped_count=len(dropped),
+            drop_reasons=dict(Counter(r.stage_events[-1].reason_code for r in dropped)),
+        ),
+        dropped=dropped,
+    )
+    return kept

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+import sqlite3
 import time
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Any
 
 from openai import (
@@ -280,22 +283,116 @@ class PromptParseFallbackStrategy(StructuredOutputStrategy):
         return output.model_copy(update={"parsed": parsed})
 
 
+def extract_json_text(text: str) -> str:
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        match = re.search(r"```(?:json)?\s*(.*?)\s*```", stripped, re.DOTALL)
+        if match is None:
+            raise ValueError("Could not extract JSON from code fence")
+        return match.group(1)
+    first_brace = stripped.find("{")
+    if first_brace != -1:
+        brace_count = 0
+        in_string = False
+        escape = False
+        for i in range(first_brace, len(stripped)):
+            ch = stripped[i]
+            if escape:
+                escape = False
+                continue
+            if ch == "\\":
+                escape = True
+                continue
+            if ch == '"':
+                in_string = not in_string
+                continue
+            if not in_string:
+                if ch == "{":
+                    brace_count += 1
+                elif ch == "}":
+                    brace_count -= 1
+                    if brace_count == 0:
+                        return stripped[first_brace : i + 1]
+    json_object_match = re.search(r"\{.*\}", stripped, re.DOTALL)
+    if json_object_match is not None:
+        return json_object_match.group(0)
+    return stripped
+
+
 class LLMClient:
     def __init__(
         self,
         config: LLMConfig,
         client_factory: ClientFactory | None = None,
         sleep: SleepFn | None = None,
+        cache_db_path: Path | None = None,
     ) -> None:
         self.config = config
         self._client_factory = client_factory or build_openai_client
         self._sleep = sleep or time.sleep
         self._client = self._client_factory(config)
+        self.cache_db_path = cache_db_path
+        self.cached_calls = 0
         self._structured_output_strategies: tuple[StructuredOutputStrategy, ...] = (
             OpenAICompatibleJsonSchemaStrategy(),
             OpenAINativeParseStrategy(),
             PromptParseFallbackStrategy(),
         )
+
+    _extract_json_text = staticmethod(extract_json_text)
+
+    def _compute_cache_key(
+        self,
+        messages: Sequence[Message],
+        *,
+        schema: type[BaseModel] | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> str:
+        payload = {
+            "provider": self.config.provider,
+            "model": self.config.model,
+            "base_url": str(self.config.base_url),
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "response_format": schema.model_json_schema()
+            if schema is not None
+            else None,
+            "messages": list(messages),
+        }
+        content = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+    def _get_cached_llm(self, cache_key: str) -> str | None:
+        if not self.cache_db_path or not self.cache_db_path.exists():
+            return None
+        try:
+            with sqlite3.connect(self.cache_db_path, check_same_thread=False) as conn:
+                conn.row_factory = sqlite3.Row
+                row = conn.execute(
+                    "SELECT response_json FROM llm_cache WHERE cache_key = ?",
+                    (cache_key,),
+                ).fetchone()
+                if row:
+                    return row["response_json"]
+        except Exception:
+            return None
+        return None
+
+    def _save_cached_llm(self, cache_key: str, response_json: str) -> None:
+        if not self.cache_db_path:
+            return
+        try:
+            with sqlite3.connect(self.cache_db_path, check_same_thread=False) as conn:
+                conn.execute(
+                    "CREATE TABLE IF NOT EXISTS llm_cache (cache_key TEXT PRIMARY KEY, response_json TEXT NOT NULL)"
+                )
+                conn.execute(
+                    "INSERT OR REPLACE INTO llm_cache (cache_key, response_json) VALUES (?, ?)",
+                    (cache_key, response_json),
+                )
+        except Exception:
+            pass
 
     def complete(
         self,
@@ -304,6 +401,17 @@ class LLMClient:
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> LLMOutput:
+        if self.cache_db_path is not None and self.cache_db_path.exists():
+            cache_key = self._compute_cache_key(
+                messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            cached_json = self._get_cached_llm(cache_key)
+            if cached_json is not None:
+                self.cached_calls += 1
+                out = LLMOutput.model_validate_json(cached_json)
+                return out.model_copy(update={"latency_ms": 0})
         started_at = time.perf_counter()
 
         @retry(
@@ -348,10 +456,18 @@ class LLMClient:
             # SECURITY: Drop original exception context to prevent leaking HTTP request context (headers, API keys) in tracebacks
             raise LLMClientError("retryable_api_error", str(exc)) from None
 
-        return self._to_output(
+        output = self._to_output(
             response=response,
             latency_ms=self._latency_ms(started_at),
         )
+        if self.cache_db_path is not None:
+            cache_key = self._compute_cache_key(
+                messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            self._save_cached_llm(cache_key, output.model_dump_json(exclude={"parsed"}))
+        return output
 
     def complete_structured(
         self,
@@ -361,6 +477,26 @@ class LLMClient:
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> LLMOutput:
+        if self.cache_db_path is not None and self.cache_db_path.exists():
+            cache_key = self._compute_cache_key(
+                messages,
+                schema=schema,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            cached_json = self._get_cached_llm(cache_key)
+            if cached_json is not None:
+                self.cached_calls += 1
+                out = LLMOutput.model_validate_json(cached_json)
+                parsed = None
+                if out.text is not None:
+                    try:
+                        parsed = schema.model_validate(
+                            json.loads(self._extract_json_text(out.text))
+                        )
+                    except Exception:
+                        pass
+                return out.model_copy(update={"latency_ms": 0, "parsed": parsed})
         for strategy in self._structured_output_strategies:
             if not strategy.is_applicable(self):
                 continue
@@ -372,6 +508,16 @@ class LLMClient:
                 max_tokens=max_tokens,
             )
             if output is not None:
+                if self.cache_db_path is not None:
+                    cache_key = self._compute_cache_key(
+                        messages,
+                        schema=schema,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                    )
+                    self._save_cached_llm(
+                        cache_key, output.model_dump_json(exclude={"parsed"})
+                    )
                 return output
         raise LLMClientError(
             "invalid_structured_response",

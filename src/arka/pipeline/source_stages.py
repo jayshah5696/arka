@@ -7,6 +7,7 @@ from bisect import bisect_left, bisect_right
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
@@ -280,18 +281,18 @@ class PDFSourceStage(Stage):
                     created_at=datetime.now(UTC).isoformat(),
                 )
             )
+
+        report_extras: dict[str, Any] = {}
         if self.config.boilerplate_strip:
-            StageArtifacts(ctx).write(
-                report=StageReport(
-                    stage=self.name,
-                    count_in=0,
-                    count_out=len(chunks),
-                    boilerplate_bytes_removed=sum(s.end - s.start for s in spans),
-                    boilerplate_blocks_cut=len(spans),
-                    pages_affected=len({s.page for s in spans}),
-                    docs_stripped_empty=int(stripped_empty),
-                )
+            report_extras.update(
+                boilerplate_bytes_removed=sum(s.end - s.start for s in spans),
+                boilerplate_blocks_cut=len(spans),
+                pages_affected=len({s.page for s in spans}),
+                docs_stripped_empty=int(stripped_empty),
             )
+
+        dropped_chunks = None
+        count_in = 0
         if self.config.decision_filter.enabled:
             from arka.pipeline.decision_checks import filter_pdf_chunks
             from arka.pipeline.decision_stages import decision_usage
@@ -300,32 +301,23 @@ class PDFSourceStage(Stage):
             chunks, dropped, results = filter_pdf_chunks(
                 chunks, ctx, self.config.decision_filter, self.name
             )
-            report = StageArtifacts.load_report(ctx.work_dir / "stats.json")
-            extras = (
-                report.model_dump(
-                    exclude={
-                        "stage",
-                        "count_in",
-                        "count_out",
-                        "dropped_count",
-                        "drop_reasons",
-                    }
-                )
-                if report
-                else {}
+            count_in = original_count
+            dropped_chunks = dropped
+            report_extras.update(
+                dropped_count=len(dropped),
+                drop_reasons={"pdf_front_back_matter": len(dropped)} if dropped else {},
+                decision_usage=decision_usage(results),
             )
+
+        if self.config.boilerplate_strip or self.config.decision_filter.enabled:
             StageArtifacts(ctx).write(
                 report=StageReport(
                     stage=self.name,
-                    count_in=original_count,
+                    count_in=count_in,
                     count_out=len(chunks),
-                    dropped_count=len(dropped),
-                    drop_reasons={"pdf_front_back_matter": len(dropped)}
-                    if dropped
-                    else {},
-                    decision_usage=decision_usage(results),
-                    **extras,
+                    **report_extras,
                 ),
-                dropped=dropped,
+                dropped=dropped_chunks,
             )
+
         return chunks

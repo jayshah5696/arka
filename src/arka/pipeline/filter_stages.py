@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import statistics
 from pathlib import Path
 from typing import Any
 
@@ -14,19 +13,29 @@ from arka.config.models import (
     SemanticSimilarityFilterConfig,
 )
 from arka.embeddings import Embedder
-from arka.labeling.engine import LabelingEngine
-from arka.labeling.rubric import RubricLoader
 from arka.llm.client import (
     LLMClientError,
     provider_supports_sequence_scoring,
 )
 from arka.pipeline.artifacts import StageArtifacts, StageReport
+from arka.pipeline.labeling_evaluator import (
+    evaluate_labeling,
+    quality_distribution,
+    reason_code_for_label_error,
+)
 from arka.pipeline.models import StageContext
 from arka.pipeline.stages import BaseFilterStage, Stage
 from arka.records.models import (
     ConversationRecord,
     Record,
 )
+
+__all__ = [
+    "CanaryFilterStage",
+    "LabelingQualityFilterStage",
+    "SemanticSimilarityFilterStage",
+    "validate_ifd_capability",
+]
 
 
 class CanaryFilterStage(BaseFilterStage):
@@ -222,176 +231,35 @@ class LabelingQualityFilterStage(Stage):
         self.config = self.get_stage_config(
             ctx, LabelingFilterConfig, "labeling_engine"
         )
-        if self.config is None or self.config.rubric_path is None:
-            return records
-        filter_config = self.config
-        if filter_config.backend == "decision":
-            from arka.pipeline.decision_stages import run_decision_stage
-
-            return run_decision_stage(self, records, ctx, filter_config)
-        rubric_path = self.project_root / filter_config.rubric_path
-        try:
-            rubric = RubricLoader().load(rubric_path)
-        except FileNotFoundError as exc:
-            raise ValueError(
-                "filters.labeling_engine.rubric_path points to a missing file: "
-                f"{rubric_path}"
-            ) from exc
-        llm_client = self._llm_client or ctx.llm_client()
-        engine = LabelingEngine(llm_client=llm_client)
-
-        conversation_records: list[ConversationRecord] = [
-            record for record in records if isinstance(record, ConversationRecord)
-        ]
-        if not conversation_records:
-            return records
-
-        pairs = [
-            (record.payload.instruction, record.payload.response)
-            for record in conversation_records
-        ]
-        min_overall = filter_config.min_overall_score or 0.0
-        kept_records: list[Record] = []
-        dropped_records: list[Record] = []
-        scored_overall: list[float] = []
-        drop_reasons: dict[str, int] = {}
-
-        try:
-            results = engine.label_batch(
-                pairs=pairs,
-                rubric=rubric,
-                max_workers=ctx.max_workers,
-                executor=getattr(ctx, "executor", None),
-            )
-        except LLMClientError as exc:
-            reason_code = self._reason_code_for_label_error(exc)
-            kept_records = [
-                record
-                for record in records
-                if not isinstance(record, ConversationRecord)
-            ]
-            for record in conversation_records:
-                dropped_records.append(
-                    record.dropped_by(
-                        self.name,
-                        reason_code,
-                        exc.message,
-                    )
-                )
-            drop_reasons[reason_code] = len(conversation_records)
-            self._write_stage_artifacts(
-                ctx=ctx,
-                dropped_records=dropped_records,
-                scored_count=0,
-                kept_count=len(kept_records),
-                dropped_count=len(dropped_records),
-                drop_reasons=drop_reasons,
-                scored_overall=scored_overall,
-            )
-            return kept_records
-
-        result_by_id = {
-            record.id: result
-            for record, result in zip(conversation_records, results, strict=True)
-        }
-
-        for record in records:
-            if not isinstance(record, ConversationRecord):
-                kept_records.append(record)
-                continue
-            result = result_by_id[record.id]
-            scored_overall.append(result.overall)
-            updated_record = record.model_copy(
-                update={
-                    "scores": record.scores.model_copy(
-                        update={
-                            "quality": result.overall,
-                            "quality_per_dim": {
-                                **record.scores.quality_per_dim,
-                                **result.scores,
-                            },
-                            "rubric_hash": result.rubric_hash,
-                            "rubric_version": result.rubric_version,
-                            "judge_model": result.judge_model,
-                            "judge_prompt_hash": result.judge_prompt_hash,
-                        }
-                    )
-                }
-            )
-            if result.overall >= min_overall:
-                kept_records.append(updated_record)
-                continue
-
-            reason_code = "low_quality_score"
-            dropped_records.append(
-                updated_record.dropped_by(
-                    self.name,
-                    reason_code,
-                    f"overall_score={result.overall} < min_overall_score={min_overall}",
-                )
-            )
-            drop_reasons[reason_code] = drop_reasons.get(reason_code, 0) + 1
-
-        self._write_stage_artifacts(
+        return evaluate_labeling(
+            stage=self,
+            records=records,
             ctx=ctx,
-            dropped_records=dropped_records,
-            scored_count=len(conversation_records),
-            kept_count=len(kept_records),
-            dropped_count=len(dropped_records),
-            drop_reasons=drop_reasons,
-            scored_overall=scored_overall,
-        )
-        return kept_records
-
-    def _write_stage_artifacts(
-        self,
-        ctx: StageContext,
-        dropped_records: list[Record],
-        scored_count: int,
-        kept_count: int,
-        dropped_count: int,
-        drop_reasons: dict[str, int],
-        scored_overall: list[float],
-    ) -> None:
-        StageArtifacts(ctx).write(
-            report=StageReport(
-                stage=self.name,
-                count_in=scored_count,
-                count_out=kept_count,
-                dropped_count=dropped_count,
-                drop_reasons=drop_reasons,
-                scored_count=scored_count,
-                quality_distribution=self._quality_distribution(scored_overall),
-            ),
-            dropped=dropped_records,
+            config=self.config,
+            project_root=self.project_root,
+            llm_client=self._llm_client,
+            drop_below_threshold=True,
+            missing_file_exc_cls=ValueError,
         )
 
     def _reason_code_for_label_error(self, error: LLMClientError) -> str:
-        if error.code == "auth_error":
-            return "label_auth_failure"
-        if error.code == "retryable_api_error":
-            return "label_retryable_api_failure"
-        if error.code == "invalid_structured_response":
-            return "invalid_structured_response"
-        return "label_parse_failure"
+        return reason_code_for_label_error(error)
 
     def _quality_distribution(self, scores: list[float]) -> dict[str, float] | None:
-        if not scores:
-            return None
-        mean_score = statistics.fmean(scores)
-        std_score = statistics.pstdev(scores) if len(scores) > 1 else 0.0
-        return {
-            "mean": round(mean_score, 4),
-            "std": round(std_score, 4),
-            "min": round(min(scores), 4),
-            "max": round(max(scores), 4),
-        }
+        return quality_distribution(scores)
 
 
-def validate_ifd_capability(config: IFDFilterConfig, ctx: StageContext) -> None:
-    if not provider_supports_sequence_scoring(ctx.config.llm):
+def validate_ifd_capability(config: IFDFilterConfig | Any, ctx: Any = None) -> None:
+    """Validate that sequence scoring capability is present for IFD."""
+    llm = (
+        getattr(ctx, "config", None)
+        and getattr(ctx.config, "llm", None)
+        or getattr(ctx, "llm", None)
+        or ctx
+    )
+    if llm is not None and not provider_supports_sequence_scoring(llm):
         raise ValueError(
             "IFD requires provider/model response-scoring capability; "
-            f"unsupported for provider={ctx.config.llm.provider!r} "
-            f"model={ctx.config.llm.model!r}"
+            f"unsupported for provider={llm.provider!r} "
+            f"model={llm.model!r}"
         )

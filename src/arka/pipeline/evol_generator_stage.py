@@ -274,6 +274,12 @@ class EvolInstructRoundStage(Stage):
                         continue
                 generated_records.append(candidate)
 
+        decision_usage_data = None
+        if decision_results:
+            from arka.pipeline.decision_stages import decision_usage
+
+            decision_usage_data = decision_usage(decision_results)
+
         self._write_artifacts(
             ctx=ctx,
             raw_rows=raw_rows,
@@ -282,17 +288,8 @@ class EvolInstructRoundStage(Stage):
             frontier_count=len(frontier),
             total_out_count=len(records) + len(generated_records),
             drop_reasons=drop_reasons,
+            decision_usage=decision_usage_data,
         )
-        if decision_results:
-            from arka.pipeline.artifacts import StageArtifacts
-            from arka.pipeline.decision_stages import decision_usage
-
-            report = StageArtifacts.load_report(ctx.work_dir / "stats.json")
-            StageArtifacts(ctx).write(
-                report=report.model_copy(
-                    update={"decision_usage": decision_usage(decision_results)}
-                )
-            )
         return [*records, *generated_records]
 
     def _frontier_records(self, records: list[Record]) -> list[ConversationRecord]:
@@ -423,6 +420,7 @@ class EvolInstructRoundStage(Stage):
         frontier_count: int,
         total_out_count: int,
         drop_reasons: dict[str, int],
+        decision_usage: dict[str, Any] | None = None,
     ) -> None:
         ctx.work_dir.mkdir(parents=True, exist_ok=True)
         rows_payload = [
@@ -439,6 +437,10 @@ class EvolInstructRoundStage(Stage):
             for usage in (row.usage_instruction, row.usage_response):
                 if usage is not None and usage.cost_usd is not None:
                     costs.append(usage.cost_usd)
+        total_cost = round(sum(costs), 6) if costs else None
+        if decision_usage is not None and decision_usage.get("cost_usd") is not None:
+            total_cost = round((total_cost or 0.0) + decision_usage["cost_usd"], 6)
+
         report_kwargs: dict[str, Any] = {
             "stage": self.name,
             "count_in": frontier_count,
@@ -446,8 +448,10 @@ class EvolInstructRoundStage(Stage):
             "dropped_count": len(dropped_records),
             "drop_reasons": drop_reasons,
             "generated_count": len(generated_records),
-            "cost_usd": round(sum(costs), 6) if costs else None,
+            "cost_usd": total_cost,
         }
+        if decision_usage is not None:
+            report_kwargs["decision_usage"] = decision_usage
         StageArtifacts(ctx, writer=self._output_writer).write(
             report=StageReport(**report_kwargs),
             dropped=dropped_records,

@@ -23,6 +23,14 @@ from arka.config.models import (
 from arka.llm.models import LLMOutput, TokenUsage
 from arka.pipeline.artifacts import StageArtifacts, StageReport
 from arka.pipeline.checkpoint import CheckpointManager
+from arka.pipeline.generator_engine import (
+    apply_post_generation_decisions,
+    execute_generator_slots,
+    existing_rows_for_prompt,
+    extract_json_text,
+    load_raw_responses,
+    resolve_generator_llm_client,
+)
 from arka.pipeline.models import StageContext
 from arka.pipeline.output import OutputWriter
 from arka.pipeline.stages import Stage
@@ -198,101 +206,23 @@ class PromptBasedGeneratorStage(Stage):
         prompt_hash: str,
         responses_path: Path,
     ) -> list[Record]:
-        checkpoint = self._checkpoint_manager(ctx)
-        existing_rows = self._existing_rows_for_prompt(responses_path, prompt_hash)
-        if not existing_rows and responses_path.exists():
-            responses_path.unlink()
+        llm_client = resolve_generator_llm_client(ctx, self.config, self._llm_client)
 
-        done_plan_indices = {row.plan_index for row in existing_rows}
-        pending = [item for item in plan if item.plan_index not in done_plan_indices]
+        def _execute_slot(item: GenerationPlanItem) -> tuple[str, LLMOutput]:
+            output = self._complete_raw(llm_client, item.seed_record, ctx)
+            return self._generated_text_from_output(output), output
 
-        checkpoint.save_generator(
-            run_id=ctx.run_id,
+        raw = execute_generator_slots(
+            items=plan,
+            execute_slot_fn=_execute_slot,
+            responses_path=responses_path,
+            ctx=ctx,
             stage_name=self.name,
             prompt_hash=prompt_hash,
-            responses_path=responses_path,
-            response_count=len(existing_rows),
-            status="running",
+            get_item_id=lambda item: item.seed_record.id,
+            checkpoint_manager=self._checkpoint_manager(ctx),
         )
-
-        llm_client = self._llm_client or ctx.llm_client()
-        responses_path.parent.mkdir(parents=True, exist_ok=True)
-
-        written_count = len(existing_rows)
-        from concurrent.futures import ThreadPoolExecutor
-
-        from arka.common.concurrency import bounded_worker_count
-
-        pool = ctx.executor or ThreadPoolExecutor(
-            max_workers=bounded_worker_count(len(pending), ctx.max_workers)
-        )
-        futures = [
-            pool.submit(self._complete_raw, llm_client, item.seed_record, ctx)
-            for item in pending
-        ]
-        try:
-            self._write_pending(
-                pending,
-                futures,
-                responses_path,
-                checkpoint,
-                ctx,
-                prompt_hash,
-                written_count,
-            )
-        finally:
-            if ctx.executor is None:
-                pool.shutdown(wait=True)
-
-        raw = self._load_raw_responses(responses_path)
-        records = self._parse_responses(raw, plan, ctx)
-        checkpoint.save_generator(
-            run_id=ctx.run_id,
-            stage_name=self.name,
-            prompt_hash=prompt_hash,
-            responses_path=responses_path,
-            response_count=len(raw),
-            status="completed",
-        )
-        return records
-
-    def _write_pending(
-        self,
-        pending,
-        futures,
-        responses_path,
-        checkpoint,
-        ctx,
-        prompt_hash,
-        written_count,
-    ):
-        """Write parallel results in plan order and checkpoint each completed row."""
-        with responses_path.open("a", encoding="utf-8") as handle:
-            for item, future in zip(pending, futures, strict=True):
-                output = future.result()
-                row = RawGeneratorResponse(
-                    plan_index=item.plan_index,
-                    seed_id=item.seed_record.id,
-                    generated_text=self._generated_text_from_output(output),
-                    prompt_hash=prompt_hash,
-                    model=output.model,
-                    latency_ms=output.latency_ms,
-                    usage=output.usage,
-                )
-                handle.write(
-                    json.dumps(row.model_dump(mode="json"), separators=(",", ":"))
-                    + "\n"
-                )
-                handle.flush()
-                written_count += 1
-                checkpoint.save_generator(
-                    run_id=ctx.run_id,
-                    stage_name=self.name,
-                    prompt_hash=prompt_hash,
-                    responses_path=responses_path,
-                    response_count=written_count,
-                    status="running",
-                )
+        return self._parse_responses(raw, plan, ctx)
 
     def _complete_raw(
         self,
@@ -348,30 +278,10 @@ class PromptBasedGeneratorStage(Stage):
     def _existing_rows_for_prompt(
         self, responses_path: Path, prompt_hash: str
     ) -> list[RawGeneratorResponse]:
-        if not responses_path.exists():
-            return []
-        rows = self._load_raw_responses(responses_path)
-        if not rows:
-            return []
-        if all(row.prompt_hash == prompt_hash for row in rows):
-            return rows
-        return []
+        return existing_rows_for_prompt(responses_path, prompt_hash)
 
     def _load_raw_responses(self, responses_path: Path) -> list[RawGeneratorResponse]:
-        rows: list[RawGeneratorResponse] = []
-        lines = responses_path.read_text(encoding="utf-8").splitlines()
-        for index, line in enumerate(lines):
-            if not line.strip():
-                continue
-            try:
-                payload = json.loads(line)
-            except json.JSONDecodeError:
-                if index == len(lines) - 1:
-                    continue
-                raise
-            rows.append(RawGeneratorResponse.model_validate(payload))
-        rows.sort(key=lambda row: row.plan_index)
-        return rows
+        return load_raw_responses(responses_path)
 
     def _parse_responses(
         self,
@@ -420,14 +330,31 @@ class PromptBasedGeneratorStage(Stage):
             )
 
         decision_results = []
-        if self.config is not None and self.config.best_of_n.enabled:
-            from arka.pipeline.decision_checks import best_of_n
-
-            generated_records, decision_dropped, decision_results = best_of_n(
-                generated_records, ctx, self.config.best_of_n, self.name
+        if self.config is not None:
+            generated_records, decision_dropped, decision_results = (
+                apply_post_generation_decisions(
+                    records=generated_records,
+                    ctx=ctx,
+                    stage_config=self.config,
+                    stage_name=self.name,
+                    kind="prompt_based_generator",
+                )
             )
             dropped_records.extend(decision_dropped)
-            drop_reasons["best_of_n_not_selected"] = len(decision_dropped)
+            for d in decision_dropped:
+                reason = (
+                    d.stage_events[-1].reason_code
+                    if d.stage_events
+                    else "decision_dropped"
+                )
+                drop_reasons[reason] = drop_reasons.get(reason, 0) + 1
+
+        decision_usage_data = None
+        if decision_results:
+            from arka.pipeline.decision_stages import decision_usage
+
+            decision_usage_data = decision_usage(decision_results)
+
         self._write_parse_artifacts(
             ctx=ctx,
             raw_rows=raw_rows,
@@ -435,22 +362,8 @@ class PromptBasedGeneratorStage(Stage):
             generated_records=generated_records,
             dropped_records=dropped_records,
             drop_reasons=drop_reasons,
+            decision_usage=decision_usage_data,
         )
-        if decision_results:
-            from arka.pipeline.decision_stages import decision_usage
-
-            report = StageArtifacts.load_report(ctx.work_dir / "stats.json")
-            usage = decision_usage(decision_results)
-            report = report.model_copy(
-                update={
-                    "decision_usage": usage,
-                    "cost_usd": (report.model_dump().get("cost_usd") or 0)
-                    + (usage["cost_usd"] or 0)
-                    if usage["cost_usd"] is not None
-                    else report.model_dump().get("cost_usd"),
-                }
-            )
-            StageArtifacts(ctx).write(report=report)
         return generated_records
 
     def _parse_generated_payload(self, text: str) -> GeneratedConversation:
@@ -470,16 +383,7 @@ class PromptBasedGeneratorStage(Stage):
         )
 
     def _extract_json_text(self, text: str) -> str:
-        stripped = text.strip()
-        if stripped.startswith("```"):
-            match = _JSON_FENCE_PATTERN.search(stripped)
-            if match is None:
-                raise ValueError("Could not extract JSON from code fence")
-            return match.group(1)
-        json_object_match = _JSON_OBJECT_PATTERN.search(stripped)
-        if json_object_match is not None:
-            return json_object_match.group(0)
-        return stripped
+        return extract_json_text(text)
 
     def _generated_text_from_output(self, output: LLMOutput) -> str:
         if output.text is not None:
@@ -545,20 +449,28 @@ class PromptBasedGeneratorStage(Stage):
         generated_records: list[Record],
         dropped_records: list[Record],
         drop_reasons: dict[str, int],
+        decision_usage: dict[str, Any] | None = None,
     ) -> None:
         costs = [
             row.usage.cost_usd for row in raw_rows if row.usage.cost_usd is not None
         ]
         total_cost = round(sum(costs), 6) if costs else None
+        if decision_usage is not None and decision_usage.get("cost_usd") is not None:
+            total_cost = round((total_cost or 0.0) + decision_usage["cost_usd"], 6)
+
+        report_kwargs: dict[str, Any] = {
+            "stage": self.name,
+            "count_in": attempted_count,
+            "count_out": len(generated_records),
+            "dropped_count": len(dropped_records),
+            "drop_reasons": drop_reasons,
+            "cost_usd": total_cost,
+        }
+        if decision_usage is not None:
+            report_kwargs["decision_usage"] = decision_usage
+
         StageArtifacts(ctx, writer=self._output_writer).write(
-            report=StageReport(
-                stage=self.name,
-                count_in=attempted_count,
-                count_out=len(generated_records),
-                dropped_count=len(dropped_records),
-                drop_reasons=drop_reasons,
-                cost_usd=total_cost,
-            ),
+            report=StageReport(**report_kwargs),
             dropped=dropped_records,
         )
 
@@ -620,9 +532,7 @@ class TransformGeneratorStage(Stage):
             self._write_artifacts(ctx=ctx, dropped_records=[], costs=[])
             return []
 
-        llm_client = self._llm_client or ctx.llm_client(
-            override=self.config.llm_override
-        )
+        llm_client = resolve_generator_llm_client(ctx, self.config, self._llm_client)
         transformed_records: list[Record] = []
         costs: list[float] = []
 
@@ -653,7 +563,33 @@ class TransformGeneratorStage(Stage):
                 )
             )
 
-        self._write_artifacts(ctx=ctx, dropped_records=[], costs=costs)
+        decision_results = []
+        decision_dropped = []
+        if self.config is not None:
+            transformed_records, decision_dropped, decision_results = (
+                apply_post_generation_decisions(
+                    records=transformed_records,
+                    ctx=ctx,
+                    stage_config=self.config,
+                    stage_name=self.name,
+                    kind="transform_generator",
+                )
+            )
+
+        decision_usage_data = None
+        if decision_results:
+            from arka.pipeline.decision_stages import decision_usage
+
+            decision_usage_data = decision_usage(decision_results)
+
+        self._write_artifacts(
+            ctx=ctx,
+            dropped_records=decision_dropped,
+            costs=costs,
+            count_in=len(transformable_records),
+            count_out=len(transformed_records),
+            decision_usage=decision_usage_data,
+        )
         return transformed_records
 
     def _messages_for_input(
@@ -751,16 +687,37 @@ class TransformGeneratorStage(Stage):
         ctx: StageContext,
         dropped_records: list[Record],
         costs: list[float],
+        count_in: int | None = None,
+        count_out: int | None = None,
+        decision_usage: dict[str, Any] | None = None,
     ) -> None:
         total_cost = round(sum(costs), 6) if costs else None
+        if decision_usage is not None and decision_usage.get("cost_usd") is not None:
+            total_cost = round((total_cost or 0.0) + decision_usage["cost_usd"], 6)
+
+        from collections import Counter
+
+        drop_reasons = (
+            dict(Counter(r.stage_events[-1].reason_code for r in dropped_records))
+            if dropped_records
+            else {}
+        )
+        report_kwargs: dict[str, Any] = {
+            "stage": self.name,
+            "count_in": count_in
+            if count_in is not None
+            else (len(costs) if costs else 0),
+            "count_out": count_out
+            if count_out is not None
+            else (len(costs) if costs else 0),
+            "dropped_count": len(dropped_records),
+            "drop_reasons": drop_reasons,
+            "cost_usd": total_cost,
+        }
+        if decision_usage is not None:
+            report_kwargs["decision_usage"] = decision_usage
+
         StageArtifacts(ctx, writer=self._output_writer).write(
-            report=StageReport(
-                stage=self.name,
-                count_in=len(costs) if costs else 0,
-                count_out=len(costs) if costs else 0,
-                dropped_count=len(dropped_records),
-                drop_reasons={},
-                cost_usd=total_cost,
-            ),
+            report=StageReport(**report_kwargs),
             dropped=dropped_records,
         )

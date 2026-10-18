@@ -21,6 +21,10 @@ class CheckpointManager:
         # SECURITY: Set restrictive file permissions on the state database to prevent unauthorized access by other users
         self.sqlite_path.chmod(0o600)
 
+    @property
+    def db_path(self) -> Path:
+        return self.sqlite_path
+
     def _initialize(self) -> None:
         with self._lock, self._conn:
             self._conn.execute(
@@ -57,8 +61,7 @@ class CheckpointManager:
             )
             self._conn.execute(
                 """
-                CREATE TABLE IF NOT EXISTS generator_runs (
-                    run_id TEXT NOT NULL,
+                CREATE TABLE IF NOT EXISTS generator_runs (\n                    run_id TEXT NOT NULL,
                     stage_name TEXT NOT NULL,
                     prompt_hash TEXT NOT NULL,
                     responses_path TEXT NOT NULL,
@@ -81,6 +84,10 @@ class CheckpointManager:
                 "CREATE TABLE IF NOT EXISTS decisions_cache (cache_key TEXT PRIMARY KEY, answer TEXT NOT NULL)"
             )
 
+            self._conn.execute(
+                "CREATE TABLE IF NOT EXISTS llm_cache (cache_key TEXT PRIMARY KEY, response_json TEXT NOT NULL)"
+            )
+
     def close(self) -> None:
         with self._lock:
             self._conn.close()
@@ -99,15 +106,27 @@ class CheckpointManager:
                 (cache_key, answer),
             )
 
+    def load_llm_cache(self, cache_key: str) -> str | None:
+        with self._lock, self._conn:
+            row = self._conn.execute(
+                "SELECT response_json FROM llm_cache WHERE cache_key = ?", (cache_key,)
+            ).fetchone()
+        return row["response_json"] if row is not None else None
+
+    def save_llm_cache(self, cache_key: str, response_json: str) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO llm_cache (cache_key, response_json) VALUES (?, ?)",
+                (cache_key, response_json),
+            )
+
     def load_embedding(self, text_hash: str) -> bytes | None:
         with self._lock, self._conn:
             row = self._conn.execute(
                 "SELECT vector FROM embeddings_cache WHERE text_hash = ?",
                 (text_hash,),
             ).fetchone()
-        if row is not None:
-            return row["vector"]
-        return None
+        return row["vector"] if row is not None else None
 
     def save_embedding(self, text_hash: str, vector: bytes) -> None:
         with self._lock, self._conn:
