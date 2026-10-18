@@ -191,7 +191,8 @@ def _judge_labeling_answers(
     ) / sum(rubric.overall_weights.values())
     dims.update(scores)
     outcome, reason = "accept", None
-    if overall < (config.min_overall_score or 0):
+    min_overall_score = getattr(config, "min_overall_score", None)
+    if min_overall_score is not None and overall < min_overall_score:
         outcome, reason = "reject", "low_quality_score"
     if any(
         a.confidence < config.min_confidence
@@ -673,7 +674,12 @@ def run_decision_stage(
                 updated, outcome, reason = judge_answers(
                     updated, config, answers, project_root
                 )
-                if config.type in ("reward_model", "labeling_engine", "complexity_elo"):
+                if config.type in (
+                    "reward_model",
+                    "labeling_engine",
+                    "labeling_score",
+                    "complexity_elo",
+                ):
                     updated = updated.model_copy(
                         update={
                             "scores": updated.scores.model_copy(

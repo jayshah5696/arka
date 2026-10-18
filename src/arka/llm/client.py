@@ -326,12 +326,14 @@ class LLMClient:
         client_factory: ClientFactory | None = None,
         sleep: SleepFn | None = None,
         cache_db_path: Path | None = None,
+        read_cache: bool = True,
     ) -> None:
         self.config = config
         self._client_factory = client_factory or build_openai_client
         self._sleep = sleep or time.sleep
         self._client = self._client_factory(config)
         self.cache_db_path = cache_db_path
+        self.read_cache = read_cache
         self.cached_calls = 0
         self._structured_output_strategies: tuple[StructuredOutputStrategy, ...] = (
             OpenAICompatibleJsonSchemaStrategy(),
@@ -364,7 +366,11 @@ class LLMClient:
         return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
     def _get_cached_llm(self, cache_key: str) -> str | None:
-        if not self.cache_db_path or not self.cache_db_path.exists():
+        if (
+            not self.read_cache
+            or not self.cache_db_path
+            or not self.cache_db_path.exists()
+        ):
             return None
         try:
             with sqlite3.connect(self.cache_db_path, check_same_thread=False) as conn:
@@ -401,7 +407,11 @@ class LLMClient:
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> LLMOutput:
-        if self.cache_db_path is not None and self.cache_db_path.exists():
+        if (
+            self.read_cache
+            and self.cache_db_path is not None
+            and self.cache_db_path.exists()
+        ):
             cache_key = self._compute_cache_key(
                 messages,
                 temperature=temperature,
@@ -477,7 +487,11 @@ class LLMClient:
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> LLMOutput:
-        if self.cache_db_path is not None and self.cache_db_path.exists():
+        if (
+            self.read_cache
+            and self.cache_db_path is not None
+            and self.cache_db_path.exists()
+        ):
             cache_key = self._compute_cache_key(
                 messages,
                 schema=schema,
@@ -515,8 +529,16 @@ class LLMClient:
                         temperature=temperature,
                         max_tokens=max_tokens,
                     )
+                    serialized_output = output
+                    if serialized_output.text is None and isinstance(
+                        serialized_output.parsed, BaseModel
+                    ):
+                        serialized_output = serialized_output.model_copy(
+                            update={"text": serialized_output.parsed.model_dump_json()}
+                        )
                     self._save_cached_llm(
-                        cache_key, output.model_dump_json(exclude={"parsed"})
+                        cache_key,
+                        serialized_output.model_dump_json(exclude={"parsed"}),
                     )
                 return output
         raise LLMClientError(

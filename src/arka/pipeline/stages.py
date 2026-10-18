@@ -57,7 +57,14 @@ class Stage(ABC):
                     pass
             if hasattr(current, "model_dump"):
                 try:
-                    return config_cls.model_validate(current.model_dump())
+                    dct = current.model_dump()
+                    if "type" in dct and "type" in config_cls.model_fields:
+                        default_type = config_cls.model_fields["type"].default
+                        if isinstance(default_type, str):
+                            dct["type"] = default_type
+                    valid_fields = set(config_cls.model_fields.keys())
+                    filtered_dct = {k: v for k, v in dct.items() if k in valid_fields}
+                    return config_cls.model_validate(filtered_dct)
                 except Exception:
                     pass
 

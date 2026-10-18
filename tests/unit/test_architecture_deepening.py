@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+import pytest
 
 from arka.config.loader import ConfigLoader
 from arka.config.models import (
     DecisionStageOptions,
     LabelingFilterConfig,
+    LabelingScoreConfig,
     LengthFilterConfig,
     ResolvedConfig,
     StageLLMOverride,
@@ -23,6 +28,7 @@ from arka.pipeline.decision_stages import (
 )
 from arka.pipeline.filter_stages import LabelingQualityFilterStage
 from arka.pipeline.generator_engine import (
+    RawGeneratorResponse,
     apply_post_generation_decisions,
     execute_generator_slots,
     existing_rows_for_prompt,
@@ -38,6 +44,7 @@ from arka.pipeline.models import (
 from arka.pipeline.registry import get_stage_spec
 from arka.pipeline.runner import PipelineRunner
 from arka.pipeline.scoring_stages import LabelingScoreStage
+from arka.pipeline.stage_builder import StageBuilder
 from arka.pipeline.stages import Stage
 from arka.pipeline.taxonomy_generator import TaxonomyGeneratorStage
 from arka.records.models import (
@@ -578,7 +585,14 @@ def test_execute_generator_slots_unlinks_stale_and_supports_direct_llm_output(
         max_workers=2,
     )
     p = tmp_path / "raw.jsonl"
-    p.write_text("stale content\n")
+    stale_row = RawGeneratorResponse(
+        plan_index=0,
+        seed_id="old-item",
+        generated_text="old",
+        prompt_hash="old_hash",
+        model="test-model",
+    )
+    p.write_text(stale_row.model_dump_json() + "\n")
 
     out = execute_generator_slots(
         items=["item-1"],
@@ -626,8 +640,6 @@ def test_execute_generator_slots_unlinks_stale_and_supports_direct_llm_output(
 
 
 def test_apply_post_generation_decisions_hooks(monkeypatch, tmp_path: Path) -> None:
-    from types import SimpleNamespace
-
     ctx = StageContext(
         run_id="r1",
         stage_name="gen",
@@ -657,3 +669,233 @@ def test_apply_post_generation_decisions_hooks(monkeypatch, tmp_path: Path) -> N
         stage_name="gen",
     )
     assert kept == [rec]
+
+
+# ---------------------------------------------------------------------------
+# PR #217 Review Regressions (Issues 1-4)
+# ---------------------------------------------------------------------------
+
+
+def test_review_issue_1_failed_generation_batch_saves_completed_responses(
+    tmp_path: Path,
+) -> None:
+    cfg = _minimal_config(tmp_path)
+    checkpoint = CheckpointManager(tmp_path / "state.db")
+    ctx = StageContext(
+        run_id="proof",
+        stage_name="gen",
+        work_dir=tmp_path,
+        config=cfg,
+        executor_mode="threadpool",
+        max_workers=1,
+        checkpoint_manager=checkpoint,
+    )
+    calls: list[str] = []
+
+    def slot(item: str) -> Any:
+        calls.append(item)
+        if item == "bad":
+            raise RuntimeError("simulated provider failure")
+        return SimpleNamespace(text=f"valid response for {item}", model="fake")
+
+    raw = tmp_path / "raw.jsonl"
+    with pytest.raises(RuntimeError, match="simulated provider failure"):
+        execute_generator_slots(
+            items=["good", "bad"],
+            execute_slot_fn=slot,
+            responses_path=raw,
+            ctx=ctx,
+            stage_name="gen",
+            prompt_hash="h",
+            get_item_id=str,
+        )
+
+    assert calls == ["good", "bad"]
+    saved = load_raw_responses(raw)
+    assert len(saved) == 1
+    assert saved[0].seed_id == "good"
+    assert saved[0].generated_text == "valid response for good"
+
+    # Resuming after fixing the provider failure should only execute "bad"
+    calls.clear()
+    resumed = execute_generator_slots(
+        items=["good", "bad"],
+        execute_slot_fn=lambda item: (
+            calls.append(item)
+            or SimpleNamespace(text=f"recovered response for {item}", model="fake")
+        ),
+        responses_path=raw,
+        ctx=ctx,
+        stage_name="gen",
+        prompt_hash="h",
+        get_item_id=str,
+    )
+    assert calls == ["bad"]
+    assert len(resumed) == 2
+    assert resumed[0].generated_text == "valid response for good"
+    assert resumed[1].generated_text == "recovered response for bad"
+
+
+def test_review_issue_2_truncated_checkpoint_preserves_valid_prefix_and_reports_corruption(
+    tmp_path: Path,
+) -> None:
+    cfg = _minimal_config(tmp_path)
+    ctx = StageContext(
+        run_id="proof",
+        stage_name="gen",
+        work_dir=tmp_path,
+        config=cfg,
+        executor_mode="threadpool",
+        max_workers=1,
+    )
+    raw = tmp_path / "raw.jsonl"
+    valid = {
+        "plan_index": 0,
+        "seed_id": "good",
+        "generated_text": "paid response",
+        "prompt_hash": "h",
+        "model": "fake",
+        "latency_ms": 1,
+        "usage": {},
+    }
+    raw.write_text(json.dumps(valid) + "\n" + '{"plan_index":1')
+
+    loaded = load_raw_responses(raw)
+    assert len(loaded) == 1
+    assert loaded[0].generated_text == "paid response"
+
+    calls: list[str] = []
+    out = execute_generator_slots(
+        items=["good"],
+        execute_slot_fn=lambda item: (
+            calls.append(item) or SimpleNamespace(text="new", model="fake")
+        ),
+        responses_path=raw,
+        ctx=ctx,
+        stage_name="gen",
+        prompt_hash="h",
+        get_item_id=str,
+    )
+    assert calls == []
+    assert len(out) == 1
+    assert "paid response" in raw.read_text()
+
+    # Mid-file corruption (non-final line invalid) must raise ValueError instead of deleting
+    corrupt_mid = tmp_path / "corrupt_mid.jsonl"
+    corrupt_mid.write_text('{"corrupt": true}\n' + json.dumps(valid) + "\n")
+    with pytest.raises(ValueError, match="Corrupted generator checkpoint"):
+        load_raw_responses(corrupt_mid)
+    assert corrupt_mid.exists()
+
+
+def test_review_issue_3_llm_cache_enabled_in_pipeline_runner_and_populated_on_initial_run(
+    tmp_path: Path,
+) -> None:
+    cfg = _minimal_config(tmp_path)
+    seen: list[dict[str, Any]] = []
+
+    class ProbeStage(Stage):
+        name = "probe"
+
+        def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
+            client = ctx.llm_client()
+            seen.append(
+                {
+                    "resume": ctx.resume,
+                    "cache_db_path": client.cache_db_path,
+                    "read_cache": getattr(client, "read_cache", None),
+                }
+            )
+            if not ctx.resume:
+                # Populate cache on initial run before stage fails
+                key = client._compute_cache_key(
+                    [{"role": "user", "content": "hello"}],
+                )
+                client._save_cached_llm(
+                    key,
+                    LLMOutput(
+                        text="cached-answer",
+                        usage=TokenUsage(
+                            prompt_tokens=1, completion_tokens=1, total_tokens=2
+                        ),
+                        model=client.config.model,
+                        provider=client.config.provider,
+                        latency_ms=10,
+                    ).model_dump_json(exclude={"parsed"}),
+                )
+                raise RuntimeError("leave stage incomplete")
+            # On resume, reading the same prompt from client should hit the SQLite cache
+            out = client.complete([{"role": "user", "content": "hello"}])
+            assert out.text == "cached-answer"
+            assert client.cached_calls == 1
+            return [_create_record("r1", response=out.text)]
+
+    with pytest.raises(RuntimeError, match="leave stage incomplete"):
+        PipelineRunner(project_root=tmp_path).run(
+            config=cfg,
+            stages=[ProbeStage()],
+            run_id="cache-proof",
+            resume=False,
+        )
+
+    resumed_paths = PipelineRunner(project_root=tmp_path).run(
+        config=cfg,
+        stages=[ProbeStage()],
+        run_id="cache-proof",
+        resume=True,
+    )
+    assert resumed_paths.final_count == 1
+    assert len(seen) == 2
+    assert seen[0]["resume"] is False
+    assert seen[0]["cache_db_path"] is not None
+    assert seen[0]["read_cache"] is False
+    assert seen[1]["resume"] is True
+    assert seen[1]["cache_db_path"] == seen[0]["cache_db_path"]
+    assert seen[1]["read_cache"] is True
+
+
+def test_review_issue_4_repeated_labeling_score_stages_retain_bound_rubrics(
+    tmp_path: Path,
+) -> None:
+    rubric_1 = tmp_path / "first-rubric.yaml"
+    rubric_2 = tmp_path / "second-rubric.yaml"
+    for r_path, desc in ((rubric_1, "First"), (rubric_2, "Second")):
+        r_path.write_text(
+            f"""
+version: "1.0"
+description: "{desc}"
+dimensions:
+  - name: clarity
+    description: "Clarity"
+    scale_min: 1
+    scale_max: 5
+    criteria: {{1: "Poor", 5: "Great"}}
+overall_weights:
+  clarity: 1.0
+"""
+        )
+
+    cfg = _minimal_config(tmp_path).model_copy(
+        update={
+            "pipeline": [
+                LabelingScoreConfig(rubric_path="first-rubric.yaml"),
+                LabelingScoreConfig(rubric_path="second-rubric.yaml"),
+            ]
+        }
+    )
+    stages = StageBuilder(cfg, tmp_path).build()
+    assert len(stages) == 2
+    stage_0, stage_1 = stages[0], stages[1]
+
+    score_ctx_1 = StageContext(
+        run_id="score",
+        stage_name=stage_1.name,
+        work_dir=tmp_path / "score_1",
+        config=cfg,
+        executor_mode="threadpool",
+        max_workers=1,
+    )
+    stage_1.run([], score_ctx_1)
+    assert isinstance(stage_1.config, LabelingScoreConfig)
+    assert stage_1.config.rubric_path == "second-rubric.yaml"
+    assert stage_0.config.rubric_path == "first-rubric.yaml"

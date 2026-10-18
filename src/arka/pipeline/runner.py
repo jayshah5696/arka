@@ -113,6 +113,7 @@ class PipelineRunner:
                         executor=shared_executor,
                         checkpoint_manager=checkpoint_manager,
                         decision_client_factory=self.decision_client_factory,
+                        resume=resume,
                     )
                     count_in = len(records)
                     # DX: Provide per-stage progress indication during long runs

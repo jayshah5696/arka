@@ -8,6 +8,7 @@ from arka.common.security import sanitize_for_prompt
 from arka.config.models import (
     CompositeSelectConfig,
     LabelingFilterConfig,
+    LabelingScoreConfig,
     PairDeltaFilterConfig,
     RewardModelFilterConfig,
 )
@@ -33,7 +34,7 @@ class LabelingScoreStage(Stage):
 
     def __init__(
         self,
-        config: LabelingFilterConfig | None = None,
+        config: LabelingScoreConfig | LabelingFilterConfig | None = None,
         *,
         project_root: Path,
         llm_client: Any | None = None,
@@ -43,9 +44,10 @@ class LabelingScoreStage(Stage):
         self.config = config
 
     def run(self, records: list[Record], ctx: StageContext) -> list[Record]:
-        self.config = self.get_stage_config(
-            ctx, LabelingFilterConfig, "labeling_score"
-        ) or self.get_stage_config(ctx, LabelingFilterConfig, "labeling_engine")
+        if not isinstance(self.config, (LabelingScoreConfig, LabelingFilterConfig)):
+            self.config = self.get_stage_config(
+                ctx, LabelingScoreConfig, "labeling_score"
+            ) or self.get_stage_config(ctx, LabelingFilterConfig, "labeling_engine")
         return evaluate_labeling(
             stage=self,
             records=records,

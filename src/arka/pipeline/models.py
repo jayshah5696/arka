@@ -108,15 +108,18 @@ class StageContext:
         """
         from arka.llm.factory import build_client
 
-        cache_db_path = None
-        if self.checkpoint_manager is not None and self.resume:
-            cache_db_path = self.checkpoint_manager.sqlite_path
+        cache_db_path = (
+            self.checkpoint_manager.sqlite_path
+            if self.checkpoint_manager is not None
+            else None
+        )
 
         return build_client(
             base_config=self.config.llm,
             override=override,
             factory=self.llm_client_factory,
             cache_db_path=cache_db_path,
+            read_cache=self.resume,
         )
 
     def map_parallel(
@@ -165,7 +168,8 @@ class StageStat(BaseModel):
 
     Combines the typed StageReport that the Stage wrote to ``stats.json``
     with the runner's view of resume/error/status. Exposed in the Manifest's
-    ``stage_stats`` and in the run report's ``stage_yields``.\n"""
+    ``stage_stats`` and in the run report's ``stage_yields``.
+    """
 
     model_config = ConfigDict(frozen=True)
 

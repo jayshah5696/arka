@@ -6,7 +6,7 @@ import statistics
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from arka.config.models import LabelingFilterConfig
+from arka.config.models import LabelingFilterConfig, LabelingScoreConfig
 from arka.labeling.engine import LabelingEngine
 from arka.labeling.rubric import RubricLoader
 from arka.llm.client import LLMClientError
@@ -52,7 +52,7 @@ def evaluate_labeling(
     records: list[Record],
     ctx: StageContext,
     *,
-    config: LabelingFilterConfig | None = None,
+    config: LabelingFilterConfig | LabelingScoreConfig | None = None,
     project_root: Path,
     llm_client: Any | None = None,
     drop_below_threshold: bool = True,
@@ -71,13 +71,13 @@ def evaluate_labeling(
     if filter_config.backend == "decision":
         from arka.pipeline.decision_stages import run_decision_stage
 
-        decision_cfg = (
-            filter_config
-            if drop_below_threshold
-            else filter_config.model_copy(
-                update={"min_overall_score": None, "on_uncertain": "keep"}
-            )
-        )
+        if drop_below_threshold:
+            decision_cfg = filter_config
+        else:
+            updates: dict[str, Any] = {"on_uncertain": "keep"}
+            if hasattr(filter_config, "min_overall_score"):
+                updates["min_overall_score"] = None
+            decision_cfg = filter_config.model_copy(update=updates)
         return run_decision_stage(stage, records, ctx, decision_cfg)
 
     rubric_path = project_root / filter_config.rubric_path
@@ -107,7 +107,7 @@ def evaluate_labeling(
         (record.payload.instruction, record.payload.response)
         for record in conversation_records
     ]
-    min_overall = filter_config.min_overall_score or 0.0
+    min_overall = getattr(filter_config, "min_overall_score", None) or 0.0
     kept_records: list[Record] = []
     dropped_records: list[Record] = []
     scored_overall: list[float] = []
@@ -213,5 +213,4 @@ def evaluate_labeling(
                 quality_distribution=quality_distribution(scored_overall),
             ),
         )
-
     return kept_records

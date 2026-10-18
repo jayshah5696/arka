@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -36,8 +37,8 @@ class RawGeneratorResponse(StrictModel):
     generated_text: str
     prompt_hash: str
     model: str
-    latency_ms: int
-    usage: TokenUsage
+    latency_ms: int = 0
+    usage: TokenUsage = TokenUsage()
 
 
 def resolve_generator_llm_client(
@@ -53,19 +54,44 @@ def resolve_generator_llm_client(
 
 
 def load_raw_responses(responses_path: Path) -> list[RawGeneratorResponse]:
-    """Load existing raw generator responses from JSONL."""
+    """Load existing raw generator responses from JSONL.
+
+    Preserves valid rows before an incomplete final line (such as an interrupted
+    append) and rewrites the file without the trailing fragment. Raises
+    ValueError if corruption occurs elsewhere.
+    """
     if not responses_path.exists():
         return []
+    raw_text = responses_path.read_text(encoding="utf-8")
+    non_empty = [
+        (line_no, raw_line)
+        for line_no, raw_line in enumerate(raw_text.splitlines(keepends=True), start=1)
+        if raw_line.strip()
+    ]
     rows: list[RawGeneratorResponse] = []
-    with responses_path.open("r", encoding="utf-8") as handle:
-        for line in handle:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            try:
-                rows.append(RawGeneratorResponse.model_validate_json(stripped))
-            except Exception:
-                return []
+    truncated_final = False
+    for idx, (line_no, raw_line) in enumerate(non_empty):
+        stripped = raw_line.strip()
+        try:
+            rows.append(RawGeneratorResponse.model_validate_json(stripped))
+        except Exception as exc:
+            is_last = idx == len(non_empty) - 1
+            is_incomplete = not raw_line.endswith(("\n", "\r")) or (
+                stripped.startswith("{") and not stripped.endswith("}")
+            )
+            if is_last and is_incomplete:
+                truncated_final = True
+                break
+            raise ValueError(
+                f"Corrupted generator checkpoint in {responses_path} at line {line_no}"
+            ) from exc
+
+    if truncated_final:
+        cleaned = "".join(
+            json.dumps(row.model_dump(mode="json"), separators=(",", ":")) + "\n"
+            for row in rows
+        )
+        responses_path.write_text(cleaned, encoding="utf-8")
     return rows
 
 
@@ -80,6 +106,7 @@ def existing_rows_for_prompt(
         return []
     if all(row.prompt_hash == prompt_hash for row in rows):
         return rows
+    responses_path.unlink(missing_ok=True)
     return []
 
 
@@ -99,8 +126,6 @@ def execute_generator_slots(
     """Execute generator slots in parallel with per-item checkpointing and resume support."""
     checkpoint = checkpoint_manager or ctx.checkpoint_manager
     existing_rows = existing_rows_for_prompt(responses_path, prompt_hash)
-    if not existing_rows and responses_path.exists():
-        responses_path.unlink()
 
     done_indices = {row.plan_index for row in existing_rows}
     indexed_items = [
@@ -121,52 +146,51 @@ def execute_generator_slots(
     if pending:
         responses_path.parent.mkdir(parents=True, exist_ok=True)
         written_count = len(existing_rows)
+        write_lock = threading.Lock()
 
-        def _run_slot(entry: tuple[int, Any]) -> tuple[int, Any, Any]:
+        def _to_row(idx: int, item: Any, result: Any) -> RawGeneratorResponse:
+            if isinstance(result, tuple):
+                if len(result) == 2:
+                    text, output = result
+                else:
+                    _, text, output = result
+            else:
+                output = result
+                if getattr(output, "text", None) is not None:
+                    text = output.text.strip()
+                elif getattr(output, "parsed", None) is not None:
+                    text = output.parsed.model_dump_json()
+                else:
+                    raise ValueError(
+                        "Generator output returned neither text nor parsed"
+                    )
+
+            return RawGeneratorResponse(
+                plan_index=idx,
+                seed_id=get_item_id(item),
+                generated_text=text,
+                prompt_hash=prompt_hash,
+                model=getattr(
+                    output,
+                    "model",
+                    ctx.config.llm.model if ctx.config else "unknown",
+                ),
+                latency_ms=getattr(output, "latency_ms", 0),
+                usage=getattr(output, "usage", TokenUsage()),
+            )
+
+        def _run_slot(entry: tuple[int, Any]) -> RawGeneratorResponse:
+            nonlocal written_count
             idx, item = entry
             result = execute_slot_fn(item)
-            return idx, item, result
-
-        evaluated = ctx.map_parallel(pending, _run_slot)
-        # Preserve original item ordering when appending to JSONL
-        evaluated.sort(key=lambda x: x[0])
-
-        with responses_path.open("a", encoding="utf-8") as handle:
-            for idx, item, result in evaluated:
-                if isinstance(result, tuple):
-                    if len(result) == 2:
-                        text, output = result
-                    else:
-                        _, text, output = result
-                else:
-                    output = result
-                    if getattr(output, "text", None) is not None:
-                        text = output.text.strip()
-                    elif getattr(output, "parsed", None) is not None:
-                        text = output.parsed.model_dump_json()
-                    else:
-                        raise ValueError(
-                            "Generator output returned neither text nor parsed"
-                        )
-
-                row = RawGeneratorResponse(
-                    plan_index=idx,
-                    seed_id=get_item_id(item),
-                    generated_text=text,
-                    prompt_hash=prompt_hash,
-                    model=getattr(
-                        output,
-                        "model",
-                        ctx.config.llm.model if ctx.config else "unknown",
-                    ),
-                    latency_ms=getattr(output, "latency_ms", 0),
-                    usage=getattr(output, "usage", TokenUsage()),
-                )
-                handle.write(
-                    json.dumps(row.model_dump(mode="json"), separators=(",", ":"))
-                    + "\n"
-                )
-                handle.flush()
+            row = _to_row(idx, item, result)
+            with write_lock:
+                with responses_path.open("a", encoding="utf-8") as handle:
+                    handle.write(
+                        json.dumps(row.model_dump(mode="json"), separators=(",", ":"))
+                        + "\n"
+                    )
+                    handle.flush()
                 written_count += 1
                 if checkpoint is not None:
                     checkpoint.save_generator(
@@ -177,8 +201,19 @@ def execute_generator_slots(
                         response_count=written_count,
                         status="running",
                     )
+            return row
 
-    all_raw = load_raw_responses(responses_path)
+        ctx.map_parallel(pending, _run_slot)
+
+    all_raw = sorted(load_raw_responses(responses_path), key=lambda row: row.plan_index)
+    if pending and responses_path.exists():
+        responses_path.write_text(
+            "".join(
+                json.dumps(row.model_dump(mode="json"), separators=(",", ":")) + "\n"
+                for row in all_raw
+            ),
+            encoding="utf-8",
+        )
     if checkpoint is not None:
         checkpoint.save_generator(
             run_id=ctx.run_id,
