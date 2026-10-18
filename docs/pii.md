@@ -94,6 +94,8 @@ Use a new run ID after changing the PII policy or local model files. Arka reject
 
 Each stage attempt starts fresh `pii_report.json` and `pii_dropped.parquet` files. Multiple protection boundaries within that attempt share the totals. Retrying a failed stage replaces its previous attempt's totals. Resuming a completed stage skips execution and preserves its artifacts.
 
+With PII protection enabled, Arka disables the native client's SQLite response cache because it stores provider output before redaction. Protected generator rows and completed-stage artifacts still support resume. An interrupted judge or Evol-Instruct stage can repeat calls that would otherwise use the native response cache.
+
 ## Scope and limits
 
 The protected record fields are document chunk text and conversation instruction, response, system, reasoning and text turn content. Conversation role labels remain unchanged. Non-text turn content fails the record boundary. Input JSONL and CSV ingestion retains its existing field selection.
