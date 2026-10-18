@@ -151,7 +151,7 @@ class DoubleCriticFilterStage(Stage):
         # the generator (paper's setup; matters most when generator==critic share
         # blind spots). When llm_override is None, falls through to top-level llm.
         override = getattr(filter_config, "llm_override", None)
-        client = self._llm_client or ctx.llm_client(override=override)
+        client = ctx.guard_llm(self._llm_client or ctx.llm_client(override=override))
 
         # Run all 2N critic calls concurrently with the same worker budget the
         # rest of the pipeline uses. Each record's two calls are independent; we

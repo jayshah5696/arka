@@ -27,6 +27,7 @@ from arka.config.legacy import (
     migrate_old_config as legacy_migrate_old_config,
 )
 from arka.decisions.models import DecisionConfig, DecisionOverride
+from arka.privacy.config import PIIConfig
 
 
 class DecisionStageOptions(StrictModel):
@@ -763,6 +764,7 @@ class ResolvedConfig(StrictModel):
     embeddings: EmbeddingsConfig = Field(default_factory=EmbeddingsConfig)
     labeling_engine: LabelingEngineConfig = Field(default_factory=LabelingEngineConfig)
     output: OutputConfig
+    pii: PIIConfig | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @model_validator(mode="after")
     def validate_decision_pipeline(self):

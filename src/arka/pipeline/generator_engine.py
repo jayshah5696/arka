@@ -13,6 +13,7 @@ from arka.decisions.models import DecisionResult
 from arka.llm.client import extract_json_text
 from arka.llm.models import LLMOutput, TokenUsage
 from arka.pipeline.checkpoint import CheckpointManager
+from arka.privacy.models import PIISummary
 from arka.records.models import Record
 
 if TYPE_CHECKING:
@@ -39,6 +40,7 @@ class RawGeneratorResponse(StrictModel):
     model: str
     latency_ms: int = 0
     usage: TokenUsage = TokenUsage()
+    privacy: PIISummary | None = None
 
 
 def _atomic_write_jsonl(responses_path: Path, rows: list[RawGeneratorResponse]) -> None:
@@ -70,13 +72,19 @@ def resolve_generator_llm_client(
     prompt-addressed SQLite cache reads are disabled to preserve independent
     samples when multiple slots share a seed prompt.
     """
-    if default_client is not None:
-        return default_client
-    override = getattr(stage_config, "llm_override", None)
-    client = ctx.llm_client(override=override)
-    if hasattr(client, "read_cache"):
-        client.read_cache = False
-    return client
+    client = default_client
+    if client is None:
+        override = getattr(stage_config, "llm_override", None)
+        client = ctx.llm_client(override=override)
+        if hasattr(client, "read_cache"):
+            # A protected client delegates attributes to its underlying client.
+            from arka.privacy.boundaries import ProtectedLLMClient
+
+            cache_client = (
+                client.client if isinstance(client, ProtectedLLMClient) else client
+            )
+            cache_client.read_cache = False
+    return ctx.guard_llm(client, retain_rejected_output=True)
 
 
 def load_raw_responses(responses_path: Path) -> list[RawGeneratorResponse]:
@@ -199,6 +207,7 @@ def execute_generator_slots(
                 ),
                 latency_ms=getattr(output, "latency_ms", 0),
                 usage=getattr(output, "usage", TokenUsage()),
+                privacy=getattr(output, "privacy", None),
             )
 
         def _run_slot(entry: tuple[int, Any]) -> RawGeneratorResponse:

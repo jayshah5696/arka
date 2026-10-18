@@ -86,7 +86,7 @@ def evaluate_labeling(
             f"filters.labeling_engine.rubric_path points to a missing file: {rubric_path}"
         )
     rubric = RubricLoader().load(rubric_path)
-    client = llm_client or ctx.llm_client()
+    client = ctx.guard_llm(llm_client or ctx.llm_client())
     engine = LabelingEngine(llm_client=client)
 
     conversation_records, passthrough = stage.partition_conversations(records)

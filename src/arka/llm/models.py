@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from arka.privacy.models import PIISummary
+
 
 class TokenUsage(BaseModel):
     prompt_tokens: int = 0
@@ -26,6 +28,7 @@ class LLMOutput(BaseModel):
     request_id: str | None = None
     latency_ms: int
     error: LLMError | None = None
+    privacy: PIISummary | None = None
 
 
 class SequenceScore(BaseModel):

@@ -34,7 +34,7 @@ flowchart LR
 - **Multi-source ingestion** — JSONL, CSV, or chunked PDF with configurable overlap
 - **Two generation strategies** — prompt-based or multi-round Evol-Instruct with operator selection
 - **O(n) near-dedup** — MinHash + LSH band bucketing, not brute-force
-- **Privacy guardrails** — canary phrase detection and semantic similarity filtering
+- **[PII protection](docs/pii.md)** supports local GLiNER2 redaction before storage and later model calls, alongside canary and similarity filters.
 - **Resumable runs** — SQLite checkpoints; every stage writes `data.parquet`, `dropped.parquet`, and `stats.json`
 
 ## Example Config

@@ -26,6 +26,9 @@ arka = "arka:main"
 language = [
     "fasttext>=0.9.3",
 ]
+pii = [
+    "gliner2[local]==2.1.0",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

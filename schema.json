@@ -1678,6 +1678,88 @@
       "title": "PDFSourceConfig",
       "type": "object"
     },
+    "PIIConfig": {
+      "additionalProperties": false,
+      "description": "An explicit run policy. Omit the whole section to disable protection.",
+      "properties": {
+        "backend": {
+          "enum": [
+            "regex",
+            "gliner2"
+          ],
+          "title": "Backend",
+          "type": "string"
+        },
+        "languages": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Languages",
+          "type": "array"
+        },
+        "entities": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Entities",
+          "type": "array"
+        },
+        "model_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Path"
+        },
+        "threshold": {
+          "default": 0.5,
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "title": "Threshold",
+          "type": "number"
+        },
+        "placeholder_template": {
+          "default": "[{entity}]",
+          "title": "Placeholder Template",
+          "type": "string"
+        },
+        "max_redacted_ratio": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Redacted Ratio"
+        },
+        "blocked_entities": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Blocked Entities",
+          "type": "array"
+        }
+      },
+      "required": [
+        "backend",
+        "languages",
+        "entities"
+      ],
+      "title": "PIIConfig",
+      "type": "object"
+    },
     "PairDeltaFilterConfig": {
       "additionalProperties": false,
       "properties": {
@@ -2678,6 +2760,17 @@
     },
     "output": {
       "$ref": "#/$defs/OutputConfig"
+    },
+    "pii": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PIIConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     }
   },
   "required": [

@@ -95,8 +95,8 @@ class RewardModelScoringStage(Stage):
 
             return run_decision_stage(self, records, ctx, reward_config)
 
-        llm_client = self._llm_client or ctx.llm_client(
-            override=reward_config.llm_override
+        llm_client = ctx.guard_llm(
+            self._llm_client or ctx.llm_client(override=reward_config.llm_override)
         )
 
         kept_records: list[Record] = []

@@ -1,0 +1,65 @@
+{
+  "status": "passed",
+  "cases": [
+    {
+      "case": "regex-pdf",
+      "backend": "regex",
+      "status": "passed",
+      "export_count": 1,
+      "resume_provider_calls": 0
+    },
+    {
+      "case": "malformed",
+      "backend": "regex",
+      "status": "passed",
+      "export_count": 0,
+      "resume_provider_calls": 0
+    },
+    {
+      "case": "regex-evol",
+      "backend": "regex",
+      "status": "passed",
+      "export_count": 2,
+      "resume_provider_calls": 0
+    },
+    {
+      "case": "regex-transform",
+      "backend": "regex",
+      "status": "passed",
+      "export_count": 1,
+      "resume_provider_calls": 0
+    },
+    {
+      "case": "regex-taxonomy",
+      "backend": "regex",
+      "status": "passed",
+      "export_count": 1,
+      "resume_provider_calls": 0
+    },
+    {
+      "case": "gliner-pdf",
+      "backend": "gliner2",
+      "status": "passed",
+      "export_count": 1,
+      "resume_provider_calls": 0
+    },
+    {
+      "case": "gliner-evol",
+      "backend": "gliner2",
+      "status": "passed",
+      "export_count": 2,
+      "resume_provider_calls": 0
+    },
+    {
+      "case": "gliner-long-repeated-spans",
+      "status": "passed",
+      "input_characters": 4500,
+      "categories": {
+        "person": 2,
+        "email": 2
+      }
+    }
+  ],
+  "provider_calls": 11,
+  "gliner_model_verified": true
+}

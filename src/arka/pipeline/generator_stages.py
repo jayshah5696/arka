@@ -20,10 +20,11 @@ from arka.config.models import (
     PromptBasedGeneratorConfig,
     TransformGeneratorConfig,
 )
-from arka.llm.models import LLMOutput, TokenUsage
+from arka.llm.models import LLMOutput
 from arka.pipeline.artifacts import StageArtifacts, StageReport
 from arka.pipeline.checkpoint import CheckpointManager
 from arka.pipeline.generator_engine import (
+    RawGeneratorResponse,
     apply_post_generation_decisions,
     execute_generator_slots,
     existing_rows_for_prompt,
@@ -81,16 +82,6 @@ class GeneratedConversation(StrictModel):
     instruction: str
     response: str
     reasoning: str | None = None
-
-
-class RawGeneratorResponse(StrictModel):
-    plan_index: int
-    seed_id: str
-    generated_text: str
-    prompt_hash: str
-    model: str
-    latency_ms: int
-    usage: TokenUsage
 
 
 @dataclass(frozen=True)
@@ -171,6 +162,10 @@ class PromptBasedGeneratorStage(Stage):
             return []
 
         prompt_hash = compute_prompt_hash(self.config, ctx.config.llm)
+        if ctx.privacy is not None:
+            prompt_hash = hashlib.sha256(
+                f"{prompt_hash}:{ctx.privacy.fingerprint}".encode()
+            ).hexdigest()
         responses_path = ctx.work_dir / "raw_responses.jsonl"
         records_path = ctx.work_dir / "data.parquet"
 
@@ -298,6 +293,15 @@ class PromptBasedGeneratorStage(Stage):
         for row in raw_rows:
             item = plan_by_index.get(row.plan_index)
             if item is None:
+                continue
+            if row.privacy is not None and row.privacy.drop_reason:
+                reason = row.privacy.drop_reason
+                drop_reasons[reason] = drop_reasons.get(reason, 0) + 1
+                dropped_records.append(
+                    item.seed_record.dropped_by(
+                        self.name, reason, row.privacy.model_dump_json()
+                    )
+                )
                 continue
             try:
                 payload = self._parse_generated_payload(row.generated_text)
@@ -529,11 +533,14 @@ class TransformGeneratorStage(Stage):
             record for record in records if isinstance(record, ConversationRecord)
         ]
         if not transformable_records:
-            self._write_artifacts(ctx=ctx, dropped_records=[], costs=[])
+            self._write_artifacts(
+                ctx=ctx, dropped_records=[], costs=[], count_in=0, count_out=0
+            )
             return []
 
         llm_client = resolve_generator_llm_client(ctx, self.config, self._llm_client)
         transformed_records: list[Record] = []
+        dropped_records: list[Record] = []
         costs: list[float] = []
 
         # PERF: Hoisted config_hash computation outside the record loop. Computing config_hash is expensive and invariant per stage. Expected impact: eliminates redundant JSON serialization and hashing per record.
@@ -547,13 +554,22 @@ class TransformGeneratorStage(Stage):
                 temperature=self.config.temperature,
                 max_tokens=self.config.max_tokens,
             )
+            if output.usage.cost_usd is not None:
+                costs.append(output.usage.cost_usd)
+            if output.privacy is not None and output.privacy.drop_reason:
+                dropped_records.append(
+                    record.dropped_by(
+                        self.name,
+                        output.privacy.drop_reason,
+                        output.privacy.model_dump_json(),
+                    )
+                )
+                continue
             parsed = output.parsed
             if not isinstance(parsed, TransformResponse):
                 raise ValueError(
                     "Transform output did not parse into TransformResponse"
                 )
-            if output.usage.cost_usd is not None:
-                costs.append(output.usage.cost_usd)
             transformed_records.append(
                 self._build_transformed_record(
                     record=record,
@@ -584,7 +600,7 @@ class TransformGeneratorStage(Stage):
 
         self._write_artifacts(
             ctx=ctx,
-            dropped_records=decision_dropped,
+            dropped_records=[*dropped_records, *decision_dropped],
             costs=costs,
             count_in=len(transformable_records),
             count_out=len(transformed_records),
