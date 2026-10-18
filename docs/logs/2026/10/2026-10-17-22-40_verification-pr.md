@@ -15,3 +15,15 @@ I’m checking that the evidence survives helper shutdown, then I’ll add the i
 ## Result
 
 Implemented the default local verification command and refreshed the project skill with five feature files. Updated AGENTS.md with scope, triggers, maintenance guidance, and optional-check boundaries. Applied show-me to the PR description with a Mermaid flow and an observed cleanup example. Full checks, build, skill validation, live CLI fixtures, evidence preservation, and existing-directory protection passed. Native/HF and paid provider recipes remain unverified. See the committed verification report for details.
+
+## Final response
+
+Created [PR #219](https://github.com/jayshah5696/arka/pull/219) and linked it to this thread.
+
+Added `just verify`, refreshed `verify-arka` and its five-feature map, and improved the decision helper's saved evidence.
+
+`AGENTS.md` now states when to use the skill, how to run it, and when to update its feature map. It also distinguishes the default local checks from optional native/HF checks and authorized live provider calls.
+
+The PR description uses the show-me skill with a Mermaid workflow and an observed cleanup example.
+
+Validation passed: lint, formatting, 545 tests, build, skill validation, and the complete local CLI workflow. One optional native-language test was skipped. Native/HF recipes and live provider calls were not run.
