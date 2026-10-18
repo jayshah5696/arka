@@ -39,12 +39,21 @@ class StageContext:
     decision_client_factory: DecisionClientFactory | None = field(default=None)
     privacy: PIIPolicy | None = field(default=None)
 
-    def guard_llm(self, client: Any) -> Any:
+    def guard_llm(self, client: Any, *, retain_rejected_output: bool = False) -> Any:
         from arka.privacy.boundaries import ProtectedLLMClient
 
-        if self.privacy is None or isinstance(client, ProtectedLLMClient):
+        if self.privacy is None:
             return client
-        return ProtectedLLMClient(client, self.privacy)
+        if isinstance(client, ProtectedLLMClient):
+            if (
+                client.policy is self.privacy
+                and client.retain_rejected_output == retain_rejected_output
+            ):
+                return client
+            client = client.client
+        return ProtectedLLMClient(
+            client, self.privacy, retain_rejected_output=retain_rejected_output
+        )
 
     def protect_records(self, records: list[RecordT]) -> list[RecordT]:
         from arka.privacy.records import protect_records

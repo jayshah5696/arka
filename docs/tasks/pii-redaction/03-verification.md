@@ -6,13 +6,13 @@ Verified on October 17, 2026 in the managed PII worktree, based on main at `7790
 
 | Command | Result |
 | --- | --- |
-| `just check` | Lint and formatting passed. 596 tests passed and one unrelated native-language integration test skipped. |
+| `just check` | Lint and formatting passed. 614 tests passed and one unrelated native-language integration test skipped. |
 | `uv build` | Source distribution and wheel built. |
 | `just schema` | Regenerated the PII configuration schema. |
 | `just validate-examples` | All existing examples validated. |
 | `just dry-run-examples` | All nine examples passed. |
-| `uv run python scripts/verify_cleanup_cli.py --output /tmp/arka-pii-cleanup-20261017` | Existing PDF, taxonomy, cleanup and completed-run resume paths passed. 14 loopback provider calls and zero extra resume calls. |
-| `uv run --no-sync python scripts/verify_pii_cli.py --output /tmp/arka-pii-proof-final2-20261017 --model-path /tmp/arka-gliner2-pii-model` | All eight PII cases passed with real offline GLiNER2 inference. 11 loopback provider calls and zero extra calls on resume. |
+| `uv run python scripts/verify_cleanup_cli.py --output /tmp/arka-pr218-fixes-cleanup-20261017` | Existing PDF, taxonomy, cleanup and completed-run resume paths passed. 14 loopback provider calls and zero extra resume calls. |
+| `uv run --no-sync python scripts/verify_pii_cli.py --output /tmp/arka-pr218-fixes-pii-20261017 --model-path /tmp/arka-gliner2-pii-model` | All eight PII cases passed with real offline GLiNER2 inference. 11 loopback provider calls and zero extra calls on resume. |
 | `git diff --check` | Passed. |
 
 The native run used gliner2 2.1.0, PyTorch 2.14.1+cpu, Transformers 5.17.0 and huggingface-hub 1.8.0. The optional runtime was installed with uv. The CPU PyTorch wheel came from its official CPU index. The provisioned checkpoint revision was `1cb4166094dc58fa8d836429f060d6c95f62b495`.
@@ -35,7 +35,18 @@ Observed output from the [real GLiNER export](evidence/gliner-dataset.jsonl):
 Contact [person] at [email]. He lives at [address].
 ```
 
-The test suite adds 53 focused cases. They were written before their corresponding logic changes. Besides the CLI paths, they cover blocked categories, ratio rejection with retained usage, Unicode byte denominators, overlap union, repeated offsets, unsupported coverage, absent local models, invalid spans, safe detector errors, safe upstream exception logs, stable placeholders, role preservation, malformed schemas and incompatible resume policies.
+The initial feature added 53 focused cases. The review fixes add 18 more, for 71 total. They were written before their corresponding logic changes. Besides the CLI paths, they cover blocked categories, ratio rejection with retained usage, Unicode byte denominators, overlap union, repeated offsets, unsupported coverage, absent local models, invalid spans, safe detector errors, safe upstream exception logs, stable placeholders, role preservation, malformed schemas and incompatible resume policies.
+
+## Review regressions
+
+The review of `c2b12fa` exposed three gaps. The new `tests/integration/test_pii_recovery.py` covers:
+
+- Provider and malformed-response failures through the native client in labeling, double critic and Elo stages. Their existing drop or skip behavior now applies with PII enabled.
+- Payload-free client error codes for completion, structured completion and response scoring. Explicit generator rejection mode retains usage without changing the original judge wrapper.
+- A source stage that fails after protection, then retries with and without resume. Counts and rows reflect one attempt. A later completed resume leaves both PII aggregation files byte-identical.
+- Taxonomy rejection for blocked entities, ratio limits and malformed output, with decision checks both enabled and disabled. Protected drop rows match the reported counts and reasons, and generation costs remain counted.
+
+The red run recorded 15 failures and two passing controls. The additional generator-mode test then failed before its API existed. After the fixes, the focused recovery, boundary and taxonomy set passed all 39 cases. Full local evidence is at `/tmp/arka-pr218-recovery-red-short.log`, `/tmp/arka-pr218-fixes-cleanup-20261017/result.json` and `/tmp/arka-pr218-fixes-pii-20261017/result.json`.
 
 ## Limits
 

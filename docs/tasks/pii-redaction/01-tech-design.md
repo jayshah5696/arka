@@ -53,6 +53,8 @@ StageContext exposes short protection methods. The runner creates one policy bef
 
 The guard keeps protocol roles and schema keys intact. It scans decoded JSON string values, preserves parsed model types and usage, and suppresses payload-bearing exceptions. When the provider returns malformed structured text, the safe marker and rejection summary replace the fragment. A structured-response error carries the response internally so the guard can retain its usage without formatting raw text.
 
+Safe rejected outputs are an explicit generator mode. Judge and scoring calls retain the `LLMClientError` contract and error codes with fixed messages. Their existing drop and batch-skip handlers remain effective. Switching modes reuses the underlying client without mutating another stage's wrapper.
+
 GLiNER2 logs extraction exception messages upstream. The adapter replaces that logger's diagnostic and traceback with a fixed message. Detector failures still stop the boundary.
 
 ## Policy
@@ -72,6 +74,8 @@ Redaction updates the payload hash and record ID. Root records update their root
 The run stores a fingerprint of the policy and local model files before processing sources. A changed policy or checkpoint requires a new run ID. Existing runs without a PII policy cannot enable it through resume. Incompatible runs are rejected before reading their stage artifacts or overwriting resolved configuration.
 
 Record-boundary reports contain counts and reasons. Rejected records are stored only after protection. Generator raw rows contain protected text and available usage. The runner includes source PII rejections in stage totals. These reports do not contain matched source strings.
+
+The runner clears only `pii_report.json` and `pii_dropped.parquet` before each executed stage attempt. Boundaries within an attempt share totals; failed attempts do not accumulate across retries. Completed-stage resume preserves its files. Taxonomy generation stores protected privacy rejections and decision rejections together through `StageArtifacts`; malformed candidates use a payload-free audit marker. Its persisted drop rows match its drop count.
 
 ## Verification
 

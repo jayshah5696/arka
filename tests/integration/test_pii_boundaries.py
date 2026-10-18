@@ -290,7 +290,7 @@ def test_native_provider_malformed_response_retains_usage_when_rejected(tmp_path
     )
     client = LLMClient(cfg.llm, client_factory=lambda config: sdk)
     ctx = context(tmp_path, cfg)
-    output = ctx.guard_llm(client).complete_structured(
+    output = ctx.guard_llm(client, retain_rejected_output=True).complete_structured(
         messages=[], schema=GeneratedConversation
     )
     assert output.usage.total_tokens == 30

@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from arka.llm.client import StructuredResponseError
+from arka.llm.client import LLMClientError, StructuredResponseError
 from arka.llm.models import LLMOutput
 from arka.privacy.models import PIISummary
 from arka.privacy.policy import PIIPolicy, PrivacyError
@@ -18,9 +18,14 @@ class ProtectedLLMClient:
     exceptions can contain provider text, so never carry them across this seam.
     """
 
-    def __init__(self, client: Any, policy: PIIPolicy) -> None:
+    def __init__(
+        self, client: Any, policy: PIIPolicy, *, retain_rejected_output: bool = False
+    ) -> None:
         self.client = client
         self.policy = policy
+        # Generators can persist a safe rejection plus usage. Judges retain the
+        # client's exception contract so their drop/skip handling still applies.
+        self.retain_rejected_output = retain_rejected_output
 
     def __getattr__(self, name):
         return getattr(self.client, name)
@@ -48,6 +53,10 @@ class ProtectedLLMClient:
                 )
                 original = schema.model_validate(original)
             except (ValueError, TypeError):
+                if not self.retain_rejected_output:
+                    raise LLMClientError(
+                        "parse_error", "Model output did not match the requested schema"
+                    ) from None
                 return output.model_copy(
                     update={
                         "text": "[PII_UNPARSEABLE_RESPONSE]",
@@ -91,7 +100,15 @@ class ProtectedLLMClient:
         try:
             output = method(messages=safe_messages, **kwargs)
         except StructuredResponseError as exc:
+            if not self.retain_rejected_output:
+                raise LLMClientError(
+                    exc.code, "Model output did not match the requested schema"
+                ) from None
             output = exc.output
+        except LLMClientError as exc:
+            raise LLMClientError(
+                exc.code, "Model request failed while PII protection was enabled"
+            ) from None
         except Exception:
             raise PrivacyError(
                 "Model request failed while PII protection was enabled"
@@ -100,7 +117,7 @@ class ProtectedLLMClient:
             return self._output(
                 output, structured=structured, schema=kwargs.get("schema")
             )
-        except PrivacyError:
+        except (PrivacyError, LLMClientError):
             raise
         except Exception:
             raise PrivacyError("Model output could not pass PII protection") from None
@@ -124,6 +141,10 @@ class ProtectedLLMClient:
             return self.client.score_response(
                 messages=safe_messages, target_text=safe_target
             )
+        except LLMClientError as exc:
+            raise LLMClientError(
+                exc.code, "Model scoring failed while PII protection was enabled"
+            ) from None
         except Exception:
             raise PrivacyError(
                 "Model scoring failed while PII protection was enabled"

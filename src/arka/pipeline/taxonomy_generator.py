@@ -23,6 +23,7 @@ import hashlib
 import json
 import logging
 import random
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,7 @@ from pydantic import BaseModel
 
 from arka.config.models import TaxonomyGeneratorConfig
 from arka.llm.client import LLMClient
+from arka.pipeline.artifacts import StageArtifacts, StageReport
 from arka.pipeline.models import StageContext
 from arka.pipeline.output import OutputWriter
 from arka.pipeline.stages import Stage
@@ -120,7 +122,10 @@ class TaxonomyGeneratorStage(Stage):
         else:
             tax_path = self._project_root / raw_path
         bundle = TaxonomyBundle.from_yaml(tax_path)
-        client = ctx.guard_llm(self._llm_client or LLMClient(config=ctx.config.llm))
+        client = ctx.guard_llm(
+            self._llm_client or LLMClient(config=ctx.config.llm),
+            retain_rejected_output=True,
+        )
 
         # Allocate per-strategy budgets uniformly. Simula \u00a72.2 supports
         # weighted strategies; that knob is deferred to a follow-up slice.
@@ -134,16 +139,20 @@ class TaxonomyGeneratorStage(Stage):
             budgets[i % len(budgets)] += 1
 
         new_records: list[Record] = []
-        privacy_drops = {}
+        privacy_dropped: list[Record] = []
         privacy_costs = []
-        self._privacy_drops = privacy_drops
         self._privacy_costs = privacy_costs
         for strategy, budget in zip(strategies, budgets, strict=True):
             for _ in range(budget):
                 sampled = self._sample(bundle, strategy)
                 rec = self._generate_one(client, sampled, ctx)
                 if rec is not None:
-                    new_records.append(rec)
+                    if rec.stage_events and rec.stage_events[-1].action == "dropped":
+                        privacy_dropped.append(rec)
+                    else:
+                        new_records.append(rec)
+
+        privacy_drops = Counter(r.stage_events[-1].reason_code for r in privacy_dropped)
 
         # Persist summary stats so the slice harness can read it like other stages.
         ctx.work_dir.mkdir(parents=True, exist_ok=True)
@@ -151,8 +160,8 @@ class TaxonomyGeneratorStage(Stage):
             "stage": self.name,
             "count_in": len(records),
             "count_out": len(records) + len(new_records),
-            "dropped_count": sum(privacy_drops.values()),
-            "drop_reasons": privacy_drops,
+            "dropped_count": len(privacy_dropped),
+            "drop_reasons": dict(privacy_drops),
             "cost_usd": sum(privacy_costs) if privacy_costs else None,
             "generated_count": len(new_records),
             "taxonomy_path": gen_cfg.taxonomy_path,
@@ -161,7 +170,7 @@ class TaxonomyGeneratorStage(Stage):
                 for s, b in zip(strategies, budgets, strict=True)
             ],
         }
-        (ctx.work_dir / "stats.json").write_text(json.dumps(stats, indent=2))
+        StageArtifacts(ctx).write(report=StageReport(**stats), dropped=privacy_dropped)
 
         decision_results, decision_dropped = [], []
         if gen_cfg.fidelity_check.enabled:
@@ -185,14 +194,11 @@ class TaxonomyGeneratorStage(Stage):
             decision_dropped.extend(dropped)
             decision_results.extend(results)
         if decision_results:
-            from collections import Counter
-
-            from arka.pipeline.artifacts import StageArtifacts, StageReport
             from arka.pipeline.decision_stages import decision_usage
 
             stats.update(
                 count_out=len(records) + len(new_records),
-                dropped_count=len(decision_dropped) + sum(privacy_drops.values()),
+                dropped_count=len(decision_dropped) + len(privacy_dropped),
                 drop_reasons=dict(
                     Counter(r.stage_events[-1].reason_code for r in decision_dropped)
                     + Counter(privacy_drops)
@@ -200,7 +206,8 @@ class TaxonomyGeneratorStage(Stage):
                 decision_usage=decision_usage(decision_results),
             )
             StageArtifacts(ctx).write(
-                report=StageReport(**stats), dropped=decision_dropped
+                report=StageReport(**stats),
+                dropped=[*privacy_dropped, *decision_dropped],
             )
         return list(records) + new_records
 
@@ -243,11 +250,17 @@ class TaxonomyGeneratorStage(Stage):
 
         if output.usage.cost_usd is not None:
             self._privacy_costs.append(output.usage.cost_usd)
-        if output.privacy is not None and output.privacy.drop_reason:
-            reason = output.privacy.drop_reason
-            self._privacy_drops[reason] = self._privacy_drops.get(reason, 0) + 1
-            return None
         parsed = output.parsed
+        if (
+            not isinstance(parsed, _GeneratedConversation)
+            and output.privacy is not None
+            and output.privacy.drop_reason
+        ):
+            # Keep an explicit audit record for an unparseable rejection. It
+            # contains no provider fragment and never enters the kept dataset.
+            parsed = _GeneratedConversation(
+                instruction="[PII_UNPARSEABLE_RESPONSE]", response=""
+            )
         if not isinstance(parsed, _GeneratedConversation):
             logger.warning(
                 "TaxonomyGeneratorStage: LLM did not return a parsed conversation; "
@@ -261,7 +274,7 @@ class TaxonomyGeneratorStage(Stage):
         seed = json.dumps(sampled, sort_keys=True) + parsed.instruction
         rid = "tax-" + hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
 
-        return ConversationRecord(
+        record = ConversationRecord(
             id=rid,
             content_hash=hashlib.sha256(
                 (
@@ -286,3 +299,8 @@ class TaxonomyGeneratorStage(Stage):
             config_hash="taxonomy",  # hashing taxonomies is a slice-3.5 concern\n
             created_at=datetime.now(tz=UTC).isoformat(),
         )
+        if output.privacy is not None and output.privacy.drop_reason:
+            return record.dropped_by(
+                self.name, output.privacy.drop_reason, output.privacy.model_dump_json()
+            )
+        return record

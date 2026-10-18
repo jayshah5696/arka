@@ -132,6 +132,11 @@ class PipelineRunner:
                     )
                     stage_start_time = time.time()
                     try:
+                        if privacy is not None:
+                            # These aggregate multiple boundaries within one
+                            # attempt. A retry must start its own totals.
+                            for name in ("pii_report.json", "pii_dropped.parquet"):
+                                (stage_dir / name).unlink(missing_ok=True)
                         stage_output = context.protect_records(
                             list(stage.run(records, context))
                         )

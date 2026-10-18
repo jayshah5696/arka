@@ -122,7 +122,9 @@ class EvolInstructRoundStage(Stage):
             )
             return records
 
-        llm_client = ctx.guard_llm(self._llm_client or ctx.llm_client())
+        llm_client = ctx.guard_llm(
+            self._llm_client or ctx.llm_client(), retain_rejected_output=True
+        )
         operators = self.config.operators
         branching_factor = self.config.branching_factor or 1
         config_hash = self._config_hash(ctx)

@@ -221,7 +221,9 @@ class PromptBasedGeneratorStage(Stage):
             status="running",
         )
 
-        llm_client = ctx.guard_llm(self._llm_client or ctx.llm_client())
+        llm_client = ctx.guard_llm(
+            self._llm_client or ctx.llm_client(), retain_rejected_output=True
+        )
         responses_path.parent.mkdir(parents=True, exist_ok=True)
 
         written_count = len(existing_rows)
@@ -639,7 +641,8 @@ class TransformGeneratorStage(Stage):
             return []
 
         llm_client = ctx.guard_llm(
-            self._llm_client or ctx.llm_client(override=self.config.llm_override)
+            self._llm_client or ctx.llm_client(override=self.config.llm_override),
+            retain_rejected_output=True,
         )
         transformed_records: list[Record] = []
         dropped_records: list[Record] = []

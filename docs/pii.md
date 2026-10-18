@@ -79,15 +79,20 @@ Each source record and generated candidate is a separate unit. Evol-Instruct che
 
 For structured output, Arka scans decoded text values and retains the schema and usage information. Unparseable structured output is discarded with a payload-free marker. It cannot be retained as an unredacted debug fragment. When the client exposes the rejected response, Arka retains its token usage and reported cost. Transport or SDK failures that expose no response cannot provide that usage.
 
+Generators explicitly request safe rejected outputs so they can save rejection summaries and available usage. Judge and scoring calls preserve `LLMClientError` codes with fixed, payload-free messages. Their existing record-drop or batch-skip handling still applies to provider and parse failures. Detector failures still stop processing.
+
 ## Artifacts and resume
 
 - `pii_policy.json` records the effective policy fingerprint in the run directory. It includes the configured policy and hashes of local model files.
 - `pii_report.json` records per-stage record checks, category counts and PII rejection reasons. Check counts can include repeated boundary checks of the same record.
 - `pii_dropped.parquet` contains only protected copies of records rejected at a record boundary. Their stage events contain counts and reasons, not matched source text.
 - Generator raw rows retain protected text, usage and rejection summaries where available. Normal generator statistics count rejected candidates.
+- Taxonomy generation writes protected rejected records to `dropped.parquet`, including an explicit marker record for unparseable output. Its drop counts include both privacy and decision rejections.
 - Redacted records get new payload hashes and IDs. Root records update their root ID. Generated records preserve their parent lineage. PDF page and character offsets continue to refer to the original extracted text.
 
 Use a new run ID after changing the PII policy or local model files. Arka rejects reuse of an incompatible policy before reading stage artifacts or overwriting resolved configuration. Existing runs without a PII policy cannot be resumed with protection enabled. This does not clean old unprotected artifacts.
+
+Each stage attempt starts fresh `pii_report.json` and `pii_dropped.parquet` files. Multiple protection boundaries within that attempt share the totals. Retrying a failed stage replaces its previous attempt's totals. Resuming a completed stage skips execution and preserves its artifacts.
 
 ## Scope and limits
 
