@@ -46,11 +46,19 @@ def resolve_generator_llm_client(
     stage_config: Any,
     default_client: Any | None = None,
 ) -> Any:
-    """Resolve the LLM client, respecting StageLLMOverride if configured."""
+    """Resolve the LLM client, respecting StageLLMOverride if configured.
+
+    Generator stages checkpoint completed slots in raw_responses.jsonl, so
+    prompt-addressed SQLite cache reads are disabled to preserve independent
+    samples when multiple slots share a seed prompt.
+    """
     if default_client is not None:
         return default_client
     override = getattr(stage_config, "llm_override", None)
-    return ctx.llm_client(override=override)
+    client = ctx.llm_client(override=override)
+    if hasattr(client, "read_cache"):
+        client.read_cache = False
+    return client
 
 
 def load_raw_responses(responses_path: Path) -> list[RawGeneratorResponse]:

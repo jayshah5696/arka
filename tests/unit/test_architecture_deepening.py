@@ -853,6 +853,21 @@ def test_review_issue_3_llm_cache_enabled_in_pipeline_runner_and_populated_on_in
     assert seen[1]["cache_db_path"] == seen[0]["cache_db_path"]
     assert seen[1]["read_cache"] is True
 
+    # Generator client disables prompt-addressed cache reads so repeated seed slots stay independent
+    gen_ctx = StageContext(
+        run_id="cache-proof",
+        stage_name="02_generate",
+        work_dir=tmp_path,
+        config=cfg,
+        executor_mode="threadpool",
+        max_workers=1,
+        checkpoint_manager=CheckpointManager(seen[0]["cache_db_path"]),
+        resume=True,
+    )
+    gen_client = resolve_generator_llm_client(gen_ctx, cfg.generator)
+    assert gen_client.cache_db_path == seen[0]["cache_db_path"]
+    assert gen_client.read_cache is False
+
 
 def test_review_issue_4_repeated_labeling_score_stages_retain_bound_rubrics(
     tmp_path: Path,
