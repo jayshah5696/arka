@@ -84,7 +84,13 @@ def test_ratio_is_strict_and_has_no_default_threshold() -> None:
 
 
 @pytest.mark.parametrize(
-    "span", [Span(-1, 1, "person"), Span(0, 99, "person"), Span(1, 1, "person")]
+    "span",
+    [
+        Span(-1, 1, "person"),
+        Span(0, 99, "person"),
+        Span(1, 1, "person"),
+        Span(0.1, 2, "person"),
+    ],
 )
 def test_invalid_detector_offsets_fail_without_payload(span: Span) -> None:
     with pytest.raises(PrivacyError) as caught:
@@ -121,3 +127,8 @@ def test_malformed_generated_json_is_redacted_before_diagnostics() -> None:
     policy = PIIPolicy(FixedDetector([Span(9, 14, "person")]))
 
     assert policy.protect_response('{"text":"Alice').value == '{"text":"[person]'
+
+
+def test_contextual_detector_cannot_redact_inside_generated_placeholders() -> None:
+    policy = PIIPolicy(FixedDetector([Span(1, 7, "person")]))
+    assert policy.protect("[person]").value == "[person]"

@@ -186,9 +186,12 @@ class ComplexityEloScoringStage(Stage):
         )
 
         # Issue ranker calls in parallel up to ctx.max_workers.
-        client = self._llm_client or LLMClient(
-            config=resolve_llm_override(
-                ctx.config.llm, getattr(cfg, "llm_override", None)
+        client = ctx.guard_llm(
+            self._llm_client
+            or LLMClient(
+                config=resolve_llm_override(
+                    ctx.config.llm, getattr(cfg, "llm_override", None)
+                )
             )
         )
         record_by_id = {r.id: r for r in conv_records}

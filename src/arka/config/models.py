@@ -16,6 +16,7 @@ from pydantic import (
 from arka.common.models import StrictModel
 from arka.common.text_patterns import DEFAULT_ARTIFACT_GROUPS
 from arka.decisions.models import DecisionConfig, DecisionOverride
+from arka.privacy.config import PIIConfig
 
 
 class DecisionStageOptions(StrictModel):
@@ -801,6 +802,7 @@ class ResolvedConfig(StrictModel):
     embeddings: EmbeddingsConfig = Field(default_factory=EmbeddingsConfig)
     labeling_engine: LabelingEngineConfig = Field(default_factory=LabelingEngineConfig)
     output: OutputConfig
+    pii: PIIConfig | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @model_validator(mode="after")
     def validate_decision_pipeline(self):

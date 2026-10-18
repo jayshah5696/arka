@@ -3,8 +3,8 @@ type: research
 status: complete
 source: "Official model cards, Hugging Face model metadata and upstream source"
 revision: "779040204b0f392465b7e6240bf9d9200816dc5d"
-branch: "main"
-working_tree: "Documentation edits only; original untracked files preserved"
+branch: "c-b/pii-redaction"
+working_tree: "Separate PII implementation worktree; original workspace preserved"
 research_date: "2026-10-17"
 ---
 # Local detector options for user-defined PII coverage
@@ -32,7 +32,7 @@ The model card for GLiNER2-PII reports limited precision on its SPY evaluation a
 - [fastino/gliner2-privacy-filter-PII-multi model metadata](https://huggingface.co/api/models/fastino/gliner2-privacy-filter-PII-multi): revision 1cb4166094dc58fa8d836429f060d6c95f62b495, 307,098,645 stored parameters, Apache 2.0.
 - The GLiNER2 card also contains a 205M base-model description. The actual stored-parameter metadata is about 307M. This discrepancy is a reason to record the artifact revision and avoid sizing from prose alone.
 
-Source dependencies were read from the upstream [OpenAI package](https://github.com/openai/privacy-filter/blob/main/pyproject.toml) and [GLiNER2 package](https://github.com/fastino-ai/GLiNER2/blob/main/pyproject.toml). No packages or checkpoints were installed or downloaded for inference.
+Source dependencies were read from the upstream [OpenAI package](https://github.com/openai/privacy-filter/blob/main/pyproject.toml) and [GLiNER2 package](https://github.com/fastino-ai/GLiNER2/blob/main/pyproject.toml). The initial research did not install packages or download checkpoints. The later native verification, after user approval, is recorded below and in the verification document.
 
 ## Recommendation for discussion
 
@@ -44,4 +44,20 @@ For learned detection, use returned character spans rather than looking up detec
 
 Arka users should be able to set replacement tokens and drop thresholds. Detector configuration cannot imply support for categories or languages the backend cannot process.
 
-No backend choice or heavy dependency has been approved yet. Runtime accuracy, memory and latency remain unmeasured.
+The user subsequently selected GLiNER and authorized its optional dependencies, implementation and PR creation. The following update records the October 2026 research refresh. Production accuracy, memory and latency remain unmeasured.
+
+## October 17, 2026 update
+
+The [GLiNER2-PII paper](https://arxiv.org/html/2605.09973v1), published May 11, reports average exact-span F1 of 0.471 on SPY. It reports name over-prediction and evaluates two domains. This does not establish privacy recall for Arka datasets. Its table and the Hub card give slightly different headline scores, so keep the paper's figure tied to that table.
+
+Fastino released [combined guardrails and PII](https://fastino.ai/blog/gliner2-guardrails-pii-multi-safety-moderation-privacy-filtering-small-language-model) on July 8. That checkpoint adds moderation tasks. Issue #166 requires PII protection, so the additional moderation behavior is not needed here.
+
+[GLiNER2.5](https://fastino.ai/models/gliner2-5), released August 24, uses boundary prediction and supports extraction features beyond the earlier span model. The [multilingual checkpoint card](https://huggingface.co/fastino/gliner2.5-multi-v1) describes general schema extraction. Its newer architecture alone is not evidence that it is a better PII checkpoint for the agreed categories.
+
+The September 29 study [Strong Multilingual Privacy Tagging at Encoder Speed](https://arxiv.org/abs/2609.38630v3), revised October 13, reports better privacy-redaction results than its GLiNER2 baseline on its own human-annotated evaluation. This is a useful counterexample to calling GLiNER universally best. Its dataset and metric differ from the SPY comparison, so the scores cannot be combined into one ranking. These results were not reproduced in Arka.
+
+The current [GLiNER2 long-context documentation](https://github.com/fastino-ai/GLiNER2/blob/main/tutorial/12-long_context.md) explicitly warns that ordinary max_len extraction truncates. Its long API uses overlapping windows and returns global character offsets. Arka uses that API, checks offsets against original text and keeps inference local.
+
+PyPI currently provides [gliner2 2.1.0](https://pypi.org/project/gliner2/2.1.0/). Its local extra adds PyTorch, Transformers, PEFT and safetensors. Arka pins this package version in an optional extra. The provisioned model uses the unchanged Hub revision recorded above. Runtime loading requires complete local files and requests local-only checkpoint access.
+
+The selected initial implementation uses the dedicated GLiNER2-PII checkpoint and retains the narrow regex option. This follows the user's model-family choice and the documented configurable PII schema. It is not a leaderboard claim. Real local inference and CLI integration fixtures are recorded separately in [verification](03-verification.md).

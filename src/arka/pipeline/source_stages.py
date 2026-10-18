@@ -63,12 +63,12 @@ class SeedSourceStage(Stage):
             raise ValueError("Seed file exceeds maximum allowed size of 50MB")
         config_hash_value = config_hash(ctx.config)
         if source_path.suffix == ".jsonl":
-            return self._read_jsonl(
-                source_path=source_path, config_hash=config_hash_value
+            return ctx.protect_records(
+                self._read_jsonl(source_path=source_path, config_hash=config_hash_value)
             )
         if source_path.suffix == ".csv":
-            return self._read_csv(
-                source_path=source_path, config_hash=config_hash_value
+            return ctx.protect_records(
+                self._read_csv(source_path=source_path, config_hash=config_hash_value)
             )
         raise ValueError(f"Unsupported seed source format: {source_path.suffix}")
 
@@ -280,6 +280,7 @@ class PDFSourceStage(Stage):
                     created_at=datetime.now(UTC).isoformat(),
                 )
             )
+        chunks = ctx.protect_records(chunks)
         if self.config.boilerplate_strip:
             StageArtifacts(ctx).write(
                 report=StageReport(

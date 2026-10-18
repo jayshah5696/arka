@@ -237,7 +237,7 @@ class LabelingQualityFilterStage(Stage):
                 "filters.labeling_engine.rubric_path points to a missing file: "
                 f"{rubric_path}"
             ) from exc
-        llm_client = self._llm_client or ctx.llm_client()
+        llm_client = ctx.guard_llm(self._llm_client or ctx.llm_client())
         engine = LabelingEngine(llm_client=llm_client)
 
         conversation_records: list[ConversationRecord] = [

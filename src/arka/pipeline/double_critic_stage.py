@@ -153,7 +153,7 @@ class DoubleCriticFilterStage(Stage):
         # blind spots). When llm_override is None, falls through to top-level llm.
         override = getattr(filter_config, "llm_override", None)
         critic_llm_config = resolve_llm_override(ctx.config.llm, override)
-        client = self._llm_client or LLMClient(config=critic_llm_config)
+        client = ctx.guard_llm(self._llm_client or LLMClient(config=critic_llm_config))
 
         # Run all 2N critic calls concurrently with the same worker budget the
         # rest of the pipeline uses. Each record's two calls are independent; we

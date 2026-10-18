@@ -71,7 +71,7 @@ class LabelingScoreStage(Stage):
                 f"filters.labeling_engine.rubric_path points to a missing file: {rubric_path}"
             )
         rubric = RubricLoader().load(rubric_path)
-        llm_client = self._llm_client or ctx.llm_client()
+        llm_client = ctx.guard_llm(self._llm_client or ctx.llm_client())
         engine = LabelingEngine(llm_client=llm_client)
 
         conversation_records: list[ConversationRecord] = [
@@ -194,8 +194,8 @@ class RewardModelScoringStage(Stage):
 
             return run_decision_stage(self, records, ctx, reward_config)
 
-        llm_client = self._llm_client or ctx.llm_client(
-            override=reward_config.llm_override
+        llm_client = ctx.guard_llm(
+            self._llm_client or ctx.llm_client(override=reward_config.llm_override)
         )
 
         kept_records: list[Record] = []

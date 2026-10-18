@@ -26,6 +26,7 @@ from arka.pipeline.checkpoint import CheckpointManager
 from arka.pipeline.models import StageContext
 from arka.pipeline.output import OutputWriter
 from arka.pipeline.stages import Stage
+from arka.privacy.models import PIISummary
 from arka.records.identity import (
     config_hash as compute_config_hash,
 )
@@ -83,6 +84,7 @@ class RawGeneratorResponse(StrictModel):
     model: str
     latency_ms: int
     usage: TokenUsage
+    privacy: PIISummary | None = None
 
 
 @dataclass(frozen=True)
@@ -163,6 +165,10 @@ class PromptBasedGeneratorStage(Stage):
             return []
 
         prompt_hash = compute_prompt_hash(self.config, ctx.config.llm)
+        if ctx.privacy is not None:
+            prompt_hash = hashlib.sha256(
+                f"{prompt_hash}:{ctx.privacy.fingerprint}".encode()
+            ).hexdigest()
         responses_path = ctx.work_dir / "raw_responses.jsonl"
         records_path = ctx.work_dir / "data.parquet"
 
@@ -215,7 +221,7 @@ class PromptBasedGeneratorStage(Stage):
             status="running",
         )
 
-        llm_client = self._llm_client or ctx.llm_client()
+        llm_client = ctx.guard_llm(self._llm_client or ctx.llm_client())
         responses_path.parent.mkdir(parents=True, exist_ok=True)
 
         written_count = len(existing_rows)
@@ -278,6 +284,7 @@ class PromptBasedGeneratorStage(Stage):
                     model=output.model,
                     latency_ms=output.latency_ms,
                     usage=output.usage,
+                    privacy=output.privacy,
                 )
                 handle.write(
                     json.dumps(row.model_dump(mode="json"), separators=(",", ":"))
@@ -388,6 +395,15 @@ class PromptBasedGeneratorStage(Stage):
         for row in raw_rows:
             item = plan_by_index.get(row.plan_index)
             if item is None:
+                continue
+            if row.privacy is not None and row.privacy.drop_reason:
+                reason = row.privacy.drop_reason
+                drop_reasons[reason] = drop_reasons.get(reason, 0) + 1
+                dropped_records.append(
+                    item.seed_record.dropped_by(
+                        self.name, reason, row.privacy.model_dump_json()
+                    )
+                )
                 continue
             try:
                 payload = self._parse_generated_payload(row.generated_text)
@@ -617,13 +633,16 @@ class TransformGeneratorStage(Stage):
             record for record in records if isinstance(record, ConversationRecord)
         ]
         if not transformable_records:
-            self._write_artifacts(ctx=ctx, dropped_records=[], costs=[])
+            self._write_artifacts(
+                ctx=ctx, dropped_records=[], costs=[], count_in=0, count_out=0
+            )
             return []
 
-        llm_client = self._llm_client or ctx.llm_client(
-            override=self.config.llm_override
+        llm_client = ctx.guard_llm(
+            self._llm_client or ctx.llm_client(override=self.config.llm_override)
         )
         transformed_records: list[Record] = []
+        dropped_records: list[Record] = []
         costs: list[float] = []
 
         # PERF: Hoisted config_hash computation outside the record loop. Computing config_hash is expensive and invariant per stage. Expected impact: eliminates redundant JSON serialization and hashing per record.
@@ -637,13 +656,22 @@ class TransformGeneratorStage(Stage):
                 temperature=self.config.temperature,
                 max_tokens=self.config.max_tokens,
             )
+            if output.usage.cost_usd is not None:
+                costs.append(output.usage.cost_usd)
+            if output.privacy is not None and output.privacy.drop_reason:
+                dropped_records.append(
+                    record.dropped_by(
+                        self.name,
+                        output.privacy.drop_reason,
+                        output.privacy.model_dump_json(),
+                    )
+                )
+                continue
             parsed = output.parsed
             if not isinstance(parsed, TransformResponse):
                 raise ValueError(
                     "Transform output did not parse into TransformResponse"
                 )
-            if output.usage.cost_usd is not None:
-                costs.append(output.usage.cost_usd)
             transformed_records.append(
                 self._build_transformed_record(
                     record=record,
@@ -653,7 +681,13 @@ class TransformGeneratorStage(Stage):
                 )
             )
 
-        self._write_artifacts(ctx=ctx, dropped_records=[], costs=costs)
+        self._write_artifacts(
+            ctx=ctx,
+            dropped_records=dropped_records,
+            costs=costs,
+            count_in=len(transformable_records),
+            count_out=len(transformed_records),
+        )
         return transformed_records
 
     def _messages_for_input(
@@ -751,15 +785,24 @@ class TransformGeneratorStage(Stage):
         ctx: StageContext,
         dropped_records: list[Record],
         costs: list[float],
+        count_in: int,
+        count_out: int,
     ) -> None:
+        from collections import Counter
+
         total_cost = round(sum(costs), 6) if costs else None
         StageArtifacts(ctx, writer=self._output_writer).write(
             report=StageReport(
                 stage=self.name,
-                count_in=len(costs) if costs else 0,
-                count_out=len(costs) if costs else 0,
+                count_in=count_in,
+                count_out=count_out,
                 dropped_count=len(dropped_records),
-                drop_reasons={},
+                drop_reasons=dict(
+                    Counter(
+                        record.stage_events[-1].reason_code
+                        for record in dropped_records
+                    )
+                ),
                 cost_usd=total_cost,
             ),
             dropped=dropped_records,

@@ -1,171 +1,82 @@
 ---
 type: technical-design
-status: draft
-approval: "User approved ingestion and generation protection boundaries, requested user-configurable coverage, and authorized finishing the design, implementing #166 and opening a PR. Backend/dependency selection and remaining behavior are still under discussion."
+status: implemented
+approval: "User approved source and generation boundaries, user-configurable coverage, local GLiNER research and implementation, a separate worktree and a PR. Detailed integration choices were made under that implementation request."
 source: "Issue #166 and 02-research-detector-options.md"
-revision: "779040204b0f392465b7e6240bf9d9200816dc5d"
+base_revision: "779040204b0f392465b7e6240bf9d9200816dc5d"
 branch: "c-b/pii-redaction"
 ---
 # Technical design for PII redaction
 
-## Scope
+Address [issue #166](https://github.com/jayshah5696/arka/issues/166) in a separate managed worktree. The base is the latest fetched main revision above. PR #217 is not part of this branch.
 
-Address [issue #166](https://github.com/jayshah5696/arka/issues/166) before designing the other open issues. The user selected this issue on October 17, 2026 and later instructed us to finish the design and implement the feature before opening a PR. Coverage must be configurable by Arka users. Backend and dependency choices still need agreement.
+## Agreed scope
 
-The [detector research](02-research-detector-options.md) records current public practices and available detector families. The [updated issue](https://github.com/jayshah5696/arka/issues/166) records options and their limitations. This document holds the agreed design and identifies pending decisions.
+The user selected local protection of source record text before persistence or model use, and generated text before persistence or later model calls. Users define supported languages and entity categories in configuration. The user then authorized using GLiNER after checking research available in October 2026, and requested implementation before opening the PR.
 
-## Current system behavior
+## Data flow
 
-The local branch was fetched and verified equal to origin/main at the revision above.
-
-Arka persists source records before downstream filters. PDF ingestion can call a decision provider within the source stage. Prompt-based generation persists raw responses before parsing and downstream filters. Therefore, placement of a later PII filter does not protect those earlier destinations.
-
-A simplified current flow is:
-
-~~~mermaid
+```mermaid
 flowchart TD
-    A[Read seed file or PDF] --> B[Build source records]
-    B --> C[Optional PDF decision request]
-    C --> D[Save source records]
+    A[Validate policy and provisioned local model] --> B[Read source]
+    B --> C[Protect typed source records]
+    C --> D[Source artifacts and optional PDF decision request]
     D --> E[Generation request]
-    E --> F[Save raw generated response]
-    F --> G[Parse and build generated records]
-    G --> H[Run judges and filters]
-    H --> I[Export dataset]
-~~~
+    E --> F[Protect decoded response values]
+    F --> G[Protected raw response and usage]
+    F --> H[Next internal generation call]
+    G --> I[Build records, filters and export]
+    H --> F
+```
 
-The diagram summarizes the relevant boundaries. The optional decision request is specific to configured PDF ingestion. Individual generator strategies have additional internal calls that need to be covered if broad protection is selected.
+A downstream filter cannot protect source artifacts or generator raw files written before that filter. The policy therefore lives at the source and client boundaries. The runner also checks typed stage output before it writes the stage artifact.
 
-Relevant code observations:
+## Selected model
 
-- [Source stages](../../../src/arka/pipeline/source_stages.py) own ingestion and the optional PDF decision check.
-- [Runner](../../../src/arka/pipeline/runner.py) writes stage records and the final dataset.
-- [Prompt and transform generators](../../../src/arka/pipeline/generator_stages.py) own their generation calls and prompt-generator raw-response persistence.
-- [Evol-Instruct](../../../src/arka/pipeline/evol_generator_stage.py) has intermediate generation calls and its own raw-response artifact.
-- [OutputWriter](../../../src/arka/pipeline/output.py) serializes payloads, scores and stage-event details. It currently performs no PII detection.
+The optional `pii` extra pins `gliner2[local]==2.1.0`. The recommended checkpoint is `fastino/gliner2-privacy-filter-PII-multi`, revision `1cb4166094dc58fa8d836429f060d6c95f62b495`. It has a documented 42-label schema and seven-language scope. GLiNER2.5 is newer general extraction work; this implementation uses the dedicated PII checkpoint rather than inferring PII quality from that version number.
 
-Evol-Instruct generates an intermediate instruction and sends it into another generation request before returning a completed record. Consequently, scanning only at the end of a generator stage would miss an approved protection boundary. A malformed prompt-generator response can also enter raw-response storage and drop details before a complete record exists.
+The built-in regex backend remains available for its narrow identifier formats. Backend selection is explicit. There is no fallback from a missing or failed GLiNER model to regex. See the [research notes](02-research-detector-options.md) for current evidence and limits.
 
-Stages normally obtain LLM and decision clients through StageContext. These are separate construction paths. This is useful context for the later ownership decision, but no client wrapper or source integration API has been selected yet.
+## Ownership
 
-## System design
+```text
+src/arka/privacy/
+├── config.py        # supported coverage and policy validation
+├── policy.py        # spans, overlap union, byte ratio and replacement
+├── runtime.py       # local GLiNER model loading and long-text inference
+├── models.py        # typed summaries and record-boundary reports
+├── records.py       # typed payload protection, identity and safe drops
+└── boundaries.py    # outbound LLM text and returned output protection
+```
 
-The user selected protection at ingestion and generation boundaries through the question tool on October 17, 2026. The selected contract checks source record text locally before saving it or sending it to a model, and checks generated text before saving it or using it in later model calls.
+StageContext exposes short protection methods. The runner creates one policy before source reads and shares it with each stage. GLiNER inference uses a lock because stages share the model across threads. Sources protect records before internal checks. Generators consume protected outputs before internal calls, raw writes and downstream decisions. Injected clients use the same guard.
 
-The intended flow is:
+The guard keeps protocol roles and schema keys intact. It scans decoded JSON string values, preserves parsed model types and usage, and suppresses payload-bearing exceptions. When the provider returns malformed structured text, the safe marker and rejection summary replace the fragment. A structured-response error carries the response internally so the guard can retain its usage without formatting raw text.
 
-~~~mermaid
-flowchart TD
-    A[Read seed file or PDF] --> B[Local PII detection and agreed policy]
-    B --> C[Protected source text]
-    C --> D[Source artifacts and model requests]
-    D --> E[Receive generated text]
-    E --> F[Local PII detection and agreed policy]
-    F --> G[Protected generated text]
-    G --> H[Generation artifacts and later model requests]
-    H --> I[Dataset export]
-~~~
+GLiNER2 logs extraction exception messages upstream. The adapter replaces that logger's diagnostic and traceback with a fixed message. Detector failures still stop the boundary.
 
-Replacement and drop behavior are still undecided. The diagram describes where that policy applies, not which records it accepts.
+## Policy
 
-The alternatives considered were:
+The top-level `pii` section is optional. Omission preserves existing behavior and configuration hashes. When present, backend, languages and entities are required. Configuration rejects unsupported declared GLiNER languages and entities before running.
 
-| Option | Contract | Architectural consequence |
-| --- | --- | --- |
-| Ingestion and generation boundaries | Check source record text locally before its first persistence or provider use. Check generated text before its first persistence or later model use. | Integrate the same detection and redaction policy with the relevant source and generation paths. Account for internal calls and raw responses. |
-| Final export | Check record text when producing the exported dataset. | Keep the change near export. Earlier artifacts and requests remain outside this contract. |
-| Explicit pipeline stage | Protection begins where the configured stage runs. | Reuse stage artifacts and placement controls. A later stage cannot protect earlier writes or requests. |
+Replacement uses a category placeholder with printable delimiters. Connected overlapping detections are replaced once. Their union determines the original matched UTF-8 byte count. A blocked-category match rejects the unit. Otherwise, an optional matched-byte ratio rejects only values above the configured threshold. Omitting it retains redacted units. No universal 15% default is imposed.
 
-The first option is selected. It covers source privacy and generated-output artifacts, including earlier destinations that a later pipeline filter could not protect.
+Source records and generated candidates are separate units. Evol-Instruct checks the intermediate instruction before requesting the response. Rejections retain available usage and protected diagnostics. Auxiliary judge output is redacted; source and generator paths apply sample rejection thresholds.
 
-A contract should concern specified text fields and detector-supported categories. It must distinguish a detector miss from a failure to apply redaction before a protected destination. The design cannot promise that a detector discovers all personal information.
+Text fields cover document chunks and conversation instruction, response, system, reasoning and textual turn content. Protocol role labels are not scanned as prose. Non-text turn content fails explicitly. Seed ingestion keeps its existing field selection. Original input files, user configuration, filenames, document identifiers and arbitrary metadata are outside this text policy.
 
-Users choose supported languages and entity categories through configuration. This does not mean every arbitrary language or entity is supported. Validation must compare the requested coverage with the selected backend and installed model before the pipeline reads source text.
+## Identity, artifacts and resume
 
-The [focused detector research](02-research-detector-options.md) compares operational fit. The recommended initial backends are built-in regex with validators for implemented identifier formats, and optional local GLiNER2 for contextual entities. Users explicitly choose a backend. Presidio and OpenAI Privacy Filter remain alternatives. The initial backend set is pending agreement.
+Redaction updates the payload hash and record ID. Root records update their root ID. Generated records retain their parent lineage. Original PDF page and character coordinates remain unchanged.
 
-Language configuration declares the coverage users require; it does not silently add a language-identification stage or prove every record belongs to those languages.
+The run stores a fingerprint of the policy and local model files before processing sources. A changed policy or checkpoint requires a new run ID. Existing runs without a PII policy cannot enable it through resume. Incompatible runs are rejected before reading their stage artifacts or overwriting resolved configuration.
 
-### Proposed behavior for review
+Record-boundary reports contain counts and reasons. Rejected records are stored only after protection. Generator raw rows contain protected text and available usage. The runner includes source PII rejections in stage totals. These reports do not contain matched source strings.
 
-Use one run-level PII policy for sources and generated text. When the feature is enabled, require an explicit backend and nonempty requested coverage. Keep it disabled for existing configurations that omit it.
+## Verification
 
-Use category placeholders as the initial replacement policy. Users can change the placeholder template, which must include the category if category-specific tokens are requested. A matched-byte drop ratio and blocked-category list are configurable. Omit the ratio to retain records after redaction; 15% is an example, not an enforced universal default. A blocked-category hit takes precedence over the ratio. These defaults and policies are proposals until review.
+Tests were written to fail before each logic change. They cover Unicode byte ratios, overlap union, repeated offsets, decoded JSON, malformed output, invalid coverage, missing models, detector failures, logging, source and generated boundaries, intermediate instructions, drops, retained usage and resume compatibility.
 
-Compute the ratio using the union of original matched UTF-8 bytes across the text fields in the unit being checked, divided by the original bytes in those fields. Count overlaps once and decide before replacement. Source records and individual generated candidates are separate units. An intermediate generated instruction is checked before its next model call.
+The CLI helper `scripts/verify_pii_cli.py` drives the installed CLI and SDK through a loopback provider. It checks outgoing requests, JSON artifacts, Parquet, logs and SQLite state. It includes real offline GLiNER inference and a long input with repeated names and emails. Fixture verification is separate from detection-quality evaluation.
 
-Keep original source files outside this operation. For record text, cover document chunks and conversation instruction, response, system, reasoning and textual turn content where present. Record metadata and filenames require a declared separate scope. Diagnostics for this feature contain counts, categories and offsets rather than matched text.
-
-For valid structured model output, operate on text values while preserving the schema and metadata. For malformed raw output that cannot become a record, redact before any diagnostic or raw-response persistence. Never save an unredacted copy for debugging. Keep provider usage information so rejection does not hide spend.
-
-Detection or policy errors stop processing the affected boundary with a payload-free error. A missing optional package or model fails startup. Do not substitute another detector or download a model during a run.
-
-Record the effective policy and model identity for resume. Reject reuse of incompatible prior artifacts. Redacted payloads need updated content hashes; source offsets must continue to identify the original source coordinates. Identity and lineage rules will be specified during program design.
-
-### Component interaction
-
-The policy owns supported-coverage validation, span handling, replacement and the keep/drop decision. Detectors supply typed character spans. Sources and provider/generation boundaries apply the policy before the approved destinations. Artifact writers receive protected text; they must not silently write a different payload than the one that later stages use.
-
-Model packages belong in an optional extra. A GLiNER2 extra adds PyTorch and Transformers for local inference, so its inclusion needs the dependency approval required by AGENTS.md. No package has been added.
-
-## Program design
-
-The separate managed worktree starts at the revision above. It uses branch `c-b/pii-redaction` and contains no changes from PR #217.
-
-The shared policy code is implemented in `src/arka/privacy/policy.py`. Detectors return immutable character spans. The policy merges overlapping spans, computes original matched UTF-8 bytes and replaces matched text. It checks nested string values while preserving dictionary keys and non-text values. The result includes category counts and an optional rejection reason. Detector errors contain no input text.
-
-`src/arka/privacy/detectors.py` contains the built-in detector for email addresses, explicit international phone numbers, payment cards with a Luhn check, IBANs with a mod-97 check and IP addresses validated with Python's standard library. These patterns do not detect names or postal addresses. They do not establish whether a detected identifier belongs to a private person.
-
-Source and provider integrations are still pending. The code does not yet protect an Arka pipeline run. The optional learned backend awaits the dependency decision in the question tool. Configuration models and checkpoint identities must be completed before this feature is ready for a PR.
-
-PR #217 is currently open and changes several of these integration points. It is not part of the main revision studied here. Fetch main again before implementation and refresh the relevant source reading if that PR has merged.
-
-## Decisions
-
-Approved scope:
-
-- Work on #166 first.
-- Research and align on the design before implementation.
-- Protect source record text locally before saving it or sending it to a model.
-- Protect generated text before saving it or using it in later model calls.
-- Let Arka users configure the required language and entity coverage.
-- Finish the design and implement #166 before opening its PR.
-
-Recommendations under discussion:
-
-- Select a detector against the actual supported data and deployment needs.
-- Keep the contract explicit about fields, categories and destinations.
-
-## Open decisions
-
-1. Initial selectable backends and optional learned-model dependencies.
-2. Review of the proposed replacement, dropping, field coverage and error behavior above.
-3. Resume compatibility, content identity and retained source offsets after redaction.
-4. Review of the full system design before program design. Implementation and PR creation have already been requested; remaining design choices must be resolved first.
-
-These are design topics, not implementation phases.
-
-## Verification approach
-
-After the scope is agreed, enumerate the failure cases before implementing logic, as required by the repository's TDD instructions.
-
-Separate detection-quality evaluation from integration checks. Evaluate detection on agreed representative categories and languages. Verify that known detected values do not reach the protected artifacts or model requests. Include Unicode span handling and overlapping detections. The selected boundary requires coverage of raw responses and internal generation calls, as well as dropped records and error/resume paths that could retain the protected text.
-
-The shared policy and built-in detector have 22 focused tests. Each test file failed before its implementation was added. `just check` passed with 565 tests passed and one skipped. `uv build` produced the source package and wheel. These checks cover the current foundation, not the pending pipeline integrations. No learned-model benchmark or paid request has run. No optional dependency has been added.
-
-Failure cases to cover before writing implementation logic:
-
-- A source record is persisted or sent to the PDF decision provider before protection.
-- An intermediate generated instruction reaches the next generation request without protection.
-- Valid and malformed generated responses enter raw-response files or drop details with original detected values.
-- Unsupported requested coverage, an absent model or a detector exception allows processing to continue.
-- Long-text inference silently truncates a suffix containing an entity.
-- Identical repeated values are replaced using the first string occurrence instead of their actual offsets.
-- Overlapping spans count the same bytes twice, or Unicode character offsets are mistaken for byte offsets.
-- Repeated checking alters already inserted category placeholders.
-- A blocked-category or ratio rejection keeps an unredacted debug copy or loses provider usage.
-- A policy/model change resumes an incompatible checkpoint, or a redacted payload retains its old content hash.
-
-## PR description
-
-The user requested the show-me skill for this PR's description. Use a compact Mermaid diagram of the implemented protection boundaries and a concrete before-and-after fixture example. Add a small control-flow diff only if it clarifies the final change. State actual verification results and remaining limits. Write the description from the completed branch diff and checked artifacts.
+The final [verification record](03-verification.md) contains commands, results and limits. The [user guide](../../pii.md) explains provisioning and configuration. The PR description uses show-me with a compact boundary diagram and an observed before-and-after fixture.

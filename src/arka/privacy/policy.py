@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -52,6 +53,13 @@ class PIIPolicy:
         self.placeholder_template = placeholder_template
         self.max_redacted_ratio = max_redacted_ratio
         self.blocked_entities = blocked_entities or set()
+        self.fingerprint = ""
+        prefix, _, suffix = placeholder_template.partition("{entity}")
+        self._placeholder = (
+            re.compile(re.escape(prefix) + r"[a-z_]+" + re.escape(suffix))
+            if prefix and suffix
+            else None
+        )
 
     def protect(self, value: Any) -> ProtectionResult:
         categories: Counter[str] = Counter()
@@ -106,12 +114,25 @@ class PIIPolicy:
             spans = self.detector.detect(text) if text else []
             if any(
                 not isinstance(span, Span)
+                or type(span.start) is not int
+                or type(span.end) is not int
                 or not 0 <= span.start < span.end <= len(text)
                 or not span.entity
                 for span in spans
             ):
                 raise PrivacyError("PII detector returned invalid spans")
             spans = sorted(set(spans), key=lambda s: (s.start, -s.end, s.entity))
+            placeholders = (
+                list(self._placeholder.finditer(text)) if self._placeholder else []
+            )
+            spans = [
+                span
+                for span in spans
+                if not any(
+                    match.start() <= span.start and span.end <= match.end()
+                    for match in placeholders
+                )
+            ]
         except Exception:
             raise PrivacyError("PII detection failed") from None
 

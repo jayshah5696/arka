@@ -120,7 +120,7 @@ class TaxonomyGeneratorStage(Stage):
         else:
             tax_path = self._project_root / raw_path
         bundle = TaxonomyBundle.from_yaml(tax_path)
-        client = self._llm_client or LLMClient(config=ctx.config.llm)
+        client = ctx.guard_llm(self._llm_client or LLMClient(config=ctx.config.llm))
 
         # Allocate per-strategy budgets uniformly. Simula \u00a72.2 supports
         # weighted strategies; that knob is deferred to a follow-up slice.
@@ -134,6 +134,10 @@ class TaxonomyGeneratorStage(Stage):
             budgets[i % len(budgets)] += 1
 
         new_records: list[Record] = []
+        privacy_drops = {}
+        privacy_costs = []
+        self._privacy_drops = privacy_drops
+        self._privacy_costs = privacy_costs
         for strategy, budget in zip(strategies, budgets, strict=True):
             for _ in range(budget):
                 sampled = self._sample(bundle, strategy)
@@ -147,8 +151,9 @@ class TaxonomyGeneratorStage(Stage):
             "stage": self.name,
             "count_in": len(records),
             "count_out": len(records) + len(new_records),
-            "dropped_count": 0,
-            "drop_reasons": {},
+            "dropped_count": sum(privacy_drops.values()),
+            "drop_reasons": privacy_drops,
+            "cost_usd": sum(privacy_costs) if privacy_costs else None,
             "generated_count": len(new_records),
             "taxonomy_path": gen_cfg.taxonomy_path,
             "strategies": [
@@ -187,9 +192,10 @@ class TaxonomyGeneratorStage(Stage):
 
             stats.update(
                 count_out=len(records) + len(new_records),
-                dropped_count=len(decision_dropped),
+                dropped_count=len(decision_dropped) + sum(privacy_drops.values()),
                 drop_reasons=dict(
                     Counter(r.stage_events[-1].reason_code for r in decision_dropped)
+                    + Counter(privacy_drops)
                 ),
                 decision_usage=decision_usage(decision_results),
             )
@@ -235,6 +241,12 @@ class TaxonomyGeneratorStage(Stage):
             kwargs.pop("max_tokens", None)
             output = client.complete_structured(**kwargs)
 
+        if output.usage.cost_usd is not None:
+            self._privacy_costs.append(output.usage.cost_usd)
+        if output.privacy is not None and output.privacy.drop_reason:
+            reason = output.privacy.drop_reason
+            self._privacy_drops[reason] = self._privacy_drops.get(reason, 0) + 1
+            return None
         parsed = output.parsed
         if not isinstance(parsed, _GeneratedConversation):
             logger.warning(

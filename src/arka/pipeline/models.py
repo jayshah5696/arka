@@ -3,7 +3,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -16,6 +16,10 @@ if TYPE_CHECKING:
     from arka.llm.client import LLMClient
     from arka.llm.factory import LLMClientFactory
     from arka.pipeline.checkpoint import CheckpointManager
+    from arka.privacy.policy import PIIPolicy
+    from arka.records.models import Record
+
+RecordT = TypeVar("RecordT", bound="Record")
 
 
 @dataclass(frozen=True)
@@ -33,6 +37,21 @@ class StageContext:
     # falls back to llm.factory.default_factory.
     llm_client_factory: LLMClientFactory | None = field(default=None)
     decision_client_factory: DecisionClientFactory | None = field(default=None)
+    privacy: PIIPolicy | None = field(default=None)
+
+    def guard_llm(self, client: Any) -> Any:
+        from arka.privacy.boundaries import ProtectedLLMClient
+
+        if self.privacy is None or isinstance(client, ProtectedLLMClient):
+            return client
+        return ProtectedLLMClient(client, self.privacy)
+
+    def protect_records(self, records: list[RecordT]) -> list[RecordT]:
+        from arka.privacy.records import protect_records
+
+        if self.privacy is None:
+            return records
+        return protect_records(records, self.privacy, self.work_dir, self.stage_name)
 
     def decision_client(
         self, *, override: DecisionOverride | None = None
@@ -59,10 +78,12 @@ class StageContext:
         """
         from arka.llm.factory import build_client
 
-        return build_client(
-            base_config=self.config.llm,
-            override=override,
-            factory=self.llm_client_factory,
+        return self.guard_llm(
+            build_client(
+                base_config=self.config.llm,
+                override=override,
+                factory=self.llm_client_factory,
+            )
         )
 
 

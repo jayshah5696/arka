@@ -80,6 +80,16 @@ class StructuredOutputStrategy:
         raise NotImplementedError
 
 
+class StructuredResponseError(LLMClientError):
+    """Retain usage for a rejected response without formatting its text."""
+
+    def __init__(self, output: LLMOutput) -> None:
+        self.output = output
+        super().__init__(
+            "parse_error", "Provider output did not match the requested schema"
+        )
+
+
 class OpenAICompatibleJsonSchemaStrategy(StructuredOutputStrategy):
     name = "openai_compatible_json_schema"
 
@@ -163,10 +173,8 @@ class OpenAICompatibleJsonSchemaStrategy(StructuredOutputStrategy):
             parsed = schema.model_validate(
                 json.loads(client._extract_json_text(output.text))
             )
-        except (json.JSONDecodeError, ValidationError) as exc:
-            raise LLMClientError("parse_error", str(exc)) from exc
-        except ValueError as exc:
-            raise LLMClientError("parse_error", str(exc)) from exc
+        except (json.JSONDecodeError, ValidationError, ValueError):
+            raise StructuredResponseError(output) from None
         return output.model_copy(update={"parsed": parsed})
 
 
@@ -273,10 +281,8 @@ class PromptParseFallbackStrategy(StructuredOutputStrategy):
             parsed = schema.model_validate(
                 json.loads(client._extract_json_text(output.text))
             )
-        except (json.JSONDecodeError, ValidationError) as exc:
-            raise LLMClientError("parse_error", str(exc)) from exc
-        except ValueError as exc:
-            raise LLMClientError("parse_error", str(exc)) from exc
+        except (json.JSONDecodeError, ValidationError, ValueError):
+            raise StructuredResponseError(output) from None
         return output.model_copy(update={"parsed": parsed})
 
 
