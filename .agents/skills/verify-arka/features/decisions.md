@@ -19,3 +19,5 @@ Resume must make zero additional requests and preserve dataset bytes. Inspect `c
 ## Gotchas
 
 Fixture answers prove wiring and request reuse. They do not establish provider availability or scoring quality. Usage on resume retains historical totals; inspect saved request counts to detect new calls. Optional live verification uses an instrumented production pipeline and is a separate recipe, not installed-CLI proof.
+
+Quality repair uses additional source evidence and is excluded from panel prefetch. The [repair recipe](repair.md) checks that boundary through the CLI.

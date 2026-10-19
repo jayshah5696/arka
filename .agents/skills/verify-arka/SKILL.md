@@ -36,12 +36,13 @@ Obtain the model separately from https://dl.fbaipublicfiles.com/fasttext/supervi
 
 ## Drive
 
-Run `just check` and `uv build` for code changes. Then run `just verify`. It checks CLI readiness, validates all current example configs, previews their stages, and runs two installed-CLI workflows:
+Run `just check` and `uv build` for code changes. Then run `just verify`. It checks CLI readiness, validates all current example configs, previews their stages, and runs three installed-CLI workflows:
 
 - PDF generation, text cleanup, taxonomy coverage selection, and resume.
 - Decision seed gating, shared panel scoring, critics, selection, usage reporting, and resume.
+- Bounded answer repair, rubric eligibility, PDF grounding, PII rejection, downstream deduplication, and interrupted resume.
 
-Both use actual SDK HTTP requests to deterministic loopback fixtures. No internal setter substitutes for the CLI path.
+All three use actual SDK HTTP requests to deterministic loopback fixtures. No internal setter substitutes for the CLI path.
 
 Run optional checks only when relevant:
 
@@ -62,17 +63,20 @@ Under `cleanup/`, inspect `result.json`, `requests.json`, source PDF/taxonomy, a
 
 Under `decisions/`, inspect the corresponding files. Three seeds produce two exports through nine requests. Resume must preserve dataset bytes and make zero new requests. The resolved config must redact the dummy key. Fixture cost fields use synthetic rates and are not actual charges.
 
+Under `repair/`, inspect `result.json`, `requests.json`, and each scenario's logs, attempt JSON, stats, Parquet and exports. Seven scenarios make 27 local requests. The bounded case retains two exports after deduplication. Completed resumes make zero new requests. Interrupted resume makes one judgment request and does not repeat persisted generation. Changed rubric and input artifacts must fail before provider calls. See [repair](features/repair.md).
+
 Report the exact command, revision, action, resulting state, and artifact paths. Separate local fixture proof, optional native/HF proof, live provider proof, and representative dataset audits. Do not claim skipped checks passed.
 
 ## Cleanup
 
-Normal helper exit shuts down only its own loopback server. No helper deletes evidence. After the command returns, confirm both child `result.json` files, datasets, and `resume.log` files remain. If interrupted, inspect this run's process tree before stopping only its processes. Preserve partial logs and do not reuse the directory for fresh proof. Do not use broad process kills or remove model files.
+Normal helper exit shuts down only its own loopback server. No helper deletes evidence. After the command returns, confirm all three child `result.json` files, datasets, and resume logs remain. If interrupted, inspect this run's process tree before stopping only its processes. Preserve partial logs and do not reuse the directory for fresh proof. Do not use broad process kills or remove model files.
 
 ## Helpers
 
 - `just verify [--output PATH]` runs `uv run python scripts/verify_local.py` with the same optional argument.
 - `uv run python scripts/verify_cleanup_cli.py --output PATH` runs PDF cleanup and taxonomy selection.
 - `uv run python scripts/verify_decisions_cli.py [--output PATH]` runs decision scoring and resume.
+- `uv run python scripts/verify_repair_cli.py [--output PATH]` runs bounded repair and resume.
 - `uv run --extra language python scripts/verify_stack_cli.py --output PATH` runs the native cleanup/reasoning recipe.
 - `uv run --extra language --with transformers --with datasets --with jinja2 python scripts/verify_hf_exports.py --output PATH` checks existing stack exports.
 - `uv run python scripts/verify_decisions_live.py --output PATH` runs the separately authorized live provider recipe.
