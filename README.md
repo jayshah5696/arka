@@ -71,6 +71,7 @@ output:
 ## Documentation
 
 - **[Features & Architecture](docs/features.md)** — pipeline stages, dedup strategies, filter stack
+- [Repair failed answers](docs/quality-repair.md) explains bounded answer repair, eligibility and resume.
 - **[Configuration Reference](docs/configuration.md)** — every YAML key explained
 - **[Example Configs](examples/README.md)** — 8 runnable examples from minimal to privacy guardrails
 

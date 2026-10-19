@@ -52,6 +52,11 @@ class StageSpec:
 
 
 _STAGE_SPECS: dict[str, StageSpec] = {
+    "quality_repair": StageSpec(
+        stage_tag="quality_repair",
+        config_cls="arka.config.models.QualityRepairConfig",
+        stage_cls="arka.pipeline.quality_repair.QualityRepairStage",
+    ),
     "decision_panel": StageSpec(
         stage_tag="decision_panel",
         config_cls="arka.config.models.DecisionPanelConfig",

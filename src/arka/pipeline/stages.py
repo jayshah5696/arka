@@ -21,6 +21,12 @@ class Stage(ABC):
     stage_action: str = "transformed"
     config: Any = None
 
+    def validate_resume(
+        self, ctx: StageContext, records: list[Record] | None = None
+    ) -> None:
+        """Validate external inputs before the runner reuses completed artifacts."""
+        return None
+
     def __init__(self, config: Any = None, **kwargs: Any) -> None:
         self.config = config
 

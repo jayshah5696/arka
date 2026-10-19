@@ -83,6 +83,15 @@ def main() -> int:
                 str(output / "decisions"),
             ],
         ),
+        (
+            "repair",
+            [
+                sys.executable,
+                str(ROOT / "scripts/verify_repair_cli.py"),
+                "--output",
+                str(output / "repair"),
+            ],
+        ),
     ]
     result_path = output / "result.json"
     result_path.write_text(json.dumps(summary, indent=2))

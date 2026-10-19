@@ -399,6 +399,24 @@ class LabelingScoreConfig(DecisionStageOptions):
     min_overall_score: float | None = None
 
 
+class QualityRepairConfig(StrictModel):
+    type: Literal["quality_repair"] = "quality_repair"
+    rubric_path: str = Field(min_length=1)
+    min_scores: dict[str, Annotated[float, Field(allow_inf_nan=False)]] = Field(
+        min_length=1
+    )
+    repair_dimensions: list[str] = Field(min_length=1)
+    max_repairs: int = Field(ge=0)
+    backend: Literal["llm", "decision"] = "llm"
+    min_confidence: float = Field(default=0.5, ge=0, le=1)
+    decision_override: DecisionOverride | None = None
+    judge_llm_override: StageLLMOverride | None = None
+    llm_override: StageLLMOverride | None = None
+    temperature: float = Field(default=0.2, ge=0, le=2)
+    max_tokens: int = Field(default=512, ge=1)
+    evidence_stage: str = Field(default="01_source", pattern=r"^[\w-]+$")
+
+
 class IFDFilterConfig(StrictModel):
     type: Literal["ifd"] = "ifd"
     min_score: float = 0.2
@@ -739,6 +757,7 @@ PipelineStageConfig = Annotated[
     | Annotated[IFDFilterConfig, Tag("ifd")]
     | Annotated[LabelingFilterConfig, Tag("labeling_engine")]
     | Annotated[LabelingScoreConfig, Tag("labeling_score")]
+    | Annotated[QualityRepairConfig, Tag("quality_repair")]
     | Annotated[RewardModelFilterConfig, Tag("reward_model")]
     | Annotated[PairDeltaFilterConfig, Tag("pair_delta")]
     | Annotated[CompositeSelectConfig, Tag("select")]
@@ -771,6 +790,8 @@ class ResolvedConfig(StrictModel):
         from arka.pipeline.registry import get_stage_spec
 
         generator_seen = False
+        if sum(stage.type == "quality_repair" for stage in self.pipeline) > 1:
+            raise ValueError("Only one quality_repair stage is supported per run")
         for stage in self.pipeline:
             if (
                 stage.type == "labeling_engine"
