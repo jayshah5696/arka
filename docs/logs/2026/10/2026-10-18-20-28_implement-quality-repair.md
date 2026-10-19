@@ -21,3 +21,24 @@ The full test suite also passed: 662 tests passed and one optional native-langua
 `just verify` passed with the new repair recipe included, and the package build passed. The final suite reports 668 passed and one optional skip. All verification used local fixtures.
 
 I’ve inspected the exported records, drop reasons, usage totals, and resume artifacts. I’m preparing two commits so the product change and verification workflow are easy to review separately, then I’ll push the branch and create the PR.
+
+## Final response
+
+Created [PR #220: Add bounded answer repair for failed quality checks](https://github.com/jayshah5696/arka/pull/220).
+
+The new `quality_repair` stage:
+
+- Judges answers against explicit rubric thresholds and attempts one repair for eligible failures, within a configured limit.
+- Preserves instructions, links replacements to originals, and clears stale response scores and reasoning.
+- Uses permitted PDF evidence and the existing PII protection.
+- Saves judgments and generations so resume can reuse completed work.
+
+Validation passed:
+
+- `just check`: 668 passed, one optional native-language test skipped.
+- `uv build`: source archive and wheel built.
+- `just verify`: all default workflows passed, including seven repair scenarios with 27 local HTTP requests.
+
+The CLI proof covers downstream deduplication, PII rejection, changed-input rejection and interrupted resume without repeating saved generation. Representative answer-quality gains and production cost savings remain unmeasured.
+
+Configuration and limitations are documented in [docs/quality-repair.md](../../../../quality-repair.md).

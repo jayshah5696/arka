@@ -2,6 +2,8 @@
 
 Verified on October 18, 2026, in the working tree based on `dcd3088d93e6e56824699b2448db114dbef35d71`. Product changes were pending when the verification helper recorded that revision.
 
+The verified product files were committed as `e914859`. The verification workflow was committed as `49f69f9`. No product code changed after the final proof. The change is published in [PR #220](https://github.com/jayshah5696/arka/pull/220).
+
 ## Commands and results
 
 - The initial `uv run pytest tests/unit/test_quality_repair.py --no-cov -q` failed during collection because the new config and stage did not yet exist. The failure cases and 21 focused checks were written before product code.
