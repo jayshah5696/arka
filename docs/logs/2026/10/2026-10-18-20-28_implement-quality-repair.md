@@ -41,4 +41,4 @@ Validation passed:
 
 The CLI proof covers downstream deduplication, PII rejection, changed-input rejection and interrupted resume without repeating saved generation. Representative answer-quality gains and production cost savings remain unmeasured.
 
-Configuration and limitations are documented in [docs/quality-repair.md](../../../../quality-repair.md).
+Configuration and limitations are documented in [docs/quality-repair.md](../../../quality-repair.md).
