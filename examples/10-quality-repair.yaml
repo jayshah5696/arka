@@ -1,0 +1,31 @@
+# WHAT:      Repair eligible failed answers once and check replacements.
+# WHEN:      Use this to rescue tasks while preserving their instructions.
+# REQUIRES:  OPENROUTER_API_KEY and the included rewrite seeds and rubric.
+# RUN:       uv run arka --config examples/10-quality-repair.yaml --run-id repair-10
+# ARTIFACTS: runs/repair-10/ and output/10-quality-repair.jsonl.
+# TEACHES:   Explicit repair eligibility, limits, provenance and resume.
+# COST:      medium
+version: "1"
+llm:
+  provider: openai
+  model: google/gemini-3.1-flash-lite-preview
+  api_key: ${OPENROUTER_API_KEY}
+  base_url: https://openrouter.ai/api/v1
+executor:
+  mode: threadpool
+  max_workers: 2
+pipeline:
+  - type: seed_source
+    path: ./seeds/07-humanizer-rewrite.jsonl
+  - type: normalize_conversation
+  - type: quality_repair
+    rubric_path: ../rubrics/sft_quality.yaml
+    min_scores:
+      instruction_clarity: 3
+      response_quality: 3
+    repair_dimensions: [response_quality]
+    max_repairs: 10
+  - type: exact
+output:
+  format: chatml
+  path: ./output/10-quality-repair.jsonl

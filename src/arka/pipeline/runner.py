@@ -69,6 +69,20 @@ class PipelineRunner:
             raise ValueError(
                 "PII policy is absent from existing artifacts; use a new run ID"
             )
+        if resume:
+            # Validate external stage dependencies before replacing run metadata.
+            for stage in stages:
+                stage.validate_resume(
+                    StageContext(
+                        run_id=run_id,
+                        stage_name=stage.name,
+                        work_dir=policy_path.parent / "stages" / stage.name,
+                        config=resolved_config,
+                        executor_mode=resolved_config.executor.mode,
+                        max_workers=resolved_config.executor.max_workers,
+                        privacy=privacy,
+                    )
+                )
         run_paths = RunPaths.bootstrap(root_dir=self.project_root, run_id=run_id)
         policy_path.write_text(json.dumps({"fingerprint": policy_identity}))
         checkpoint_manager = CheckpointManager(run_paths.sqlite_path)
@@ -93,6 +107,21 @@ class PipelineRunner:
                 max_workers=resolved_config.executor.max_workers
             ) as shared_executor:
                 for i, stage in enumerate(stages, 1):
+                    # A completed stage can depend on files outside resolved YAML.
+                    # Check those identities before skipping its run method.
+                    if resume:
+                        stage.validate_resume(
+                            StageContext(
+                                run_id=run_id,
+                                stage_name=stage.name,
+                                work_dir=run_paths.stage_dir(stage.name),
+                                config=resolved_config,
+                                executor_mode=resolved_config.executor.mode,
+                                max_workers=resolved_config.executor.max_workers,
+                                privacy=privacy,
+                            ),
+                            records=records,
+                        )
                     stage_path = run_paths.stage_data_path(stage.name)
                     stage_checkpoint = checkpoint_manager.load_stage(run_id, stage.name)
                     if self._should_resume_stage(

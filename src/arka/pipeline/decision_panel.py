@@ -9,6 +9,7 @@ from arka.pipeline.decision_stages import (
     attach_answers,
     decision_questions,
     decision_usage,
+    get_decision_spec,
     record_state,
 )
 from arka.pipeline.models import StageContext
@@ -38,6 +39,10 @@ class DecisionPanelStage(Stage):
             cfg
             for cfg in ctx.config.pipeline[index + 1 :]
             if getattr(cfg, "backend", None) == "decision"
+            and (
+                (spec := get_decision_spec(cfg.type)) is not None
+                and spec.panel_compatible
+            )
             and (self.config.include == "auto" or cfg.type in self.config.include)
             and resolve_decision_config(ctx.config.decisions, cfg.decision_override)
             == effective

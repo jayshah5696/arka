@@ -1373,6 +1373,94 @@
       "title": "LabelingFilterConfig",
       "type": "object"
     },
+    "LabelingScoreConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "decision_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "accept_at": {
+          "default": 0.85,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Accept At",
+          "type": "number"
+        },
+        "reject_at": {
+          "default": 0.2,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Reject At",
+          "type": "number"
+        },
+        "on_uncertain": {
+          "default": "keep",
+          "enum": [
+            "keep",
+            "drop",
+            "escalate"
+          ],
+          "title": "On Uncertain",
+          "type": "string"
+        },
+        "min_confidence": {
+          "default": 0.5,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Min Confidence",
+          "type": "number"
+        },
+        "backend": {
+          "default": "llm",
+          "enum": [
+            "llm",
+            "decision"
+          ],
+          "title": "Backend",
+          "type": "string"
+        },
+        "type": {
+          "const": "labeling_score",
+          "default": "labeling_score",
+          "title": "Type",
+          "type": "string"
+        },
+        "rubric_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rubric Path"
+        },
+        "min_overall_score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Overall Score"
+        }
+      },
+      "title": "LabelingScoreConfig",
+      "type": "object"
+    },
     "LanguageFilterConfig": {
       "additionalProperties": false,
       "properties": {
@@ -1927,6 +2015,119 @@
         }
       },
       "title": "PromptBasedGeneratorConfig",
+      "type": "object"
+    },
+    "QualityRepairConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "quality_repair",
+          "default": "quality_repair",
+          "title": "Type",
+          "type": "string"
+        },
+        "rubric_path": {
+          "minLength": 1,
+          "title": "Rubric Path",
+          "type": "string"
+        },
+        "min_scores": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "minProperties": 1,
+          "title": "Min Scores",
+          "type": "object"
+        },
+        "repair_dimensions": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Repair Dimensions",
+          "type": "array"
+        },
+        "max_repairs": {
+          "minimum": 0,
+          "title": "Max Repairs",
+          "type": "integer"
+        },
+        "backend": {
+          "default": "llm",
+          "enum": [
+            "llm",
+            "decision"
+          ],
+          "title": "Backend",
+          "type": "string"
+        },
+        "min_confidence": {
+          "default": 0.5,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Min Confidence",
+          "type": "number"
+        },
+        "decision_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "judge_llm_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StageLLMOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "llm_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StageLLMOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "temperature": {
+          "default": 0.2,
+          "maximum": 2,
+          "minimum": 0,
+          "title": "Temperature",
+          "type": "number"
+        },
+        "max_tokens": {
+          "default": 512,
+          "minimum": 1,
+          "title": "Max Tokens",
+          "type": "integer"
+        },
+        "evidence_stage": {
+          "default": "01_source",
+          "pattern": "^[\\w-]+$",
+          "title": "Evidence Stage",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rubric_path",
+        "min_scores",
+        "repair_dimensions",
+        "max_repairs"
+      ],
+      "title": "QualityRepairConfig",
       "type": "object"
     },
     "ReasoningLanguageGateConfig": {
@@ -2642,6 +2843,7 @@
             "identity_claim": "#/$defs/IdentityClaimFilterConfig",
             "ifd": "#/$defs/IFDFilterConfig",
             "labeling_engine": "#/$defs/LabelingFilterConfig",
+            "labeling_score": "#/$defs/LabelingScoreConfig",
             "language": "#/$defs/LanguageFilterConfig",
             "length": "#/$defs/LengthFilterConfig",
             "near": "#/$defs/NearDedupConfig",
@@ -2649,6 +2851,7 @@
             "pair_delta": "#/$defs/PairDeltaFilterConfig",
             "pdf_source": "#/$defs/PDFSourceConfig",
             "prompt_based_generator": "#/$defs/PromptBasedGeneratorConfig",
+            "quality_repair": "#/$defs/QualityRepairConfig",
             "reasoning_language_gate": "#/$defs/ReasoningLanguageGateConfig",
             "repetition": "#/$defs/RepetitionFilterConfig",
             "reward_model": "#/$defs/RewardModelFilterConfig",
@@ -2725,6 +2928,12 @@
           },
           {
             "$ref": "#/$defs/LabelingFilterConfig"
+          },
+          {
+            "$ref": "#/$defs/LabelingScoreConfig"
+          },
+          {
+            "$ref": "#/$defs/QualityRepairConfig"
           },
           {
             "$ref": "#/$defs/RewardModelFilterConfig"

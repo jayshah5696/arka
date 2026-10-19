@@ -92,6 +92,7 @@ class DecisionStageSpec:
         tuple[Record, str, str | None],
     ]
     requires_conversation: bool = True
+    panel_compatible: bool = True
 
 
 DECISION_SPECS: dict[str, DecisionStageSpec] = {}
@@ -172,6 +173,21 @@ def _build_labeling_questions(
     config: Any, record: Record, project_root: Path
 ) -> list[DecisionQuestion]:
     return rubric_questions(RubricLoader().load(project_root / config.rubric_path))
+
+
+def _build_repair_questions(
+    config: Any, record: Record, project_root: Path
+) -> list[DecisionQuestion]:
+    return [
+        question.model_copy(
+            update={
+                "instructions": question.instructions
+                + "\nHonor the task system message. For grounded tasks, assess support "
+                "using only the supplied permitted source evidence."
+            }
+        )
+        for question in _build_labeling_questions(config, record, project_root)
+    ]
 
 
 def _judge_labeling_answers(
@@ -480,6 +496,14 @@ register_decision_spec(
         build_questions=_build_double_critic_questions,
         judge_answers=_judge_double_critic_answers,
         requires_conversation=True,
+    )
+)
+register_decision_spec(
+    DecisionStageSpec(
+        kind="quality_repair",
+        build_questions=_build_repair_questions,
+        judge_answers=_judge_labeling_answers,
+        panel_compatible=False,
     )
 )
 register_decision_spec(
