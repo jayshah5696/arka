@@ -452,6 +452,74 @@ def test_pii_rejection_preserves_usage_without_judging_candidate(tmp_path):
 
 
 @pytest.mark.parametrize(
+    "rejected_judgment", ["passing_initial", "failing_initial", "final"]
+)
+def test_pii_rejected_judgment_stops_record_and_survives_resume(
+    tmp_path, rejected_judgment
+):
+    rejected = {
+        **judgment(1 if rejected_judgment == "failing_initial" else 4),
+        "reasoning": "Contact alice@example.com",
+    }
+    outputs = (
+        [judgment(1), {"response": "Fixed answer"}, rejected]
+        if rejected_judgment == "final"
+        else [rejected]
+    )
+    fake = FakeLLM(outputs)
+    stage, ctx = context(tmp_path, fake)
+    policy = build_policy(
+        PIIConfig.model_validate(
+            {
+                "backend": "regex",
+                "languages": ["en"],
+                "entities": ["email"],
+                "blocked_entities": ["email"],
+            }
+        ),
+        tmp_path,
+    )
+    ctx = replace(ctx, privacy=policy)
+    result = stage.run([record()], ctx)
+    assert not result.kept
+    assert result.dropped[0].stage_events[-1].reason_code == "pii_blocked_entity"
+    assert result.dropped[0].scores.judge_model != "fixture"
+    stats = result.report.model_dump()
+    assert stats["initially_passing"] == 0
+    assert stats["accepted_repairs"] == 0
+    assert stats["by_source"]["ungrouped"]["failed_records"] == int(
+        rejected_judgment == "final"
+    )
+    assert stats["llm_usage"]["requests"] == len(outputs)
+    assert stats["cost_usd"] == pytest.approx(0.01 * len(outputs))
+    assert len(fake.calls) == len(outputs)
+    assert all(
+        "alice@example.com" not in p.read_text() for p in ctx.work_dir.rglob("*.json")
+    )
+    saved = json.loads(next(ctx.work_dir.glob("attempt-*.json")).read_text())
+    judgment_key = "final" if rejected_judgment == "final" else "initial"
+    assert saved[judgment_key]["drop_reason"] == "pii_blocked_entity"
+    assert saved[judgment_key]["reasoning"] == "Contact [email]"
+    resumed = stage.run([record()], replace(ctx, resume=True))
+    assert not resumed.kept
+    assert resumed.report.model_dump() == stats
+    assert len(fake.calls) == len(outputs)
+
+
+def test_resume_rejects_attempts_without_judgment_privacy_outcomes(tmp_path):
+    fake = FakeLLM([judgment()])
+    stage, ctx = context(tmp_path, fake)
+    stage.run([record()], ctx)
+    path = ctx.work_dir / "repair_identity.json"
+    identity = json.loads(path.read_text())
+    identity["version"] = 1
+    path.write_text(json.dumps(identity))
+    with pytest.raises(ValueError, match="new run ID"):
+        stage.validate_resume(replace(ctx, resume=True), records=[record()])
+    assert len(fake.calls) == 1
+
+
+@pytest.mark.parametrize(
     "options",
     [
         {"min_scores": {"missing": 3}},
