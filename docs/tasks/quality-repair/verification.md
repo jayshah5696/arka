@@ -6,9 +6,9 @@ The verified product files were committed as `e914859`. The verification workflo
 
 ## Commands and results
 
-- The initial `uv run pytest tests/unit/test_quality_repair.py --no-cov -q` failed during collection because the new config and stage did not yet exist. The failure cases and 21 focused checks were written before product code.
+- The initial `uv run pytest tests/unit/test_quality_repair.py --no-cov -q` failed during collection because the new config and stage did not yet exist. The failure cases and 25 focused checks were written before product code.
 - The focused checks passed after implementation. Corrections to the test fixture used the existing PII configuration fields.
-- `just check` passed lint, format checks and 668 tests. One optional native-language integration test skipped because its model prerequisite was absent.
+- `just check` passed lint, format checks and 672 tests. One optional native-language integration test skipped because its model prerequisite was absent.
 - `uv build` produced the source archive and wheel. The build emitted the existing uv-build version warning and completed successfully.
 - `just verify` passed CLI readiness, example validation and previews, cleanup, decisions and repair.
 - `git diff --check` passed.

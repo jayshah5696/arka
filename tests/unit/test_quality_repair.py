@@ -331,11 +331,58 @@ def test_invalid_judge_scores_fail_before_repair(tmp_path, output):
     assert len(fake.calls) == 1
 
 
-def test_malformed_repair_fails_without_a_second_attempt(tmp_path):
-    fake = FakeLLM([judgment(1), {"instruction": "Changed task", "response": "Answer"}])
+@pytest.mark.parametrize("with_pii", [False, True])
+def test_malformed_repair_fails_without_a_second_attempt(tmp_path, with_pii):
+    class RawMalformedLLM:
+        def __init__(self):
+            self.calls = []
+
+        def complete_structured(self, messages, schema, **kwargs):
+            self.calls.append(messages)
+            if len(self.calls) == 1:
+                return LLMOutput(
+                    parsed=schema.model_validate(judgment(1)),
+                    usage=TokenUsage(
+                        prompt_tokens=10,
+                        completion_tokens=5,
+                        total_tokens=15,
+                        cost_usd=0.01,
+                    ),
+                    model="fixture",
+                    provider="openai",
+                    latency_ms=1,
+                )
+            return LLMOutput(
+                text='{"instruction": "Changed task", "response": "alice@example.com"}',
+                parsed=None,
+                usage=TokenUsage(
+                    prompt_tokens=10,
+                    completion_tokens=5,
+                    total_tokens=15,
+                    cost_usd=0.01,
+                ),
+                model="fixture",
+                provider="openai",
+                latency_ms=1,
+            )
+
+    fake = RawMalformedLLM()
     stage, ctx = context(tmp_path, fake)
-    with pytest.raises(ValueError):
+    if with_pii:
+        policy = build_policy(
+            PIIConfig.model_validate(
+                {
+                    "backend": "regex",
+                    "languages": ["en"],
+                    "entities": ["email"],
+                }
+            ),
+            tmp_path,
+        )
+        ctx = replace(ctx, privacy=policy)
+    with pytest.raises(Exception) as exc_info:
         stage.run([record()], ctx)
+    assert "alice@example.com" not in str(exc_info.value)
     assert len(fake.calls) == 2
 
 
@@ -430,3 +477,198 @@ def test_required_bounds_and_registry(tmp_path):
         )
     stage, _ = context(tmp_path, FakeLLM([]))
     assert isinstance(stage, QualityRepairStage)
+
+
+def test_rerun_without_resume_preserves_upstream_artifacts(tmp_path):
+    from arka.pipeline.runner import PipelineRunner
+
+    (tmp_path / "seeds.jsonl").write_text(
+        '{"instruction": "Explain gravity", "response": "Old answer"}\n'
+    )
+    fake = FakeLLM([judgment()])
+    _, ctx = context(tmp_path, fake)
+    from arka.config.models import SeedSourceConfig
+
+    cfg = ctx.config.model_copy(
+        update={
+            "pipeline": [
+                SeedSourceConfig(path=str(tmp_path / "seeds.jsonl")),
+                *ctx.config.pipeline,
+            ]
+        }
+    )
+    stages = StageBuilder(cfg, tmp_path).build()
+    runner = PipelineRunner(tmp_path)
+    original_build = StageContext.llm_client
+    StageContext.llm_client = lambda self, override=None: fake
+    try:
+        runner.run(cfg, stages, "r", resume=False)
+        source_parquet = tmp_path / "runs/r/stages/01_source/data.parquet"
+        source_bytes = source_parquet.read_bytes()
+        with pytest.raises(
+            ValueError,
+            match="Quality repair artifacts exist; resume or use a new run ID",
+        ):
+            runner.run(cfg, stages, "r", resume=False)
+        assert source_parquet.read_bytes() == source_bytes
+        runner.run(cfg, stages, "r", resume=True)
+        assert len(fake.calls) == 1
+    finally:
+        StageContext.llm_client = original_build
+
+
+def test_sqlite_llm_cache_disabled_across_records_on_resume(tmp_path):
+    from openai.types.chat import ChatCompletion, ChatCompletionMessage
+    from openai.types.chat.chat_completion import Choice
+    from openai.types.completion_usage import CompletionUsage
+
+    from arka.pipeline.checkpoint import CheckpointManager
+
+    responses = iter(
+        [
+            judgment(4),
+            judgment(1),
+            {"response": "Fixed answer"},
+            RuntimeError("interrupted before final judgment"),
+            judgment(1),
+        ]
+    )
+    calls = []
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            calls.append(kwargs["messages"])
+            item = next(responses)
+            if isinstance(item, Exception):
+                raise item
+            return ChatCompletion(
+                id="chatcmpl-1",
+                choices=[
+                    Choice(
+                        finish_reason="stop",
+                        index=0,
+                        message=ChatCompletionMessage(
+                            role="assistant", content=json.dumps(item)
+                        ),
+                    )
+                ],
+                created=1,
+                model="fixture",
+                object="chat.completion",
+                usage=CompletionUsage(
+                    prompt_tokens=10, completion_tokens=5, total_tokens=15
+                ),
+            )
+
+    class FakeOpenAI:
+        def __init__(self):
+            self.chat = type("Chat", (), {"completions": FakeCompletions()})()
+
+    stage, ctx = context(tmp_path, FakeLLM([]))
+    checkpoint = CheckpointManager(tmp_path / "state.sqlite")
+    try:
+        from arka.llm.client import LLMClient
+
+        ctx = replace(
+            ctx,
+            checkpoint_manager=checkpoint,
+            llm_client_factory=lambda cfg: LLMClient(
+                cfg, client_factory=lambda _c: FakeOpenAI()
+            ),
+        )
+        records = [
+            record("shared").model_copy(
+                update={
+                    "payload": record("shared").payload.model_copy(
+                        update={"response": "Fixed answer"}
+                    )
+                }
+            ),
+            record("shared"),
+        ]
+        with pytest.raises(RuntimeError, match="interrupted"):
+            stage.run(records, ctx)
+        assert len(calls) == 4
+        resumed_ctx = replace(ctx, resume=True)
+        result = QualityRepairStage(config=stage.config, project_root=tmp_path).run(
+            records, resumed_ctx
+        )
+        assert len(calls) == 5
+        assert len(result.kept) == 1
+        assert result.dropped[0].stage_events[-1].reason_code == "repair_exhausted"
+    finally:
+        checkpoint.close()
+
+
+def test_validate_resume_matches_protected_inputs_and_cached_decision_costs(tmp_path):
+    fake = FakeLLM([judgment()])
+    stage, ctx = context(tmp_path, fake)
+    policy = build_policy(
+        PIIConfig.model_validate(
+            {
+                "backend": "regex",
+                "languages": ["en"],
+                "entities": ["email"],
+            }
+        ),
+        tmp_path,
+    )
+    ctx = replace(ctx, privacy=policy)
+    raw_records = [
+        record().model_copy(
+            update={
+                "payload": record().payload.model_copy(
+                    update={"instruction": "Email alice@example.com"}
+                )
+            }
+        )
+    ]
+    stage.run(raw_records, ctx)
+    pii_report_path = ctx.work_dir / "pii_report.json"
+    pii_report_bytes = pii_report_path.read_bytes()
+    stage.validate_resume(replace(ctx, resume=True), records=raw_records)
+    assert pii_report_path.read_bytes() == pii_report_bytes
+
+    # Cached decision judgments with requests_sent=0 must not mark cost_complete False.
+    dec_fake = FakeLLM([{"response": "Fixed answer"}])
+    (tmp_path / "dec").mkdir()
+    dec_stage, dec_ctx = context(tmp_path / "dec", dec_fake, backend="decision")
+
+    class CachedDecisions:
+        def __init__(self):
+            self.calls = 0
+
+        def decide(self, state, questions):
+            self.calls += 1
+            score = 1 if self.calls == 1 else 4
+            cached = self.calls == 2
+            answers = {
+                q.name: ScoreAnswer(
+                    score=score,
+                    confidence=1,
+                    probabilities={i: float(i == score) for i in range(5)},
+                )
+                for q in questions
+            }
+            return DecisionResult(
+                answers=answers,
+                model="fixture",
+                provider="openai",
+                requests_sent=0 if cached else 1,
+                cache_hits=len(questions) if cached else 0,
+                usage=TokenUsage(
+                    prompt_tokens=0 if cached else 7,
+                    cost_usd=None if cached else 0.01,
+                ),
+            )
+
+        def close(self):
+            pass
+
+    dec_ctx = replace(
+        dec_ctx, decision_client_factory=lambda config, **kwargs: CachedDecisions()
+    )
+    dec_result = dec_stage.run([record("a")], dec_ctx)
+    dump = dec_result.report.model_dump()
+    assert dump["cost_complete"] is True
+    assert dump["repair_cost_complete"] is True

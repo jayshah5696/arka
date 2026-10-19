@@ -333,6 +333,18 @@ def main() -> None:
             records[1].lineage.operator == "quality_repair"
             and records[1].payload.instruction == "Explain shared"
         )
+        source_parquet = directory / "runs/repair/stages/01_source/data.parquet"
+        source_bytes = source_parquet.read_bytes()
+        before = len(requests)
+        missing_resume = run(
+            directory, config, "missing-resume", resume=False, expect_success=False
+        )
+        assert (
+            "Quality repair artifacts exist; resume or use a new run ID"
+            in missing_resume.stderr
+            and len(requests) == before
+            and source_parquet.read_bytes() == source_bytes
+        )
         resume_proof(directory, config)
         rubric_path = directory / "rubric.yaml"
         original_rubric = rubric_path.read_text()

@@ -18,6 +18,7 @@ They are organized from simplest to more advanced workflows.
 7. `07-resume-debug.yaml` — resume-oriented debug workflow
 8. `08-privacy-guardrails.yaml` checks similarity and canary phrases.
 9. `09-decision-models.yaml` uses seed gating, candidate ranking, and decision judges without an LLM fallback.
+10. `10-quality-repair.yaml` repairs eligible failed answers once and checks replacements before deduplication.
 
 ## Seeds and PDFs
 

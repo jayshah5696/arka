@@ -133,22 +133,60 @@ class QualityRepairStage(Stage):
         self, ctx: StageContext, records: list[Record] | None = None
     ) -> None:
         path = ctx.work_dir / "repair_identity.json"
-        if path.exists():
-            identity = RepairIdentity.model_validate_json(path.read_text())
-            if identity.version != 1 or identity.settings != self._settings(
-                ctx, self._rubric()
-            ):
-                raise ValueError(
-                    "Quality repair inputs or configuration changed; use a new run ID"
-                )
-            if records is not None and identity.inputs != self._inputs(records):
-                raise ValueError("Quality repair inputs changed; use a new run ID")
+        has_attempts = ctx.work_dir.exists() and any(
+            ctx.work_dir.glob("attempt-*.json")
+        )
+        if not path.exists() and not has_attempts:
+            return
+        if not ctx.resume:
+            raise ValueError(
+                "Quality repair artifacts exist; resume or use a new run ID"
+            )
+        if not path.exists():
+            raise ValueError("Quality repair identity is missing; use a new run ID")
+        identity = RepairIdentity.model_validate_json(path.read_text())
+        if identity.version != 1 or identity.settings != self._settings(
+            ctx, self._rubric()
+        ):
+            raise ValueError(
+                "Quality repair inputs or configuration changed; use a new run ID"
+            )
+        if records is not None and identity.inputs != self._inputs(records, ctx):
+            raise ValueError("Quality repair inputs changed; use a new run ID")
 
     @staticmethod
-    def _inputs(records: list[Record]) -> str:
+    def _inputs(records: list[Record], ctx: StageContext | None = None) -> str:
+        if ctx is not None and ctx.privacy is not None:
+            from arka.privacy.records import protect_record
+
+            protected: list[Record] = []
+            for record in records:
+                item, summary = protect_record(record, ctx.privacy)
+                if summary.categories:
+                    item = item.with_event(
+                        stage=ctx.stage_name,
+                        action="redacted",
+                        details=summary.model_dump_json(),
+                    )
+                if summary.drop_reason is None:
+                    protected.append(item)
+            records = protected
         return _hash(
             [r.model_dump(mode="json", exclude={"created_at"}) for r in records]
         )
+
+    @staticmethod
+    def _llm_client(ctx: StageContext, override: object) -> object:
+        # Attempt files already checkpoint completed judgments and repairs.
+        # Disable prompt-addressed SQLite caching so identical prompts across
+        # records or repaired candidates never collide on fresh client instances.
+        client = ctx.llm_client(override=override)
+        target = getattr(client, "client", client)
+        if hasattr(target, "cache_db_path"):
+            target.cache_db_path = None
+        if hasattr(target, "read_cache"):
+            target.read_cache = False
+        return client
 
     @staticmethod
     def _save(path: Path, value: StrictModel) -> None:
@@ -255,8 +293,8 @@ class QualityRepairStage(Stage):
                 uncertain=outcome == "uncertain",
             )
         else:
-            output = ctx.llm_client(
-                override=self.config.judge_llm_override
+            output = self._llm_client(
+                ctx, self.config.judge_llm_override
             ).complete_structured(messages=messages, schema=JudgeResponse)
             if not isinstance(output.parsed, JudgeResponse):
                 raise ValueError("Quality judge returned invalid scores")
@@ -382,25 +420,17 @@ class QualityRepairStage(Stage):
     def run(self, records: list[Record], ctx: StageContext) -> StageResult:
         rubric = self._rubric()
         ctx.work_dir.mkdir(parents=True, exist_ok=True)
-        self.validate_resume(ctx)
+        self.validate_resume(ctx, records)
         records = ctx.protect_records(records)
         identity_path = ctx.work_dir / "repair_identity.json"
-        identity = RepairIdentity(
-            settings=self._settings(ctx, rubric),
-            inputs=self._inputs(records),
-        )
-        if identity_path.exists():
-            if (
-                RepairIdentity.model_validate_json(identity_path.read_text())
-                != identity
-            ):
-                raise ValueError("Quality repair inputs changed; use a new run ID")
-            if not ctx.resume:
-                raise ValueError(
-                    "Quality repair artifacts exist; resume or use a new run ID"
-                )
-        else:
-            self._save(identity_path, identity)
+        if not identity_path.exists():
+            self._save(
+                identity_path,
+                RepairIdentity(
+                    settings=self._settings(ctx, rubric),
+                    inputs=self._inputs(records),
+                ),
+            )
         evidence_path = self._evidence_path(ctx)
         chunks = (
             [
@@ -453,10 +483,7 @@ class QualityRepairStage(Stage):
                             )
                             self._save(path, attempt)
                         if attempt.generation is None:
-                            client = ctx.guard_llm(
-                                ctx.llm_client(override=self.config.llm_override),
-                                retain_rejected_output=True,
-                            )
+                            client = self._llm_client(ctx, self.config.llm_override)
                             output = client.complete_structured(
                                 messages=attempt.repair_messages,
                                 schema=RepairResponse,
@@ -523,17 +550,29 @@ class QualityRepairStage(Stage):
         llm_calls = [j for j in judgments if j.decision is None] + [
             a.generation for a in attempts if a.generation
         ]
-        costs = [
-            call.usage.cost_usd
+        billable_calls = [
+            call
             for call in [*judgments, *[a.generation for a in attempts if a.generation]]
+            if not (
+                isinstance(call, QualityJudgment)
+                and call.decision is not None
+                and call.decision.requests_sent == 0
+            )
         ]
+        costs = [call.usage.cost_usd for call in billable_calls]
         known_costs = [c for c in costs if c is not None]
-        repair_costs = [
-            call.usage.cost_usd
+        repair_calls = [
+            call
             for attempt in attempts
             for call in (attempt.generation, attempt.final)
             if call is not None
+            and not (
+                isinstance(call, QualityJudgment)
+                and call.decision is not None
+                and call.decision.requests_sent == 0
+            )
         ]
+        repair_costs = [call.usage.cost_usd for call in repair_calls]
         by_source: dict[str, Counter] = {}
         for attempt in attempts:
             source = attempt.original.source

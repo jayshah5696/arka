@@ -69,20 +69,20 @@ class PipelineRunner:
             raise ValueError(
                 "PII policy is absent from existing artifacts; use a new run ID"
             )
-        if resume:
-            # Validate external stage dependencies before replacing run metadata.
-            for stage in stages:
-                stage.validate_resume(
-                    StageContext(
-                        run_id=run_id,
-                        stage_name=stage.name,
-                        work_dir=policy_path.parent / "stages" / stage.name,
-                        config=resolved_config,
-                        executor_mode=resolved_config.executor.mode,
-                        max_workers=resolved_config.executor.max_workers,
-                        privacy=privacy,
-                    )
+        # Validate stage resume and existing-artifact preconditions before replacing run metadata.
+        for stage in stages:
+            stage.validate_resume(
+                StageContext(
+                    run_id=run_id,
+                    stage_name=stage.name,
+                    work_dir=policy_path.parent / "stages" / stage.name,
+                    config=resolved_config,
+                    executor_mode=resolved_config.executor.mode,
+                    max_workers=resolved_config.executor.max_workers,
+                    resume=resume,
+                    privacy=privacy,
                 )
+            )
         run_paths = RunPaths.bootstrap(root_dir=self.project_root, run_id=run_id)
         policy_path.write_text(json.dumps({"fingerprint": policy_identity}))
         checkpoint_manager = CheckpointManager(run_paths.sqlite_path)
@@ -118,6 +118,7 @@ class PipelineRunner:
                                 config=resolved_config,
                                 executor_mode=resolved_config.executor.mode,
                                 max_workers=resolved_config.executor.max_workers,
+                                resume=resume,
                                 privacy=privacy,
                             ),
                             records=records,
