@@ -30,3 +30,19 @@ Checks ran on base revision `ea097afbe6f405eda7d734cd5f2009e45760aba2` with the 
 - `uv build` produced the source archive and wheel.
 
 The fix preserves the policy rejection in attempt JSON and dropped records. Counts exclude rejected judgments from initial quality passes and failures. Usage includes the rejected calls. Version 1 repair checkpoints require a new run ID. Broader source-audit and refill behavior remains undecided in issue 173.
+
+## Final response
+
+Created [PR #221: Honor privacy rejections in quality repair judgments](https://github.com/jayshah5696/arka/pull/221).
+
+Fixed a gap where `quality_repair` could accept an answer or request a repair after the privacy policy rejected the judge's reasoning. It now stops that record, preserves protected feedback and usage, and keeps rejected scores out of quality results. Resume preserves the rejection without new provider calls.
+
+Validation passed:
+
+- `just check`: 676 tests passed, one optional test skipped. Lint and formatting passed.
+- `uv build`: source archive and wheel built.
+- `just verify`: all default workflows passed, including ten repair scenarios with 32 local HTTP requests.
+
+Version 1 repair checkpoints require a new run ID because they did not store judgment privacy outcomes. Existing artifacts remain available.
+
+This PR fixes the existing targeted-repair workflow. Source audits, whole-source rebuilding and target refill remain open in #173.
