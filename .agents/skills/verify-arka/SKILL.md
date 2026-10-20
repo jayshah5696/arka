@@ -63,7 +63,7 @@ Under `cleanup/`, inspect `result.json`, `requests.json`, source PDF/taxonomy, a
 
 Under `decisions/`, inspect the corresponding files. Three seeds produce two exports through nine requests. Resume must preserve dataset bytes and make zero new requests. The resolved config must redact the dummy key. Fixture cost fields use synthetic rates and are not actual charges.
 
-Under `repair/`, inspect `result.json`, `requests.json`, and each scenario's logs, attempt JSON, stats, Parquet and exports. Seven scenarios make 27 local requests. The bounded case retains two exports after deduplication. Completed resumes make zero new requests. Interrupted resume makes one judgment request and does not repeat persisted generation. Changed rubric and input artifacts must fail before provider calls. See [repair](features/repair.md).
+Under `repair/`, inspect `result.json`, `requests.json`, and each scenario's logs, attempt JSON, stats, Parquet and exports. Ten scenarios make 32 local requests. The bounded case retains two exports after deduplication. Completed resumes make zero new requests. Interrupted resume makes one judgment request and does not repeat persisted generation. Privacy-rejected judgments stop the record, retain protected feedback and usage, and remain rejected on resume. Changed rubric, input artifacts and legacy repair identities must fail before provider calls. See [repair](features/repair.md).
 
 Report the exact command, revision, action, resulting state, and artifact paths. Separate local fixture proof, optional native/HF proof, live provider proof, and representative dataset audits. Do not claim skipped checks passed.
 

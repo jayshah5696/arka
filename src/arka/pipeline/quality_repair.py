@@ -50,6 +50,7 @@ class QualityJudgment(StrictModel):
     usage: TokenUsage
     decision: DecisionResult | None = None
     uncertain: bool = False
+    drop_reason: str | None = None
 
 
 class RepairResponse(StrictModel):
@@ -78,7 +79,7 @@ class RepairAttempt(StrictModel):
 
 
 class RepairIdentity(StrictModel):
-    version: int = 1
+    version: int = 2
     settings: str
     inputs: str
 
@@ -145,7 +146,7 @@ class QualityRepairStage(Stage):
         if not path.exists():
             raise ValueError("Quality repair identity is missing; use a new run ID")
         identity = RepairIdentity.model_validate_json(path.read_text())
-        if identity.version != 1 or identity.settings != self._settings(
+        if identity.version != 2 or identity.settings != self._settings(
             ctx, self._rubric()
         ):
             raise ValueError(
@@ -305,6 +306,7 @@ class QualityRepairStage(Stage):
                 provider=output.provider,
                 prompt_hash=_hash(messages),
                 usage=output.usage,
+                drop_reason=output.privacy.drop_reason if output.privacy else None,
             )
         dimensions = {d.name: d for d in rubric.dimensions}
         if set(judgment.scores) != dimensions.keys() or any(
@@ -464,7 +466,9 @@ class QualityRepairStage(Stage):
                         attempt.initial = self._judge(record, evidence, rubric, ctx)
                         self._save(path, attempt)
                     failed = self._failed(attempt.initial)
-                    if attempt.initial.uncertain:
+                    if attempt.initial.drop_reason:
+                        attempt.reason = attempt.initial.drop_reason
+                    elif attempt.initial.uncertain:
                         attempt.reason = "repair_uncertain_judgment"
                     elif not failed:
                         pass
@@ -524,7 +528,9 @@ class QualityRepairStage(Stage):
                                     attempt.candidate, evidence, rubric, ctx
                                 )
                                 self._save(path, attempt)
-                            if attempt.final.uncertain:
+                            if attempt.final.drop_reason:
+                                attempt.reason = attempt.final.drop_reason
+                            elif attempt.final.uncertain:
                                 attempt.reason = "repair_uncertain_judgment"
                             elif self._failed(attempt.final):
                                 attempt.reason = "repair_exhausted"
@@ -535,7 +541,7 @@ class QualityRepairStage(Stage):
             if attempt.reason:
                 rejected = attempt.candidate or attempt.original
                 judgment = attempt.final if attempt.candidate else attempt.initial
-                if judgment:
+                if judgment and not judgment.drop_reason:
                     rejected = self._scored(rejected, judgment, rubric)
                 dropped.append(rejected.dropped_by(self.name, attempt.reason))
             else:
@@ -588,6 +594,7 @@ class QualityRepairStage(Stage):
             counts["judged_records"] += int(attempt.initial is not None)
             counts["failed_records"] += int(
                 attempt.initial is not None
+                and not attempt.initial.drop_reason
                 and not attempt.initial.uncertain
                 and bool(self._failed(attempt.initial))
             )
@@ -603,6 +610,7 @@ class QualityRepairStage(Stage):
             drop_reasons=dict(Counter(r.stage_events[-1].reason_code for r in dropped)),
             initially_passing=sum(
                 a.initial is not None
+                and not a.initial.drop_reason
                 and not a.initial.uncertain
                 and not self._failed(a.initial)
                 for a in attempts

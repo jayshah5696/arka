@@ -104,6 +104,8 @@ def main() -> None:
                     },
                     "reasoning": "Correct the failed criterion",
                 }
+                if "Judge privacy" in user and ("initial" in user or not is_bad):
+                    result["reasoning"] = "Contact alice@example.com"
             self.send_json(
                 {
                     "id": f"fixture-{len(requests)}",
@@ -373,6 +375,18 @@ def main() -> None:
         )
         assert "new run ID" in changed.stderr and len(requests) == before
         input_path.write_bytes(original_inputs)
+        identity_path = stage / "repair_identity.json"
+        original_identity = identity_path.read_bytes()
+        identity = json.loads(original_identity)
+        identity["version"] = 1
+        identity_path.write_text(json.dumps(identity))
+        before = len(requests)
+        legacy = run(
+            directory, config, "legacy-identity", resume=True, expect_success=False
+        )
+        assert "new run ID" in legacy.stderr and len(requests) == before
+        assert source_parquet.read_bytes() == source_bytes
+        identity_path.write_bytes(original_identity)
         summary["scenarios"].append(
             {"name": "bounded", "requests": 12, "final_count": 2}
         )
@@ -459,6 +473,38 @@ def main() -> None:
         summary["scenarios"].append(
             {"name": "interrupted", "generation_calls": 1, "resume_requests": 1}
         )
+
+        for name, instruction, response, expected_requests in [
+            ("judge-privacy-pass", "Judge privacy initial pass", "Fixed answer", 1),
+            ("judge-privacy-fail", "Judge privacy initial fail", "BAD", 1),
+            ("judge-privacy-final", "Judge privacy final", "BAD", 3),
+        ]:
+            directory, config = scenario(name, [(instruction, response)], pii=True)
+            start = len(requests)
+            run(directory, config, "cli")
+            stage, stats, records = artifacts(directory)
+            assert not records and not (directory / "dataset.jsonl").read_bytes()
+            assert stats["drop_reasons"] == {"pii_blocked_entity": 1}
+            assert stats["initially_passing"] == stats["accepted_repairs"] == 0
+            assert len(requests) - start == expected_requests
+            assert stats["llm_usage"]["requests"] == expected_requests
+            assert abs(stats["cost_usd"] - 0.01 * expected_requests) < 1e-9
+            attempt = json.loads(next(stage.glob("attempt-*.json")).read_text())
+            key = "final" if name.endswith("final") else "initial"
+            assert attempt[key]["drop_reason"] == "pii_blocked_entity"
+            assert attempt[key]["reasoning"] == "Contact [email]"
+            assert attempt["complete"]
+            if key == "initial":
+                assert not attempt["admitted"] and attempt["generation"] is None
+            assert all(
+                "alice@example.com" not in path.read_text()
+                for path in stage.rglob("*.json")
+            )
+            resume_proof(directory, config)
+            assert artifacts(directory)[1] == stats
+            summary["scenarios"].append(
+                {"name": name, "final_count": 0, "requests": expected_requests}
+            )
         summary["status"] = "passed"
         summary["requests"] = len(requests)
         summary["request_paths"] = dict(Counter(r["path"] for r in requests))
