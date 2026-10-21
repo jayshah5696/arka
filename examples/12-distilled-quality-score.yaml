@@ -1,0 +1,32 @@
+# WHAT:      Annotate answers with a saved classifier without changing teacher scores.
+# WHEN:      Use this to inspect predictions before choosing a filtering threshold.
+# REQUIRES:  A compatible model from example 11 and its embedding model.
+# RUN:       uv run arka --config examples/12-distilled-quality-score.yaml --run-id quality-score
+# ARTIFACTS: runs/quality-score/ and output/12-quality-score.jsonl.
+# TEACHES:   Reusable inference with filtering disabled by default.
+# COST:      low
+version: "1"
+llm:
+  provider: openai
+  model: unused-during-scoring
+  api_key: unused
+  base_url: https://api.openai.com/v1
+executor:
+  mode: threadpool
+  max_workers: 2
+embeddings:
+  provider: huggingface
+  model: all-MiniLM-L6-v2
+pipeline:
+  - type: seed_source
+    path: ./seeds/07-humanizer-rewrite.jsonl
+  - type: normalize_conversation
+  - type: distilled_quality_score
+    model_path: ./runs/quality-train/stages/03_distilled_quality_train/model.json
+    rubric_path: ../rubrics/sft_quality.yaml
+    min_scores:
+      instruction_clarity: 3
+      response_quality: 3
+output:
+  format: jsonl
+  path: ./output/12-quality-score.jsonl

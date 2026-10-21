@@ -4,6 +4,8 @@
 
 Rubric thresholds, explicit repair dimensions, one attempt per admitted record, a run limit, passing originals, replacement lineage, source evidence, privacy rejection, downstream deduplication, usage and resume.
 
+`src/arka/pipeline/quality_repair.py` owns repair attempts and replacement state. `quality_judging.py` shares rubric validation, permitted evidence resolution and judging with source audits. Run this repair recipe after changes to the shared judging code as well as repair-specific changes.
+
 ## How to get to it
 
 Use `examples/10-quality-repair.yaml` or [the configuration guide](../../../../docs/quality-repair.md). Run the CLI with `--resume` to reuse persisted judgments and replacements.

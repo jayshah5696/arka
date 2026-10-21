@@ -1,0 +1,30 @@
+# WHAT:      Judge a deterministic sample per source and preserve all records.
+# WHEN:      Use this to inspect quality before choosing any intervention.
+# REQUIRES:  OPENROUTER_API_KEY and the included seeds and rubric.
+# RUN:       uv run arka --config examples/13-source-audit.yaml --run-id source-audit
+# ARTIFACTS: runs/source-audit/stages/03_source_audit/audit.json and stats.json.
+# TEACHES:   Sampling, observed source failure rates and resumable judgments.
+# COST:      low
+version: "1"
+llm:
+  provider: openai
+  model: google/gemini-3.1-flash-lite-preview
+  api_key: ${OPENROUTER_API_KEY}
+  base_url: https://openrouter.ai/api/v1
+executor:
+  mode: threadpool
+  max_workers: 2
+pipeline:
+  - type: seed_source
+    path: ./seeds/07-humanizer-rewrite.jsonl
+  - type: normalize_conversation
+  - type: source_audit
+    rubric_path: ../rubrics/sft_quality.yaml
+    min_scores:
+      instruction_clarity: 3
+      response_quality: 3
+    sample_size: 2
+    sample_seed: 0
+output:
+  format: jsonl
+  path: ./output/13-source-audit.jsonl

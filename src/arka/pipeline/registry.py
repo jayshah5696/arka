@@ -52,6 +52,23 @@ class StageSpec:
 
 
 _STAGE_SPECS: dict[str, StageSpec] = {
+    "source_audit": StageSpec(
+        stage_tag="source_audit",
+        config_cls="arka.config.models.SourceAuditConfig",
+        stage_cls="arka.pipeline.source_audit.SourceAuditStage",
+    ),
+    "distilled_quality_train": StageSpec(
+        stage_tag="distilled_quality_train",
+        config_cls="arka.config.models.DistilledQualityTrainConfig",
+        stage_cls="arka.pipeline.distilled_quality.DistilledQualityTrainStage",
+        requires_embeddings=True,
+    ),
+    "distilled_quality_score": StageSpec(
+        stage_tag="distilled_quality_score",
+        config_cls="arka.config.models.DistilledQualityScoreConfig",
+        stage_cls="arka.pipeline.distilled_quality.DistilledQualityScoreStage",
+        requires_embeddings=True,
+    ),
     "quality_repair": StageSpec(
         stage_tag="quality_repair",
         config_cls="arka.config.models.QualityRepairConfig",
