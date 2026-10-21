@@ -95,7 +95,7 @@ def validate_example_file(path: Path) -> list[str]:
     if not resolved.output.path.startswith("./"):
         errors.append(f"{path}: output.path must start with './'")
 
-    seed_path = resolved.data_source.path
+    seed_path = getattr(resolved.data_source, "path", None)
     if seed_path is not None and "/seeds/" in seed_path:
         candidate = (path.parent / seed_path).resolve()
         if not candidate.exists():

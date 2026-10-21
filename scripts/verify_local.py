@@ -92,6 +92,15 @@ def main() -> int:
                 str(output / "repair"),
             ],
         ),
+        (
+            "quality",
+            [
+                sys.executable,
+                str(ROOT / "scripts/verify_quality_cli.py"),
+                "--output",
+                str(output / "quality"),
+            ],
+        ),
     ]
     result_path = output / "result.json"
     result_path.write_text(json.dumps(summary, indent=2))

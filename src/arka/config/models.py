@@ -417,6 +417,44 @@ class QualityRepairConfig(StrictModel):
     evidence_stage: str = Field(default="01_source", pattern=r"^[\w-]+$")
 
 
+class DistilledQualityTrainConfig(StrictModel):
+    type: Literal["distilled_quality_train"] = "distilled_quality_train"
+    training_paths: list[Annotated[str, Field(min_length=1)]] = Field(min_length=1)
+    rubric_path: str = Field(min_length=1)
+    min_scores: dict[str, Annotated[float, Field(allow_inf_nan=False)]] = Field(
+        min_length=1
+    )
+    holdout_fraction: float = Field(default=0.25, gt=0, lt=1)
+    evaluation_threshold: float = Field(default=0.5, ge=0, le=1)
+    split_seed: int = 0
+
+
+class DistilledQualityScoreConfig(StrictModel):
+    type: Literal["distilled_quality_score"] = "distilled_quality_score"
+    model_path: str = Field(min_length=1)
+    rubric_path: str = Field(min_length=1)
+    min_scores: dict[str, Annotated[float, Field(allow_inf_nan=False)]] = Field(
+        min_length=1
+    )
+    min_probability: float | None = Field(default=None, ge=0, le=1)
+    evaluate: bool = False
+
+
+class SourceAuditConfig(StrictModel):
+    type: Literal["source_audit"] = "source_audit"
+    rubric_path: str = Field(min_length=1)
+    min_scores: dict[str, Annotated[float, Field(allow_inf_nan=False)]] = Field(
+        min_length=1
+    )
+    sample_size: int = Field(ge=1)
+    sample_seed: int = 0
+    backend: Literal["llm", "decision"] = "llm"
+    min_confidence: float = Field(default=0.5, ge=0, le=1)
+    decision_override: DecisionOverride | None = None
+    judge_llm_override: StageLLMOverride | None = None
+    evidence_stage: str = Field(default="01_source", pattern=r"^[\w-]+$")
+
+
 class IFDFilterConfig(StrictModel):
     type: Literal["ifd"] = "ifd"
     min_score: float = 0.2
@@ -758,6 +796,9 @@ PipelineStageConfig = Annotated[
     | Annotated[LabelingFilterConfig, Tag("labeling_engine")]
     | Annotated[LabelingScoreConfig, Tag("labeling_score")]
     | Annotated[QualityRepairConfig, Tag("quality_repair")]
+    | Annotated[DistilledQualityTrainConfig, Tag("distilled_quality_train")]
+    | Annotated[DistilledQualityScoreConfig, Tag("distilled_quality_score")]
+    | Annotated[SourceAuditConfig, Tag("source_audit")]
     | Annotated[RewardModelFilterConfig, Tag("reward_model")]
     | Annotated[PairDeltaFilterConfig, Tag("pair_delta")]
     | Annotated[CompositeSelectConfig, Tag("select")]
@@ -792,6 +833,20 @@ class ResolvedConfig(StrictModel):
         generator_seen = False
         if sum(stage.type == "quality_repair" for stage in self.pipeline) > 1:
             raise ValueError("Only one quality_repair stage is supported per run")
+        for kind in (
+            "source_audit",
+            "distilled_quality_train",
+            "distilled_quality_score",
+        ):
+            if sum(stage.type == kind for stage in self.pipeline) > 1:
+                raise ValueError(f"Only one {kind} stage is supported per run")
+        if (
+            any(stage.type == "distilled_quality_train" for stage in self.pipeline)
+            and len(self.pipeline) != 1
+        ):
+            raise ValueError(
+                "Run distilled_quality_train in a separate pipeline using training_paths"
+            )
         for stage in self.pipeline:
             if (
                 stage.type == "labeling_engine"

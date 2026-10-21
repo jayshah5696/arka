@@ -36,13 +36,14 @@ Obtain the model separately from https://dl.fbaipublicfiles.com/fasttext/supervi
 
 ## Drive
 
-Run `just check` and `uv build` for code changes. Then run `just verify`. It checks CLI readiness, validates all current example configs, previews their stages, and runs three installed-CLI workflows:
+Run `just check` and `uv build` for code changes. Then run `just verify`. It checks CLI readiness, validates all current example configs, previews their stages, and runs four installed-CLI workflows:
 
 - PDF generation, text cleanup, taxonomy coverage selection, and resume.
 - Decision seed gating, shared panel scoring, critics, selection, usage reporting, and resume.
 - Bounded answer repair, rubric eligibility, PDF grounding, PII rejection, downstream deduplication, and interrupted resume.
+- Distilled quality training and scoring, source audits, PDF evidence, uncertain judgments, PII rejection and interrupted audit resume.
 
-All three use actual SDK HTTP requests to deterministic loopback fixtures. No internal setter substitutes for the CLI path.
+All four use actual SDK HTTP requests to deterministic loopback fixtures. No internal setter substitutes for the CLI path.
 
 Run optional checks only when relevant:
 
@@ -65,11 +66,13 @@ Under `decisions/`, inspect the corresponding files. Three seeds produce two exp
 
 Under `repair/`, inspect `result.json`, `requests.json`, and each scenario's logs, attempt JSON, stats, Parquet and exports. Ten scenarios make 32 local requests. The bounded case retains two exports after deduplication. Completed resumes make zero new requests. Interrupted resume makes one judgment request and does not repeat persisted generation. Privacy-rejected judgments stop the record, retain protected feedback and usage, and remain rejected on resume. Changed rubric, input artifacts and legacy repair identities must fail before provider calls. See [repair](features/repair.md).
 
+Under `quality/`, inspect `result.json`, `requests.json`, training `model.json`, and each scenario's stats, Parquet and logs. The recipe collects 16 teacher labels through both judge backends, trains on 12 records with a four-record holdout, and checks independent evaluation. Explicit pre-filtering retains two of four records before two direct judge calls. Audits preserve records, use exact PDF evidence, separate missing evidence from failures, and exclude uncertain or privacy-rejected judgments from valid failure rates. Completed resumes make zero requests. An interrupted audit reuses its first judgment and makes three requests on resume. Changed model, rubric and training artifacts fail before HTTP calls. Synthetic vectors do not prove model quality or cost savings. See [quality](features/quality.md).
+
 Report the exact command, revision, action, resulting state, and artifact paths. Separate local fixture proof, optional native/HF proof, live provider proof, and representative dataset audits. Do not claim skipped checks passed.
 
 ## Cleanup
 
-Normal helper exit shuts down only its own loopback server. No helper deletes evidence. After the command returns, confirm all three child `result.json` files, datasets, and resume logs remain. If interrupted, inspect this run's process tree before stopping only its processes. Preserve partial logs and do not reuse the directory for fresh proof. Do not use broad process kills or remove model files.
+Normal helper exit shuts down only its own loopback server. No helper deletes evidence. After the command returns, confirm all four child `result.json` files, datasets, and resume logs remain. If interrupted, inspect this run's process tree before stopping only its processes. Preserve partial logs and do not reuse the directory for fresh proof. Do not use broad process kills or remove model files.
 
 ## Helpers
 
@@ -77,6 +80,7 @@ Normal helper exit shuts down only its own loopback server. No helper deletes ev
 - `uv run python scripts/verify_cleanup_cli.py --output PATH` runs PDF cleanup and taxonomy selection.
 - `uv run python scripts/verify_decisions_cli.py [--output PATH]` runs decision scoring and resume.
 - `uv run python scripts/verify_repair_cli.py [--output PATH]` runs bounded repair and resume.
+- `uv run python scripts/verify_quality_cli.py [--output PATH]` runs distilled training, scoring, source audits and resume.
 - `uv run --extra language python scripts/verify_stack_cli.py --output PATH` runs the native cleanup/reasoning recipe.
 - `uv run --extra language --with transformers --with datasets --with jinja2 python scripts/verify_hf_exports.py --output PATH` checks existing stack exports.
 - `uv run python scripts/verify_decisions_live.py --output PATH` runs the separately authorized live provider recipe.

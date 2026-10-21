@@ -60,6 +60,7 @@ class RecordAnnotations(StrictModel):
 class RecordScores(StrictModel):
     decisions: dict[str, DecisionAnswer] = Field(default_factory=dict)
     quality: float | None = None
+    distilled_quality: float | None = None
     quality_per_dim: dict[str, Any] = Field(default_factory=dict)
     annotations: dict[str, Any] = Field(default_factory=dict)
     rubric_hash: str | None = None

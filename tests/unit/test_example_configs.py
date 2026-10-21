@@ -81,6 +81,11 @@ def test_example_seed_references_exist_when_using_examples_seed_dir(
     from arka.examples_validation import load_example_config
 
     resolved = load_example_config(config_path)
+    if resolved.data_source is None:
+        assert [stage.type for stage in resolved.pipeline] == [
+            "distilled_quality_train"
+        ]
+        return
     seed_path = resolved.data_source.path
     if seed_path is None or "/seeds/" not in seed_path:
         return

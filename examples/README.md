@@ -19,6 +19,9 @@ They are organized from simplest to more advanced workflows.
 8. `08-privacy-guardrails.yaml` checks similarity and canary phrases.
 9. `09-decision-models.yaml` uses seed gating, candidate ranking, and decision judges without an LLM fallback.
 10. `10-quality-repair.yaml` repairs eligible failed answers once and checks replacements before deduplication.
+11. `11-distilled-quality-train.yaml` trains a classifier after you supply labeled artifacts from independent sources.
+12. `12-distilled-quality-score.yaml` annotates answers using the saved model from example 11.
+13. `13-source-audit.yaml` judges a deterministic sample per source without filtering records.
 
 ## Seeds and PDFs
 

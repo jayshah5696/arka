@@ -1,0 +1,34 @@
+# WHAT:      Train a reusable quality classifier from labeled Parquet artifacts.
+# WHEN:      Use this after collecting passing and failing judge labels from independent sources.
+# REQUIRES:  Labeled artifacts at training_paths and the configured embedding model.
+# RUN:       uv run arka --config examples/11-distilled-quality-train.yaml --run-id quality-train
+# ARTIFACTS: runs/quality-train/stages/03_distilled_quality_train/model.json and stats.json.
+# TEACHES:   Separate training, source separation and holdout evaluation.
+# COST:      low
+version: "1"
+llm:
+  provider: openai
+  model: unused-during-training
+  api_key: unused
+  base_url: https://api.openai.com/v1
+executor:
+  mode: threadpool
+  max_workers: 2
+embeddings:
+  provider: huggingface
+  model: all-MiniLM-L6-v2
+pipeline:
+  - type: distilled_quality_train
+    training_paths:
+      - ./runs/labels-a/stages/02s_label_score/data.parquet
+      - ./runs/labels-b/stages/02s_label_score/data.parquet
+    rubric_path: ../rubrics/sft_quality.yaml
+    min_scores:
+      instruction_clarity: 3
+      response_quality: 3
+    holdout_fraction: 0.25
+    split_seed: 0
+    evaluation_threshold: 0.5
+output:
+  format: jsonl
+  path: ./output/11-training-empty.jsonl

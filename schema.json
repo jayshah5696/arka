@@ -639,6 +639,120 @@
       "title": "DecontaminateConfig",
       "type": "object"
     },
+    "DistilledQualityScoreConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "distilled_quality_score",
+          "default": "distilled_quality_score",
+          "title": "Type",
+          "type": "string"
+        },
+        "model_path": {
+          "minLength": 1,
+          "title": "Model Path",
+          "type": "string"
+        },
+        "rubric_path": {
+          "minLength": 1,
+          "title": "Rubric Path",
+          "type": "string"
+        },
+        "min_scores": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "minProperties": 1,
+          "title": "Min Scores",
+          "type": "object"
+        },
+        "min_probability": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Probability"
+        },
+        "evaluate": {
+          "default": false,
+          "title": "Evaluate",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "model_path",
+        "rubric_path",
+        "min_scores"
+      ],
+      "title": "DistilledQualityScoreConfig",
+      "type": "object"
+    },
+    "DistilledQualityTrainConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "distilled_quality_train",
+          "default": "distilled_quality_train",
+          "title": "Type",
+          "type": "string"
+        },
+        "training_paths": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Training Paths",
+          "type": "array"
+        },
+        "rubric_path": {
+          "minLength": 1,
+          "title": "Rubric Path",
+          "type": "string"
+        },
+        "min_scores": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "minProperties": 1,
+          "title": "Min Scores",
+          "type": "object"
+        },
+        "holdout_fraction": {
+          "default": 0.25,
+          "exclusiveMaximum": 1,
+          "exclusiveMinimum": 0,
+          "title": "Holdout Fraction",
+          "type": "number"
+        },
+        "evaluation_threshold": {
+          "default": 0.5,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Evaluation Threshold",
+          "type": "number"
+        },
+        "split_seed": {
+          "default": 0,
+          "title": "Split Seed",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "training_paths",
+        "rubric_path",
+        "min_scores"
+      ],
+      "title": "DistilledQualityTrainConfig",
+      "type": "object"
+    },
     "DoubleCriticFilterConfig": {
       "additionalProperties": false,
       "description": "Simula \u00a72.2 double-critic. Two independent yes/no critic calls per record.\n\nDecision mode also keeps the inverse questions in separate requests.",
@@ -2516,6 +2630,91 @@
       "title": "SentenceVarianceFilterConfig",
       "type": "object"
     },
+    "SourceAuditConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "source_audit",
+          "default": "source_audit",
+          "title": "Type",
+          "type": "string"
+        },
+        "rubric_path": {
+          "minLength": 1,
+          "title": "Rubric Path",
+          "type": "string"
+        },
+        "min_scores": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "minProperties": 1,
+          "title": "Min Scores",
+          "type": "object"
+        },
+        "sample_size": {
+          "minimum": 1,
+          "title": "Sample Size",
+          "type": "integer"
+        },
+        "sample_seed": {
+          "default": 0,
+          "title": "Sample Seed",
+          "type": "integer"
+        },
+        "backend": {
+          "default": "llm",
+          "enum": [
+            "llm",
+            "decision"
+          ],
+          "title": "Backend",
+          "type": "string"
+        },
+        "min_confidence": {
+          "default": 0.5,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Min Confidence",
+          "type": "number"
+        },
+        "decision_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "judge_llm_override": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StageLLMOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "evidence_stage": {
+          "default": "01_source",
+          "pattern": "^[\\w-]+$",
+          "title": "Evidence Stage",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rubric_path",
+        "min_scores",
+        "sample_size"
+      ],
+      "title": "SourceAuditConfig",
+      "type": "object"
+    },
     "StageLLMOverride": {
       "additionalProperties": false,
       "description": "Override top-level LLM settings for a specific stage.",
@@ -2837,6 +3036,8 @@
             "complexity_elo": "#/$defs/ComplexityEloFilterConfig",
             "decision_panel": "#/$defs/DecisionPanelConfig",
             "decontaminate": "#/$defs/DecontaminateConfig",
+            "distilled_quality_score": "#/$defs/DistilledQualityScoreConfig",
+            "distilled_quality_train": "#/$defs/DistilledQualityTrainConfig",
             "double_critic": "#/$defs/DoubleCriticFilterConfig",
             "evol_instruct_generator": "#/$defs/EvolInstructGeneratorConfig",
             "exact": "#/$defs/ExactDedupConfig",
@@ -2860,6 +3061,7 @@
             "select": "#/$defs/CompositeSelectConfig",
             "semantic_similarity": "#/$defs/SemanticSimilarityFilterConfig",
             "sentence_variance": "#/$defs/SentenceVarianceFilterConfig",
+            "source_audit": "#/$defs/SourceAuditConfig",
             "taxonomy_generator": "#/$defs/TaxonomyGeneratorConfig",
             "transform_generator": "#/$defs/TransformGeneratorConfig"
           },
@@ -2934,6 +3136,15 @@
           },
           {
             "$ref": "#/$defs/QualityRepairConfig"
+          },
+          {
+            "$ref": "#/$defs/DistilledQualityTrainConfig"
+          },
+          {
+            "$ref": "#/$defs/DistilledQualityScoreConfig"
+          },
+          {
+            "$ref": "#/$defs/SourceAuditConfig"
           },
           {
             "$ref": "#/$defs/RewardModelFilterConfig"

@@ -508,6 +508,14 @@ register_decision_spec(
 )
 register_decision_spec(
     DecisionStageSpec(
+        kind="source_audit",
+        build_questions=_build_repair_questions,
+        judge_answers=_judge_labeling_answers,
+        panel_compatible=False,
+    )
+)
+register_decision_spec(
+    DecisionStageSpec(
         kind="complexity_elo",
         build_questions=_build_complexity_elo_questions,
         judge_answers=_judge_complexity_elo_answers,
