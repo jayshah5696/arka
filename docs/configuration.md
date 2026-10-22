@@ -1,5 +1,7 @@
 # Configuration Reference
 
+For named models, generated presets, explicit stage IDs, and dependency-aware resume, see [Version 2 experiments](experiments.md). Existing version 1 configuration remains supported.
+
 The optional `decisions` client, stage settings, and uncertainty rules are
 documented in [Decision models](decision-models.md). The decision stages have
 no automatic LLM fallback. `executor.mode: provider_batch` is rejected because

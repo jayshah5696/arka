@@ -36,7 +36,9 @@ Obtain the model separately from https://dl.fbaipublicfiles.com/fasttext/supervi
 
 ## Drive
 
-Run `just check` and `uv build` for code changes. Then run `just verify`. It checks CLI readiness, validates all current example configs, previews their stages, and runs six installed-CLI workflows:
+Run `just check` and `uv build` for code changes. Then run `just verify`. It checks CLI readiness, validates all current example configs, previews their stages, and runs seven installed-CLI workflows:
+
+- Generated version 2 configs, named model dispatch, interrupted generation, operational resume, and rejection of changed inputs before writes.
 
 - Separate ridge training, numeric ranking, artifact versions, privacy rejection, and resume.
 - Source audits and explicit rebuilding, exact PDF evidence, interrupted candidate assessment, and complete dataset assembly with unselected sources retained.
@@ -45,7 +47,7 @@ Run `just check` and `uv build` for code changes. Then run `just verify`. It che
 - Bounded answer repair, rubric eligibility, PDF grounding, PII rejection, downstream deduplication, and interrupted resume.
 - Distilled quality training and scoring, source audits, PDF evidence, uncertain judgments, PII rejection and interrupted audit resume.
 
-All five use actual SDK HTTP requests to deterministic loopback fixtures. No internal setter substitutes for the CLI path.
+All seven use actual SDK HTTP requests to deterministic loopback fixtures. No internal setter substitutes for the CLI path.
 
 Run optional checks only when relevant:
 
@@ -76,11 +78,12 @@ Report the exact command, revision, action, resulting state, and artifact paths.
 
 ## Cleanup
 
-Normal helper exit shuts down only its own loopback server. No helper deletes evidence. After the command returns, confirm all six child `result.json` files, datasets, and resume logs remain. If interrupted, inspect this run's process tree before stopping only its processes. Preserve partial logs and do not reuse the directory for fresh proof. Do not use broad process kills or remove model files.
+Normal helper exit shuts down only its own loopback server. No helper deletes evidence. After the command returns, confirm all seven child `result.json` files, datasets, and resume logs remain. If interrupted, inspect this run's process tree before stopping only its processes. Preserve partial logs and do not reuse the directory for fresh proof. Do not use broad process kills or remove model files.
 
 ## Helpers
 
 - `just verify [--output PATH]` runs `uv run python scripts/verify_local.py` with the same optional argument.
+- `uv run python scripts/verify_experiment_cli.py [--output PATH]` runs generated configs, interrupted generation, and safe resume. See [experiments](features/experiments.md).
 - `uv run python scripts/verify_cleanup_cli.py --output PATH` runs PDF cleanup and taxonomy selection.
 - `uv run python scripts/verify_decisions_cli.py [--output PATH]` runs decision scoring and resume.
 - `uv run python scripts/verify_repair_cli.py [--output PATH]` runs bounded repair and resume.
