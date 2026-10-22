@@ -22,6 +22,7 @@ dependencies = [
 
 [project.scripts]
 arka = "arka:main"
+arka-init = "arka.config.presets:init_config"
 arka-train-scorer = "arka.cli:train_scorer"
 arka-audit = "arka.recovery.cli:audit"
 arka-rebuild = "arka.recovery.cli:rebuild"
