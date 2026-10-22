@@ -36,9 +36,10 @@ Obtain the model separately from https://dl.fbaipublicfiles.com/fasttext/supervi
 
 ## Drive
 
-Run `just check` and `uv build` for code changes. Then run `just verify`. It checks CLI readiness, validates all current example configs, previews their stages, and runs five installed-CLI workflows:
+Run `just check` and `uv build` for code changes. Then run `just verify`. It checks CLI readiness, validates all current example configs, previews their stages, and runs six installed-CLI workflows:
 
 - Separate ridge training, numeric ranking, artifact versions, privacy rejection, and resume.
+- Source audits and explicit rebuilding, exact PDF evidence, interrupted candidate assessment, and complete dataset assembly with unselected sources retained.
 - PDF generation, text cleanup, taxonomy coverage selection, and resume.
 - Decision seed gating, shared panel scoring, critics, selection, usage reporting, and resume.
 - Bounded answer repair, rubric eligibility, PDF grounding, PII rejection, downstream deduplication, and interrupted resume.
@@ -75,7 +76,7 @@ Report the exact command, revision, action, resulting state, and artifact paths.
 
 ## Cleanup
 
-Normal helper exit shuts down only its own loopback server. No helper deletes evidence. After the command returns, confirm all five child `result.json` files, datasets, and resume logs remain. If interrupted, inspect this run's process tree before stopping only its processes. Preserve partial logs and do not reuse the directory for fresh proof. Do not use broad process kills or remove model files.
+Normal helper exit shuts down only its own loopback server. No helper deletes evidence. After the command returns, confirm all six child `result.json` files, datasets, and resume logs remain. If interrupted, inspect this run's process tree before stopping only its processes. Preserve partial logs and do not reuse the directory for fresh proof. Do not use broad process kills or remove model files.
 
 ## Helpers
 
@@ -85,6 +86,7 @@ Normal helper exit shuts down only its own loopback server. No helper deletes ev
 - `uv run python scripts/verify_repair_cli.py [--output PATH]` runs bounded repair and resume.
 - `uv run python scripts/verify_ridge_cli.py [--output PATH]` runs separate ridge training, ranking, privacy rejection and resume.
 - `uv run python scripts/verify_quality_cli.py [--output PATH]` runs distilled training, scoring, source audits and resume.
+- `uv run python scripts/verify_recovery_cli.py --output PATH` runs source selection, PDF answer rebuilding and interrupted resume with both judge backends. See [recovery](features/recovery.md).
 - `uv run --extra language python scripts/verify_stack_cli.py --output PATH` runs the native cleanup/reasoning recipe.
 - `uv run --extra language --with transformers --with datasets --with jinja2 python scripts/verify_hf_exports.py --output PATH` checks existing stack exports.
 - `uv run python scripts/verify_decisions_live.py --output PATH` runs the separately authorized live provider recipe.
