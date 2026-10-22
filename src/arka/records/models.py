@@ -57,7 +57,15 @@ class RecordAnnotations(StrictModel):
     escalations: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class RidgePrediction(StrictModel):
+    model_sha256: str
+    input_hash: str
+    target: str
+    rubric_hash: str
+
+
 class RecordScores(StrictModel):
+    distilled_ridge: float | None = Field(default=None, allow_inf_nan=False)
     decisions: dict[str, DecisionAnswer] = Field(default_factory=dict)
     quality: float | None = None
     distilled_quality: float | None = None
@@ -74,6 +82,11 @@ class RecordScores(StrictModel):
     humanness_checklist: dict[str, bool] | None = None
     humanness_reasoning: str | None = None
     decon_match: DecontaminationMatch | None = None
+
+    @property
+    def distilled_ridge_prediction(self) -> RidgePrediction | None:
+        value = self.annotations.get("distilled_ridge")
+        return RidgePrediction.model_validate(value) if value is not None else None
 
     def get_annotation(self, key: str, default: Any = None) -> Any:
         if key in self.annotations:

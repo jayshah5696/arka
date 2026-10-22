@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 import time
@@ -309,6 +310,81 @@ def _resolve_run_id(cli_run_id: str | None, config_run_id: str | None) -> str:
     if config_run_id is not None:
         return config_run_id
     return str(uuid.uuid4())
+
+
+@click.command(name="arka-train-scorer")
+@click.option(
+    "--config",
+    "config_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+)
+@click.option(
+    "--records",
+    "records_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+)
+@click.option("--output", required=True, type=click.Path(path_type=Path))
+@click.option("--target", default="quality", show_default=True)
+@click.option("--alpha", default=1.0, type=float, show_default=True)
+@click.option(
+    "--features",
+    "feature_format",
+    default="pair_quality_v2",
+    show_default=True,
+    type=click.Choice(["pair_quality_v2", "instruction_response_json_v1"]),
+)
+def train_scorer(
+    config_path: Path,
+    records_path: Path,
+    output: Path,
+    target: str,
+    alpha: float,
+    feature_format: str,
+) -> None:
+    """Train a reusable score regressor from judged Arka data.parquet records."""
+    from arka.distillation import embedding_identity, features_for_records, train_model
+    from arka.pipeline.output import OutputWriter
+    from arka.records.models import ConversationRecord
+
+    if output.exists():
+        raise click.ClickException(f"Model output already exists: {output}")
+    try:
+        config = ConfigLoader().load(config_path)
+        records = OutputWriter().read_parquet(records_path)
+        if not records or any(not isinstance(r, ConversationRecord) for r in records):
+            raise ValueError("Training requires judged conversation records")
+        from arka.privacy.records import protect_record
+        from arka.privacy.runtime import build_policy
+
+        privacy = build_policy(config.pii, config_path.resolve().parent)
+        if privacy is not None:
+            for record in records:
+                protected, summary = protect_record(record, privacy)
+                if summary.drop_reason or protected.payload != record.payload:
+                    raise ValueError(
+                        "Training text needs privacy protection; protect and judge it before training"
+                    )
+        vectors = features_for_records(records, config, feature_format=feature_format)
+        model = train_model(
+            records,
+            vectors,
+            embedding_identity(config),
+            target=target,
+            alpha=alpha,
+            feature_format=feature_format,
+            privacy_fingerprint=privacy.fingerprint if privacy else None,
+        )
+        output.parent.mkdir(parents=True, exist_ok=True)
+        data = model.model_dump_json(indent=2).encode()
+        with output.open("xb") as handle:
+            handle.write(data)
+    except (OSError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(f"Saved model: {output}")
+    click.echo(f"model_sha256: {hashlib.sha256(data).hexdigest()}")
+    click.echo(model.evaluation.model_dump_json(indent=2))
 
 
 def main(argv: Sequence[str] | None = None) -> None:

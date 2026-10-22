@@ -417,6 +417,12 @@ class QualityRepairConfig(StrictModel):
     evidence_stage: str = Field(default="01_source", pattern=r"^[\w-]+$")
 
 
+class DistilledRidgeConfig(StrictModel):
+    type: Literal["distilled_ridge"] = "distilled_ridge"
+    model_path: str = Field(min_length=1)
+    model_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class DistilledQualityTrainConfig(StrictModel):
     type: Literal["distilled_quality_train"] = "distilled_quality_train"
     training_paths: list[Annotated[str, Field(min_length=1)]] = Field(min_length=1)
@@ -596,6 +602,7 @@ FilterStageConfig = Annotated[
     | Annotated[LabelingFilterConfig, Tag("labeling_engine")]
     | Annotated[RewardModelFilterConfig, Tag("reward_model")]
     | Annotated[PairDeltaFilterConfig, Tag("pair_delta")]
+    | Annotated[DistilledRidgeConfig, Tag("distilled_ridge")]
     | Annotated[CompositeSelectConfig, Tag("select")]
     | Annotated[SemanticSimilarityFilterConfig, Tag("semantic_similarity")]
     | Annotated[CanaryFilterConfig, Tag("canary")]
@@ -798,6 +805,7 @@ PipelineStageConfig = Annotated[
     | Annotated[QualityRepairConfig, Tag("quality_repair")]
     | Annotated[DistilledQualityTrainConfig, Tag("distilled_quality_train")]
     | Annotated[DistilledQualityScoreConfig, Tag("distilled_quality_score")]
+    | Annotated[DistilledRidgeConfig, Tag("distilled_ridge")]
     | Annotated[SourceAuditConfig, Tag("source_audit")]
     | Annotated[RewardModelFilterConfig, Tag("reward_model")]
     | Annotated[PairDeltaFilterConfig, Tag("pair_delta")]

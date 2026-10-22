@@ -52,6 +52,12 @@ class StageSpec:
 
 
 _STAGE_SPECS: dict[str, StageSpec] = {
+    "distilled_ridge": StageSpec(
+        stage_tag="distilled_ridge",
+        config_cls="arka.config.models.DistilledRidgeConfig",
+        stage_cls="arka.pipeline.distilled_ridge.DistilledRidgeStage",
+        requires_embeddings=True,
+    ),
     "source_audit": StageSpec(
         stage_tag="source_audit",
         config_cls="arka.config.models.SourceAuditConfig",
