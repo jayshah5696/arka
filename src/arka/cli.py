@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 import click
 
 from arka.config.loader import ConfigLoader, ConfigValidationError
+from arka.config.plan import ExecutionPlan
 from arka.pipeline.runner import PipelineRunner
 from arka.pipeline.stage_builder import StageBuilder
 
@@ -146,7 +147,11 @@ def _validate_config(
     """Validate config including stage building without side effects or running the pipeline."""
     try:
         # Build stages to ensure they are valid and can be constructed
-        StageBuilder(config=loaded_config, project_root=project_root).build()
+        stages = StageBuilder(config=loaded_config, project_root=project_root).build()
+        if loaded_config._experiment is not None:
+            ExecutionPlan.build(
+                loaded_config, project_root, [stage.name for stage in stages]
+            )
     except Exception as exc:
         click.secho(f"Error: Configuration is invalid: {exc}", fg="red", err=True)
         sys.exit(1)
@@ -188,6 +193,7 @@ def _run_pipeline(
     resolved_run_id: str,
     resume: bool,
     start_time: float,
+    plan: ExecutionPlan | None = None,
 ) -> None:
     """Execute the pipeline stages and display execution summary."""
     # DX: Print the resolved Run ID explicitly at the start so users can track the run directory immediately
@@ -203,6 +209,7 @@ def _run_pipeline(
             stages=stages,
             run_id=resolved_run_id,
             resume=resume,
+            **({"plan": plan} if plan is not None else {}),
         )
     except KeyboardInterrupt:
         # DX: Gracefully handle Ctrl+C to prevent raw tracebacks and show an actionable error message
@@ -279,9 +286,23 @@ def cli(
         _validate_config(loaded_config, config_path, project_root)
 
     resolved_run_id = _resolve_run_id(run_id, loaded_config.run_id)
-    stages = StageBuilder(config=loaded_config, project_root=project_root).build()
+    try:
+        stages = StageBuilder(config=loaded_config, project_root=project_root).build()
+        plan = (
+            ExecutionPlan.build(
+                loaded_config, project_root, [stage.name for stage in stages]
+            )
+            if loaded_config._experiment is not None
+            else None
+        )
+    except (ValueError, OSError) as exc:
+        raise click.ClickException(str(exc)) from exc
 
     if dry_run or list_stages:
+        if plan is not None:
+            click.echo(f"Experiment fingerprint: {plan.fingerprint}")
+            for path, fingerprint in plan.dependencies.items():
+                click.echo(f"Input: {path} ({fingerprint})")
         _dry_run_or_list_stages(
             dry_run=dry_run,
             list_stages=list_stages,
@@ -300,6 +321,7 @@ def cli(
         resolved_run_id=resolved_run_id,
         resume=resume,
         start_time=start_time,
+        plan=plan,
     )
 
 

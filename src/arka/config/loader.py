@@ -14,6 +14,21 @@ from arka.config.models import ResolvedConfig
 _ENV_VAR_PATTERN = re.compile(r"\$\{([A-Z0-9_]+)\}")
 
 
+class _ConfigYAMLLoader(yaml.SafeLoader):
+    def construct_mapping(self, node, deep=False):
+        self.flatten_mapping(node)
+        mapping = super().construct_mapping(node, deep=deep)
+        keys = set()
+        for key_node, _ in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            if key in keys:
+                raise yaml.constructor.ConstructorError(
+                    None, None, "duplicate configuration key", key_node.start_mark
+                )
+            keys.add(key)
+        return mapping
+
+
 class ConfigValidationError(ValueError):
     """Raised when config loading or validation fails."""
 
@@ -21,14 +36,15 @@ class ConfigValidationError(ValueError):
 class ConfigLoader:
     def load(self, path: Path) -> ResolvedConfig:
         raw_text = path.read_text()
-        resolved_text = self._resolve_env_vars(raw_text)
 
         try:
             # DX: Use a named StringIO to give the yaml parser a filename for better line hints
-            stream = io.StringIO(resolved_text)
+            stream = io.StringIO(raw_text)
             stream.name = str(path)
-            data = yaml.safe_load(stream) or {}
-            return ResolvedConfig.model_validate(data)
+            data = self._resolve_values(
+                yaml.load(stream, Loader=_ConfigYAMLLoader) or {}
+            )
+            return self._validate(data)
         except ValidationError as exc:
             raise ConfigValidationError(
                 self._format_validation_error(exc, data, raw_text)
@@ -48,11 +64,33 @@ class ConfigLoader:
 
     def load_dict(self, data: dict[str, Any]) -> ResolvedConfig:
         try:
-            return ResolvedConfig.model_validate(data)
+            return self._validate(self._resolve_values(data))
         except ValidationError as exc:
             raise ConfigValidationError(
                 self._format_validation_error(exc, data)
             ) from exc
+
+    @staticmethod
+    def _validate(data: Any) -> ResolvedConfig:
+        if not isinstance(data, dict):
+            raise ConfigValidationError(
+                "Configuration is invalid: expected a YAML mapping"
+            )
+        if data.get("version") == "2":
+            from arka.config.experiment import ExperimentConfig
+
+            return ExperimentConfig.model_validate(data).resolve()
+        return ResolvedConfig.model_validate(data)
+
+    def _resolve_values(self, value: Any) -> Any:
+        """Expand string values after parsing; environment contents remain literal."""
+        if isinstance(value, str):
+            return self._resolve_env_vars(value)
+        if isinstance(value, list):
+            return [self._resolve_values(item) for item in value]
+        if isinstance(value, dict):
+            return {key: self._resolve_values(item) for key, item in value.items()}
+        return value
 
     @staticmethod
     def _find_line_number(raw_text: str, path: str) -> int | None:

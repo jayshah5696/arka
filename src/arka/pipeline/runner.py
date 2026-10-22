@@ -12,6 +12,7 @@ import yaml
 
 from arka.config.loader import ConfigLoader
 from arka.config.models import ResolvedConfig
+from arka.config.plan import ExecutionPlan, execution_settings
 from arka.core.paths import RunPaths
 from arka.decisions.factory import DecisionClientFactory
 from arka.pipeline.artifacts import StageArtifacts, StageReport, get_extra
@@ -53,8 +54,17 @@ class PipelineRunner:
         stages: list[Stage],
         run_id: str,
         resume: bool = False,
+        plan: ExecutionPlan | None = None,
     ) -> RunResult:
         resolved_config = self._resolve_config(config)
+        if resolved_config._experiment is not None:
+            current_plan = ExecutionPlan.build(
+                resolved_config, self.project_root, [stage.name for stage in stages]
+            )
+            if plan is not None and plan.fingerprint != current_plan.fingerprint:
+                raise ValueError("Inputs changed after planning; create a new run plan")
+            plan = current_plan
+            plan.validate_existing(self.project_root / "runs" / run_id, resume=resume)
         privacy = build_policy(resolved_config.pii, self.project_root)
         # Check before opening existing artifacts or overwriting resolved config.
         policy_path = self.project_root / "runs" / run_id / "pii_policy.json"
@@ -76,7 +86,7 @@ class PipelineRunner:
                     run_id=run_id,
                     stage_name=stage.name,
                     work_dir=policy_path.parent / "stages" / stage.name,
-                    config=resolved_config,
+                    config=self._stage_config(resolved_config, stage),
                     executor_mode=resolved_config.executor.mode,
                     max_workers=resolved_config.executor.max_workers,
                     resume=resume,
@@ -94,7 +104,23 @@ class PipelineRunner:
             config_hash=config_hash,
             status="running",
         )
-        self._write_resolved_config(resolved_config, run_paths.resolved_config_path)
+        if plan is None or not run_paths.resolved_config_path.exists():
+            self._write_resolved_config(resolved_config, run_paths.resolved_config_path)
+        if plan is not None:
+            plan_path = run_paths.run_dir / "plan.json"
+            if not plan_path.exists():
+                plan_path.write_text(json.dumps(plan.dump(), indent=2))
+            with (run_paths.run_dir / "execution.history.jsonl").open("a") as history:
+                history.write(
+                    json.dumps(
+                        {
+                            "timestamp": timestamp,
+                            "resume": resume,
+                            "settings": execution_settings(resolved_config),
+                        }
+                    )
+                    + "\n"
+                )
 
         records: list[Record] = []
         stage_stats: list[StageStat] = []
@@ -115,7 +141,7 @@ class PipelineRunner:
                                 run_id=run_id,
                                 stage_name=stage.name,
                                 work_dir=run_paths.stage_dir(stage.name),
-                                config=resolved_config,
+                                config=self._stage_config(resolved_config, stage),
                                 executor_mode=resolved_config.executor.mode,
                                 max_workers=resolved_config.executor.max_workers,
                                 resume=resume,
@@ -153,7 +179,7 @@ class PipelineRunner:
                         run_id=run_id,
                         stage_name=stage.name,
                         work_dir=stage_dir,
-                        config=resolved_config,
+                        config=self._stage_config(resolved_config, stage),
                         executor_mode=resolved_config.executor.mode,
                         max_workers=resolved_config.executor.max_workers,
                         executor=shared_executor,
@@ -352,6 +378,12 @@ class PipelineRunner:
             return config
         return self.config_loader.load_dict(config)
 
+    @staticmethod
+    def _stage_config(config: ResolvedConfig, stage: Stage) -> ResolvedConfig:
+        """Expose the bound named model through the existing context-owned client seam."""
+        model = getattr(stage, "llm_config", None)
+        return config.model_copy(update={"llm": model}) if model is not None else config
+
     def _decision_report(
         self, records: list[Record], stages: list[Stage], run_paths: RunPaths
     ) -> dict[str, Any]:
@@ -453,7 +485,10 @@ class PipelineRunner:
 
     def _write_resolved_config(self, config: ResolvedConfig, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(yaml.safe_dump(config.model_dump(mode="json"), sort_keys=False))
+        effective = config._experiment or config
+        path.write_text(
+            yaml.safe_dump(effective.model_dump(mode="json"), sort_keys=False)
+        )
 
     def _append_stage_events(
         self, records: list[Record], stage_name: str, action: str = "transformed"

@@ -75,9 +75,15 @@ def config_hash(config: ResolvedConfig) -> str:
     """
     if config._computed_hash is not None:
         return config._computed_hash
+    if config._experiment is not None:
+        from arka.config.plan import experiment_settings
+
+        payload = experiment_settings(config)
+    else:
+        payload = config.model_dump(mode="json")
     # PERF: Cache config hash computation directly on the ResolvedConfig object. Expected impact: Removes redundant O(N) configuration hashing per record generation, substantially reducing CPU overhead during large runs.
     config._computed_hash = hashlib.sha256(
-        json.dumps(config.model_dump(mode="json"), sort_keys=True).encode("utf-8")
+        json.dumps(payload, sort_keys=True).encode("utf-8")
     ).hexdigest()
     return config._computed_hash
 
