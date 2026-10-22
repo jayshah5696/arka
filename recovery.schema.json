@@ -1,0 +1,302 @@
+{
+  "$defs": {
+    "DecisionConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "minLength": 1,
+          "title": "Provider",
+          "type": "string"
+        },
+        "model": {
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "api_key": {
+          "format": "password",
+          "title": "Api Key",
+          "type": "string",
+          "writeOnly": true
+        },
+        "base_url": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Base Url",
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "default": 10,
+          "exclusiveMinimum": 0,
+          "title": "Timeout Seconds",
+          "type": "number"
+        },
+        "max_retries": {
+          "default": 4,
+          "minimum": 1,
+          "title": "Max Retries",
+          "type": "integer"
+        },
+        "max_state_chars": {
+          "default": 24000,
+          "minimum": 1,
+          "title": "Max State Chars",
+          "type": "integer"
+        },
+        "input_cost_per_million": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Cost Per Million"
+        }
+      },
+      "required": [
+        "provider",
+        "model",
+        "api_key",
+        "base_url"
+      ],
+      "title": "DecisionConfig",
+      "type": "object"
+    },
+    "LLMConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "const": "openai",
+          "title": "Provider",
+          "type": "string"
+        },
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "api_key": {
+          "format": "password",
+          "title": "Api Key",
+          "type": "string",
+          "writeOnly": true
+        },
+        "base_url": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Base Url",
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "default": 30.0,
+          "title": "Timeout Seconds",
+          "type": "number"
+        },
+        "max_retries": {
+          "default": 3,
+          "title": "Max Retries",
+          "type": "integer"
+        },
+        "supports_json_schema": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Supports Json Schema"
+        },
+        "openai_compatible": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OpenAICompatibleConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "provider",
+        "model",
+        "api_key",
+        "base_url"
+      ],
+      "title": "LLMConfig",
+      "type": "object"
+    },
+    "OpenAICompatibleConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "referer": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "maxLength": 2083,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Referer"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        }
+      },
+      "title": "OpenAICompatibleConfig",
+      "type": "object"
+    },
+    "RecoveryJudgeConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "backend": {
+          "enum": [
+            "llm",
+            "decision"
+          ],
+          "title": "Backend",
+          "type": "string"
+        },
+        "rubric_path": {
+          "minLength": 1,
+          "title": "Rubric Path",
+          "type": "string"
+        },
+        "min_overall_score": {
+          "title": "Min Overall Score",
+          "type": "number"
+        },
+        "llm": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LLMConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "decision": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "backend",
+        "rubric_path",
+        "min_overall_score"
+      ],
+      "title": "RecoveryJudgeConfig",
+      "type": "object"
+    },
+    "ReplacementConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "llm": {
+          "$ref": "#/$defs/LLMConfig"
+        },
+        "max_attempts": {
+          "minimum": 1,
+          "title": "Max Attempts",
+          "type": "integer"
+        },
+        "temperature": {
+          "default": 0.7,
+          "maximum": 2,
+          "minimum": 0,
+          "title": "Temperature",
+          "type": "number"
+        },
+        "max_tokens": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Tokens"
+        },
+        "exact_dedup": {
+          "default": true,
+          "title": "Exact Dedup",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "llm",
+        "max_attempts"
+      ],
+      "title": "ReplacementConfig",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "judge": {
+      "$ref": "#/$defs/RecoveryJudgeConfig"
+    },
+    "replacement": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReplacementConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "sample_size": {
+      "default": 200,
+      "minimum": 1,
+      "title": "Sample Size",
+      "type": "integer"
+    },
+    "sample_seed": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Sample Seed",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "judge"
+  ],
+  "title": "RecoveryConfig",
+  "type": "object"
+}

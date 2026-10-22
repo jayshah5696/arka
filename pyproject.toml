@@ -23,6 +23,8 @@ dependencies = [
 [project.scripts]
 arka = "arka:main"
 arka-train-scorer = "arka.cli:train_scorer"
+arka-audit = "arka.recovery.cli:audit"
+arka-rebuild = "arka.recovery.cli:rebuild"
 
 [project.optional-dependencies]
 language = [

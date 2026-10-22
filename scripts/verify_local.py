@@ -57,6 +57,15 @@ def main() -> int:
     cli = str(Path(sys.executable).with_name("arka"))
     checks = [
         (
+            "recovery",
+            [
+                sys.executable,
+                str(ROOT / "scripts/verify_recovery_cli.py"),
+                "--output",
+                str(output / "recovery"),
+            ],
+        ),
+        (
             "ridge",
             [
                 sys.executable,

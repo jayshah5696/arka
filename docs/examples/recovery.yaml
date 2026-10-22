@@ -1,0 +1,23 @@
+# Paths are relative to this configuration's directory.
+# Use --project-root to select the project containing the parent run.
+sample_size: 200
+sample_seed: 0
+judge:
+  backend: llm
+  rubric_path: ../../rubrics/sft_quality.yaml
+  min_overall_score: 3.0
+  llm:
+    provider: openai
+    model: YOUR_JUDGE_MODEL
+    api_key: ${OPENAI_API_KEY}
+    base_url: https://api.openai.com/v1
+replacement:
+  max_attempts: 2
+  temperature: 0.7
+  max_tokens: 2048
+  exact_dedup: true
+  llm:
+    provider: openai
+    model: YOUR_REPLACEMENT_MODEL
+    api_key: ${OPENAI_API_KEY}
+    base_url: https://api.openai.com/v1
