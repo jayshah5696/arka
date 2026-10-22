@@ -1,0 +1,277 @@
+{
+  "protocol": {
+    "old_600_role": "All original records, including the original holdout, are development data now",
+    "development_count": 2400,
+    "new_development_labels": 1800,
+    "fresh_holdout_count": 600,
+    "fresh_holdout_selected_before_model_choice": true,
+    "fresh_holdout_labeling": "Only after selected feature format and alpha are written to locked_model_choice.json",
+    "split_unit": "Conversation trees plus identical input hashes",
+    "selection": "Tree SHA-256 arka-165-v2-reserve then message id, first 600 final records; development SHA-256 arka-165-v2-development first 1800 outside reserved trees",
+    "final_trees": 288,
+    "development_trees": 1769,
+    "eligibility": "Same English human first-turn, >=2 human raters, no positive PII annotation, <=240 encoder tokens as first evaluation",
+    "candidate_selection": "Five group folds on development teacher labels only; maximize out-of-fold Spearman, break ties by lower complexity; no holdout tuning",
+    "primary_metric": "Fresh holdout Spearman with LLM teacher; compare old representation retrained on same development records",
+    "secondary_metrics": [
+      "Human quality Spearman",
+      "Top-half recall of human quality>=0.75",
+      "RMSE and MAE",
+      "Observed total judge requests, known cost, and elapsed time"
+    ],
+    "bootstrap": "1000 holdout tree resamples seed 1652; paired difference against retrained old representation",
+    "pass_criterion": "Positive paired improvement in teacher rank agreement with 95% interval above zero; student human-good recall no more than 5 percentage points below direct teacher point estimate. Broader issue deployment quality remains separately judged.",
+    "development_ids_sha256": "3f2cdf5aaee5477c52c5d36799b5324cfec34c0cf8a8effc5a5b27b7f6ded117",
+    "holdout_ids_sha256": "1a6ada0600b9310b170b29209a9317117eea6032ae911dafe6361eb43b6ab9a6"
+  },
+  "locked_model_choice": {
+    "feature_format": "pair_quality_v2",
+    "alpha": 100.0,
+    "development_oof": {
+      "alpha": 100.0,
+      "spearman": 0.3021949490725153,
+      "mae": 0.7019336724717564,
+      "rmse": 0.8398850952741757
+    },
+    "development_records": 2398,
+    "actual_fit_records": 1920,
+    "training_ids_sha256": "73786dbecef0c97dbb6abbb982aaaa33c8e6af75107bd76bd72bf20d6f404b12",
+    "holdout_ids_sha256": "1a6ada0600b9310b170b29209a9317117eea6032ae911dafe6361eb43b6ab9a6",
+    "improved_sha256": "0eb63fbfcc36011b16e71b486c256607e7c2623d63c76a1b846938d626d2daff",
+    "baseline_sha256": "dc702f27cf30bf0ee56f12e50b97017fa44094de7dbc4af0c6e0cac2e1cb2302",
+    "relevance_model": "Omitted; development benefit was negligible",
+    "feature_count": 12
+  },
+  "metrics": {
+    "improved": {
+      "teacher_spearman": 0.2968142872228811,
+      "human_spearman": 0.3382055250661169,
+      "mae": 0.6897175856258382,
+      "rmse": 0.8106742972346109,
+      "human_good_recall": 0.6188524590163934,
+      "human_good_precision": 0.5050167224080268
+    },
+    "baseline": {
+      "teacher_spearman": 0.20412501075691727,
+      "human_spearman": 0.20776016839612857,
+      "mae": 0.7181600526712731,
+      "rmse": 0.8585240718095496,
+      "human_good_recall": 0.5778688524590164,
+      "human_good_precision": 0.47157190635451507
+    },
+    "direct_teacher": {
+      "teacher_spearman": 1.0,
+      "human_spearman": 0.3800562047926481,
+      "mae": 0.0,
+      "rmse": 0.0,
+      "human_good_recall": 0.6516393442622951,
+      "human_good_precision": 0.5317725752508361
+    }
+  },
+  "bootstrap_95_percent_intervals": {
+    "improved": {
+      "teacher_spearman": [
+        0.2138500514389757,
+        0.3780920532920147
+      ],
+      "human_spearman": [
+        0.26431560075931904,
+        0.4155605887802845
+      ],
+      "mae": [
+        0.6504216120341043,
+        0.7253920938820343
+      ],
+      "rmse": [
+        0.7614721385286576,
+        0.8557010561613106
+      ],
+      "human_good_recall": [
+        0.5703299737195259,
+        0.6666666666666666
+      ],
+      "human_good_precision": [
+        0.4501278745237868,
+        0.5588260051495346
+      ]
+    },
+    "baseline": {
+      "teacher_spearman": [
+        0.11203890747078399,
+        0.29062348781754405
+      ],
+      "human_spearman": [
+        0.13334815552764145,
+        0.2870404968012151
+      ],
+      "mae": [
+        0.6763944001430614,
+        0.7608088431845741
+      ],
+      "rmse": [
+        0.8105884271052706,
+        0.910057590139059
+      ],
+      "human_good_recall": [
+        0.5284495476003147,
+        0.6260297540734743
+      ],
+      "human_good_precision": [
+        0.41509113079193943,
+        0.5215982955366171
+      ]
+    },
+    "direct_teacher": {
+      "teacher_spearman": [
+        0.9999999999999998,
+        1.0
+      ],
+      "human_spearman": [
+        0.30737153140356444,
+        0.44637111971232246
+      ],
+      "mae": [
+        0.0,
+        0.0
+      ],
+      "rmse": [
+        0.0,
+        0.0
+      ],
+      "human_good_recall": [
+        0.6007367299840227,
+        0.7035554941002949
+      ],
+      "human_good_precision": [
+        0.4714176011701609,
+        0.5818212222560049
+      ]
+    }
+  },
+  "paired_teacher_spearman_improvement_95_interval": [
+    -0.021273206049029315,
+    0.20570121472924044
+  ],
+  "student_minus_teacher_good_recall": -0.032786885245901676,
+  "student_minus_teacher_good_recall_95_interval": [
+    -0.09091897233201585,
+    0.027371538363821113
+  ],
+  "predeclared_quality_check_passed": false,
+  "collection": {
+    "development": {
+      "http_requests": 1810,
+      "upstream_cost_usd": null,
+      "known_upstream_cost_subtotal_usd": 0.327595,
+      "requests_with_known_upstream_cost": 1808,
+      "prompt_tokens": 738580,
+      "completion_tokens": 95300,
+      "prior_labels_reused": 600,
+      "collection_timings": [
+        {
+          "operation": "teacher",
+          "requested": 1800,
+          "seconds": 298.137396680002
+        },
+        {
+          "operation": "teacher",
+          "requested": 10,
+          "seconds": 2.2740818380043493
+        }
+      ]
+    },
+    "final": {
+      "http_requests": 603,
+      "upstream_cost_usd": null,
+      "known_upstream_cost_subtotal_usd": 0.10910225,
+      "requests_with_known_upstream_cost": 601,
+      "prompt_tokens": 245735,
+      "completion_tokens": 31779,
+      "prior_labels_reused": 0,
+      "collection_timings": [
+        {
+          "operation": "teacher",
+          "requested": 600,
+          "seconds": 97.32085089199973
+        },
+        {
+          "operation": "teacher",
+          "requested": 3,
+          "seconds": 3.253430197000853
+        }
+      ]
+    }
+  },
+  "label_coverage": {
+    "development": {
+      "selected": 2400,
+      "valid_labels": 2398,
+      "missing_ids": [
+        "6a8c276a-dd3d-44fa-a8b6-668fbba1a899",
+        "9235aa15-0cf5-4b1b-b5a6-87826e9910b6"
+      ],
+      "policy": "Only valid labels enter training; no substitutes. Two still incomplete after one retry."
+    },
+    "final": {
+      "selected": 600,
+      "valid_labels": 599,
+      "missing_ids": [
+        "dd451e15-06c6-43dc-bb2d-c6e8eb05107a"
+      ],
+      "policy": "Only valid labels enter training or scored comparisons; failures remain explicitly recorded, with no substitute scores"
+    }
+  },
+  "decision_baseline": {
+    "scored_records": 597,
+    "selected_records": 600,
+    "upstream_cost_usd": null,
+    "matched_holdout_count": 596,
+    "metrics": {
+      "teacher_spearman": 0.6391364618816185,
+      "human_spearman": 0.2964801744010035,
+      "mae": 1.2339194630872483,
+      "rmse": 1.415788930350147,
+      "human_good_recall": 0.6296296296296297,
+      "human_good_precision": 0.5134228187919463
+    },
+    "teacher_human_spearman_on_same_subset": 0.37649449837316873,
+    "improved_human_spearman_on_same_subset": 0.33166266966901065,
+    "requests": 600,
+    "prompt_tokens": 335966,
+    "reported_cost_usd": 0
+  },
+  "timings": [
+    {
+      "operation": "train_improved",
+      "seconds": 38.52193042900035
+    },
+    {
+      "operation": "train_baseline",
+      "seconds": 33.586989914001606
+    },
+    {
+      "operation": "direct_decision_collection",
+      "seconds": 34.26464776099601
+    },
+    {
+      "operation": "infer_improved",
+      "seconds": 9.85724488899723
+    },
+    {
+      "operation": "resume_improved",
+      "seconds": 0.847623936002492
+    },
+    {
+      "operation": "infer_baseline",
+      "seconds": 9.539409056000295
+    },
+    {
+      "operation": "resume_baseline",
+      "seconds": 0.8511407579935621
+    }
+  ],
+  "source_overlap": 0,
+  "feature_text_overlap": 0,
+  "exported_selection_verified": 299,
+  "evidence_directory": "/tmp/arka-165-v2"
+}

@@ -753,6 +753,33 @@
       "title": "DistilledQualityTrainConfig",
       "type": "object"
     },
+    "DistilledRidgeConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "distilled_ridge",
+          "default": "distilled_ridge",
+          "title": "Type",
+          "type": "string"
+        },
+        "model_path": {
+          "minLength": 1,
+          "title": "Model Path",
+          "type": "string"
+        },
+        "model_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Model Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model_path",
+        "model_sha256"
+      ],
+      "title": "DistilledRidgeConfig",
+      "type": "object"
+    },
     "DoubleCriticFilterConfig": {
       "additionalProperties": false,
       "description": "Simula \u00a72.2 double-critic. Two independent yes/no critic calls per record.\n\nDecision mode also keeps the inverse questions in separate requests.",
@@ -3038,6 +3065,7 @@
             "decontaminate": "#/$defs/DecontaminateConfig",
             "distilled_quality_score": "#/$defs/DistilledQualityScoreConfig",
             "distilled_quality_train": "#/$defs/DistilledQualityTrainConfig",
+            "distilled_ridge": "#/$defs/DistilledRidgeConfig",
             "double_critic": "#/$defs/DoubleCriticFilterConfig",
             "evol_instruct_generator": "#/$defs/EvolInstructGeneratorConfig",
             "exact": "#/$defs/ExactDedupConfig",
@@ -3142,6 +3170,9 @@
           },
           {
             "$ref": "#/$defs/DistilledQualityScoreConfig"
+          },
+          {
+            "$ref": "#/$defs/DistilledRidgeConfig"
           },
           {
             "$ref": "#/$defs/SourceAuditConfig"

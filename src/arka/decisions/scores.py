@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from arka.decisions.models import ChoiceAnswer, ScoreAnswer, YesNoAnswer
-from arka.records.models import Record
+from arka.records.models import ConversationRecord, Record
 
 
 def score_value(
@@ -11,6 +11,19 @@ def score_value(
     normalize: bool = False,
     confidence_weighting: bool = False,
 ) -> float | None:
+    if path == "distilled_ridge" and record.scores.distilled_ridge is not None:
+        from arka.distillation import input_hash
+
+        prediction = record.scores.distilled_ridge_prediction
+        if (
+            not isinstance(record, ConversationRecord)
+            or record.payload.turns
+            or prediction is None
+            or prediction.input_hash != input_hash(record)
+        ):
+            raise ValueError(
+                "Missing or stale distilled ridge prediction; score the record again"
+            )
     if path.startswith("decisions."):
         value = record.scores.decisions.get(path.removeprefix("decisions."))
     elif path.startswith("quality_per_dim."):

@@ -1,0 +1,375 @@
+{
+  "protocol": {
+    "dataset": "OpenAssistant/oasst1",
+    "dataset_url": "https://huggingface.co/datasets/OpenAssistant/oasst1/resolve/refs%2Fconvert%2Fparquet/default/train/0000.parquet",
+    "download_sha256": "bbfadf5ed1278ba2208c837fdcad865adf65f5df55d80abadab2745db13fcb5e",
+    "eligible_records": 5731,
+    "sample_count": 600,
+    "selection": "SHA-256 order of arka-165-v1:<message_id>, first 600, no score stratification",
+    "eligibility": "English human first-turn answers, >=2 quality raters, no annotated PII, <=240 encoder tokens",
+    "teacher": "google/gemini-3.1-flash-lite-preview",
+    "teacher_pricing_usd_per_token": {
+      "prompt": "0.00000025",
+      "completion": "0.0000015",
+      "image": "0.00000025",
+      "audio": "0.0000005",
+      "input_audio_cache": "0.00000005",
+      "web_search": "0.014",
+      "internal_reasoning": "0.0000015",
+      "input_cache_read": "0.000000025",
+      "input_cache_write": "0.0000000833333333333333"
+    },
+    "encoder": "sentence-transformers/all-MiniLM-L6-v2",
+    "embedding_dimensions": 384,
+    "alpha": 1.0,
+    "split": "Arka deterministic 80/20 connected source/lineage/text groups",
+    "primary_metric": "Spearman agreement with held-out teacher rubric quality",
+    "secondary_metrics": [
+      "MAE vs teacher",
+      "RMSE vs teacher",
+      "Spearman vs existing human quality",
+      "top-half human quality>=0.75 precision and recall",
+      "teacher top-half overlap",
+      "cost and elapsed time"
+    ],
+    "human_good_threshold": 0.75,
+    "keep_fraction": 0.5,
+    "uncertainty": "1000 bootstrap samples of holdout conversation trees, seed 165",
+    "tuning": "No hyperparameter selection on holdout",
+    "scope_limit": "Short English first-turn records from public data; not representative of all Arka runs"
+  },
+  "model_sha256": "e60e490562ab572dcc8d5dfb7483f1abd5b7cb2d52e62b7e37bda883fb801376",
+  "split": {
+    "train_count": 478,
+    "validation_count": 122,
+    "train_groups": 433,
+    "validation_groups": 109,
+    "mae": 0.7349921672431156,
+    "rmse": 0.8641328763445251,
+    "spearman": 0.11342668976318641
+  },
+  "teacher_summary": {
+    "mean": 4.375409836065574,
+    "std": 0.8394291068798022,
+    "min": 2.6,
+    "max": 5.0
+  },
+  "metrics": {
+    "spearman_teacher_student": 0.11342668976318641,
+    "mae_teacher_student": 0.7349921672431156,
+    "rmse_teacher_student": 0.8641328763445251,
+    "spearman_human_student": 0.05374694393205979,
+    "spearman_human_teacher": 0.4224727672255951,
+    "student_top_half_human_good_precision": 0.36065573770491804,
+    "student_top_half_human_good_recall": 0.4782608695652174,
+    "teacher_top_half_human_good_precision": 0.4426229508196721,
+    "teacher_top_half_human_good_recall": 0.5869565217391305,
+    "top_half_overlap": 0.4918032786885246,
+    "all_human_good_fraction": 0.3770491803278688,
+    "training_mean_baseline_mae": 0.7643802729954043,
+    "training_mean_baseline_rmse": 0.8429992691889898,
+    "spearman_human_decision": 0.4315672147646191,
+    "spearman_teacher_decision": 0.6999204272490265,
+    "spearman_student_decision": 0.0839389171816001,
+    "decision_top_half_human_good_precision": 0.48333333333333334,
+    "decision_top_half_human_good_recall": 0.6444444444444445
+  },
+  "bootstrap_95_percent_intervals": {
+    "spearman_teacher_student": [
+      -0.06422880869917966,
+      0.28223062501989354
+    ],
+    "mae_teacher_student": [
+      0.6543072294658305,
+      0.8160921637565794
+    ],
+    "rmse_teacher_student": [
+      0.7706823067988589,
+      0.9541257067331838
+    ],
+    "spearman_human_student": [
+      -0.13919474792027356,
+      0.24041460885361632
+    ],
+    "spearman_human_teacher": [
+      0.2734615520524293,
+      0.5679195731007094
+    ],
+    "student_top_half_human_good_precision": [
+      0.24580248545742994,
+      0.49180978402289877
+    ],
+    "student_top_half_human_good_recall": [
+      0.35892857142857143,
+      0.6111111111111112
+    ],
+    "teacher_top_half_human_good_precision": [
+      0.35,
+      0.5968548387096774
+    ],
+    "teacher_top_half_human_good_recall": [
+      0.5082627118644067,
+      0.744198416625433
+    ],
+    "top_half_overlap": [
+      0.423728813559322,
+      0.6066278176229508
+    ],
+    "all_human_good_fraction": [
+      0.2950578592092575,
+      0.4615853658536585
+    ]
+  },
+  "teacher_usage": {
+    "http_attempts": 604,
+    "successful_requests": 604,
+    "requests_with_known_cost": 604,
+    "reported_cost_usd": 0,
+    "upstream_inference_cost_usd": 0.10909,
+    "prompt_tokens": 244372,
+    "completion_tokens": 31998,
+    "total_tokens": 276370,
+    "per_record_median_seconds": 1.0218158924999443,
+    "models": [
+      "google/gemini-3.1-flash-lite-preview"
+    ]
+  },
+  "timings": [
+    {
+      "operation": "teacher",
+      "requested": 2,
+      "seconds": 1.507089974002156
+    },
+    {
+      "operation": "teacher",
+      "requested": 598,
+      "seconds": 110.85287369800062
+    },
+    {
+      "operation": "teacher",
+      "requested": 4,
+      "seconds": 1.394128644002194
+    },
+    {
+      "operation": "training",
+      "seconds": 8.533491260001028
+    },
+    {
+      "operation": "inference",
+      "seconds": 2.8623323640022136
+    },
+    {
+      "operation": "resume",
+      "seconds": 0.6780127269994409
+    }
+  ],
+  "decision_baseline": {
+    "status": "measured_with_failures",
+    "records": 597,
+    "holdout_records_scored": 121,
+    "missing_ids": [
+      "f4f1f788-5ef3-4b5c-b2f1-5f3ac5a067a9",
+      "d0d370b4-5d4d-4ee0-852b-5de8db52e7a2",
+      "abb708a6-cc15-4a42-805a-b1968995cd83"
+    ],
+    "models": [
+      "openai/gpt-6-luna-decisions-20261006"
+    ],
+    "reported_cost_usd": 0,
+    "upstream_cost_usd": null,
+    "prompt_tokens": 333996,
+    "successful_requests": 597,
+    "http_status_counts_after_pilot": {
+      "200": 596,
+      "502": 12
+    },
+    "per_record_median_seconds": 0.23001460099840187,
+    "probe": {
+      "status": "available",
+      "model": "openai/gpt-6-luna-decisions",
+      "elapsed_s": 0.40936920199965243,
+      "result": {
+        "answers": {
+          "labeling_engine.instruction_clarity": {
+            "confidence": 0.26,
+            "type": "score",
+            "score": 1.31,
+            "probabilities": {
+              "0": 0.29,
+              "1": 0.35,
+              "2": 0.2,
+              "3": 0.08,
+              "4": 0.08
+            }
+          },
+          "labeling_engine.response_quality": {
+            "confidence": 0.39,
+            "type": "score",
+            "score": 1.05,
+            "probabilities": {
+              "0": 0.34,
+              "1": 0.38,
+              "2": 0.19,
+              "3": 0.07,
+              "4": 0.02
+            }
+          }
+        },
+        "model": "openai/gpt-6-luna-decisions-20261006",
+        "provider": "openrouter",
+        "usage": {
+          "prompt_tokens": 672,
+          "completion_tokens": 0,
+          "total_tokens": 672,
+          "cost_usd": 0.0
+        },
+        "latency_ms": 409,
+        "requests_sent": 1,
+        "cache_hits": 0
+      }
+    }
+  },
+  "largest_teacher_student_errors": [
+    {
+      "id": "6b508735-46f1-422e-b729-98374b7ba71e",
+      "tree_id": "3a8963b3-d220-4760-a35b-69bf3211c8c3",
+      "teacher": 2.6,
+      "student": 4.586453297974555,
+      "decision": 2.3100000000000005,
+      "human_quality": 0.5,
+      "absolute_error": 1.9864532979745548,
+      "human_raters": 3,
+      "student_selected": true
+    },
+    {
+      "id": "a04c8ab9-114a-45e6-9886-ade0bbbaf0dd",
+      "tree_id": "2f0980cf-61d9-4cfe-9b67-fc16afc24ba5",
+      "teacher": 2.6,
+      "student": 4.516392575972061,
+      "decision": 2.344,
+      "human_quality": 0.25,
+      "absolute_error": 1.9163925759720608,
+      "human_raters": 3,
+      "student_selected": true
+    },
+    {
+      "id": "ae1a20ed-10a2-401b-baa9-1b380686cb99",
+      "tree_id": "47e53461-8d48-4943-9caa-804c3212308b",
+      "teacher": 2.6,
+      "student": 4.4885464428390165,
+      "decision": 1.5659999999999998,
+      "human_quality": 0.1,
+      "absolute_error": 1.8885464428390164,
+      "human_raters": 5,
+      "student_selected": true
+    },
+    {
+      "id": "e2c5fd21-b982-4fcc-82c0-44de3f1f77eb",
+      "tree_id": "477e029d-a79d-4a10-85e8-1b4484f7fffa",
+      "teacher": 2.6,
+      "student": 4.427845222895174,
+      "decision": 1.806,
+      "human_quality": 0.0,
+      "absolute_error": 1.8278452228951738,
+      "human_raters": 3,
+      "student_selected": true
+    },
+    {
+      "id": "abfeedb2-96b9-4651-838a-c869a08059b3",
+      "tree_id": "65dbe540-906e-4bd4-bbb3-d24908780ba9",
+      "teacher": 2.6,
+      "student": 4.382961434299003,
+      "decision": 1.7839999999999998,
+      "human_quality": 0.3,
+      "absolute_error": 1.7829614342990028,
+      "human_raters": 5,
+      "student_selected": true
+    },
+    {
+      "id": "be4a66c9-af0d-464f-9a42-0a542dc6d3c7",
+      "tree_id": "36371416-f7ee-4808-bc0f-c40bee9ec570",
+      "teacher": 2.6,
+      "student": 4.382042703546878,
+      "decision": 2.2520000000000002,
+      "human_quality": 0.5833333333333334,
+      "absolute_error": 1.7820427035468778,
+      "human_raters": 3,
+      "student_selected": true
+    },
+    {
+      "id": "5902efe9-e820-4155-8b8f-39dd8b7cae6f",
+      "tree_id": "00b335e0-f92e-45f4-9b11-b1e7966fd448",
+      "teacher": 2.6,
+      "student": 4.368271792398935,
+      "decision": 1.448,
+      "human_quality": 0.5,
+      "absolute_error": 1.7682717923989348,
+      "human_raters": 3,
+      "student_selected": true
+    },
+    {
+      "id": "89ffc33d-91d0-4359-b80d-75bb2cf4e760",
+      "tree_id": "901b6eed-b73e-4795-94e5-a21075e5dceb",
+      "teacher": 2.6,
+      "student": 4.324022185204224,
+      "decision": 2.24,
+      "human_quality": 0.5625,
+      "absolute_error": 1.7240221852042237,
+      "human_raters": 4,
+      "student_selected": true
+    },
+    {
+      "id": "9fdc0790-e3a8-4804-9817-ee9ffe200314",
+      "tree_id": "b50181c1-47bf-4d1d-b221-395bb120dfc5",
+      "teacher": 2.6,
+      "student": 4.323944240069368,
+      "decision": 4.23,
+      "human_quality": 0.4375,
+      "absolute_error": 1.7239442400693679,
+      "human_raters": 4,
+      "student_selected": true
+    },
+    {
+      "id": "1d73c141-96c3-4878-8c9d-bbf82e4334c9",
+      "tree_id": "78bb55ef-220e-4dba-838c-76876c62da75",
+      "teacher": 2.6,
+      "student": 4.102490359391229,
+      "decision": 2.38,
+      "human_quality": 0.3333333333333333,
+      "absolute_error": 1.502490359391229,
+      "human_raters": 3,
+      "student_selected": false
+    }
+  ],
+  "environment": {
+    "python": "3.12.14",
+    "platform": "Linux-7.3.0-2-cachyos-x86_64-with-glibc2.44",
+    "packages": {
+      "numpy": "2.4.3",
+      "fastembed": "0.8.0",
+      "onnxruntime": "1.24.4",
+      "openai": "2.30.0",
+      "polars": "1.39.3",
+      "pydantic": "2.12.5"
+    },
+    "encoder_files_sha256": {
+      "models--qdrant--all-MiniLM-L6-v2-onnx/snapshots/d13954661f83248295ba75c1ed411eef3b7b936e/model.onnx": "bbd7b466f6d58e646fdc2bd5fd67b2f5e93c0b687011bd4548c420f7bd46f0c5",
+      "models--qdrant--all-MiniLM-L6-v2-onnx/snapshots/d13954661f83248295ba75c1ed411eef3b7b936e/tokenizer.json": "851ca67100d372ca3ae031a6abd168f53489eebfd7d89523f35c5c9b4d372c3c",
+      "models--qdrant--all-MiniLM-L6-v2-onnx/snapshots/d13954661f83248295ba75c1ed411eef3b7b936e/tokenizer_config.json": "abda01c8c14c5151ae498aceb30db406d6b91242c394fd88d3b6fd5a63a101e6",
+      "models--qdrant--all-MiniLM-L6-v2-onnx/snapshots/d13954661f83248295ba75c1ed411eef3b7b936e/config.json": "1b4d8e2a3988377ed8b519a31d8d31025a25f1c5f8606998e8014111438efcd7"
+    }
+  },
+  "collection_failures": {
+    "llm_first_pass_incomplete_labels": 4,
+    "llm_one_retry_each": 4,
+    "decision_unique_refusals": 3,
+    "decision_failures_logged_after_pilot": 12,
+    "decision_extra_diagnostic_refusal_requests": 1,
+    "decision_other_model_probe_http_400": 1,
+    "decision_original_pilot_successful_requests": 1,
+    "decision_total_http_attempts_including_probes_and_diagnostic": 611,
+    "decision_refusal_error": "OpenAI refused to answer question labeling_engine.response_quality"
+  },
+  "evidence_directory": "/tmp/arka-165-real-eval",
+  "cli_selected_payloads_verified": 61
+}

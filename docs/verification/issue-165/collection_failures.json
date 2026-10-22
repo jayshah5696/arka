@@ -1,0 +1,11 @@
+{
+  "llm_first_pass_incomplete_labels": 4,
+  "llm_one_retry_each": 4,
+  "decision_unique_refusals": 3,
+  "decision_failures_logged_after_pilot": 12,
+  "decision_extra_diagnostic_refusal_requests": 1,
+  "decision_other_model_probe_http_400": 1,
+  "decision_original_pilot_successful_requests": 1,
+  "decision_total_http_attempts_including_probes_and_diagnostic": 611,
+  "decision_refusal_error": "OpenAI refused to answer question labeling_engine.response_quality"
+}

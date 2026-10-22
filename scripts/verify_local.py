@@ -56,6 +56,15 @@ def main() -> int:
     }
     cli = str(Path(sys.executable).with_name("arka"))
     checks = [
+        (
+            "ridge",
+            [
+                sys.executable,
+                str(ROOT / "scripts/verify_ridge_cli.py"),
+                "--output",
+                str(output / "ridge"),
+            ],
+        ),
         ("version", [cli, "--version"]),
         (
             "validate-examples",

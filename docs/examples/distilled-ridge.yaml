@@ -1,0 +1,29 @@
+# Train models/quality.json first and replace model_sha256 with the printed hash.
+# This example ranks existing English instruction-answer records without judging.
+version: "1"
+llm:
+  provider: openai
+  model: unused
+  api_key: unused
+  base_url: https://api.openai.com/v1
+executor:
+  mode: threadpool
+  max_workers: 1
+embeddings:
+  provider: huggingface
+  model: all-MiniLM-L6-v2
+  batch_size: 256
+pipeline:
+  - type: seed_source
+    path: records.jsonl
+  - type: normalize_conversation
+  - type: distilled_ridge
+    model_path: models/quality.json
+    model_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+  - type: select
+    target_count: 100
+    weights:
+      distilled_ridge: 1.0
+output:
+  format: jsonl
+  path: ranked.jsonl
