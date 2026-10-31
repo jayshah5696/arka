@@ -50,3 +50,8 @@
 * **Why**: To remove developer friction by preventing raw Python tracebacks from cluttering the terminal when a user intentionally cancels a long-running pipeline, providing a clean, professional error message instead.
 * **Before**: Hitting Ctrl+C resulted in a raw `KeyboardInterrupt` traceback dumped to `stderr`.
 * **After**: Hitting Ctrl+C cleanly prints `Error: Pipeline execution failed - Pipeline execution interrupted by user` and exits with code 1.
+## 2024-11-20 - Palette: Add show_default=True to CLI options
+* **What**: Added `show_default=True` to `--config` and `--run-id` decorators in `src/arka/cli.py`, removing manual default text from the help string.
+* **Why**: To remove developer friction by automatically documenting default values in `--help` using native Click features, ensuring standard formatting and preventing documentation drift.
+* **Before**: The default was manually typed as `(default: config.yaml)` in the help string.
+* **After**: The default is correctly rendered by Click as `[default: config.yaml]`.

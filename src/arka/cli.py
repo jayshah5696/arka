@@ -228,14 +228,17 @@ def _run_pipeline(
 
 
 @click.command(name="arka")
+# DX: Add show_default=True to use native Click features to document defaults in help text instead of manual strings
 @click.option(
     "--config",
     default="config.yaml",
-    help="Path to the YAML configuration file (default: config.yaml)",
+    show_default=True,
+    help="Path to the YAML configuration file",
 )
 @click.option(
     "--run-id",
     default=None,
+    show_default=True,
     help="Optional unique identifier for the run (overrides config run_id)",
 )
 @click.option(
