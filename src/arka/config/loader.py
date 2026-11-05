@@ -173,9 +173,9 @@ class ConfigLoader:
             if err_type == "missing":
                 err_msg = f"Missing required field: '{path}'{line_hint}"
             elif err_type == "extra_forbidden":
-                err_msg = (
-                    f"Unknown field: '{path}'{line_hint} (this key is not allowed here)"
-                )
+                # DX: Extract the exact key name from loc for extra_forbidden errors so users know exactly which key is invalid
+                actual_key = str(loc[-1]) if loc else path
+                err_msg = f"Unknown field '{actual_key}' at '{path}'{line_hint} (this key is not allowed here)"
             elif err_type == "union_tag_invalid":
                 # DX: Make discriminated union errors more readable
                 ctx = error.get("ctx", {})
