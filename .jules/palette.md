@@ -50,3 +50,8 @@
 * **Why**: To remove developer friction by preventing raw Python tracebacks from cluttering the terminal when a user intentionally cancels a long-running pipeline, providing a clean, professional error message instead.
 * **Before**: Hitting Ctrl+C resulted in a raw `KeyboardInterrupt` traceback dumped to `stderr`.
 * **After**: Hitting Ctrl+C cleanly prints `Error: Pipeline execution failed - Pipeline execution interrupted by user` and exits with code 1.
+## 2026-11-05 - Palette: Enhance extra_forbidden config error visibility
+* **What**: Updated `extra_forbidden` error formatting in `src/arka/config/loader.py` to extract the exact key name using `loc[-1]`.
+* **Why**: To remove ambiguity and friction when a developer typos a key in their configuration file. Now they know exactly which key is incorrect.
+* **Before**: The error message was `Unknown field: 'path.to.key'` which could be confused with the full path if the key itself is long or deeply nested.
+* **After**: The error message is `Unknown field 'key' at 'path.to.key'`.

@@ -139,7 +139,7 @@ def test_config_validation_error_is_human_readable(
         ConfigLoader().load(config_path)
     message2 = str(exc_info.value)
     assert (
-        f"  - Unknown field: 'unexpected_key' (check line {unexpected_line_num}) (this key is not allowed here)"
+        f"  - Unknown field 'unexpected_key' at 'unexpected_key' (check line {unexpected_line_num}) (this key is not allowed here)"
         in message2
     )
 
@@ -482,3 +482,27 @@ def test_loader_formats_union_tag_invalid_errors_readably() -> None:
     error_msg = str(exc.value)
     assert "Invalid pipeline stage type: 'invalid_stage_type'" in error_msg
     assert "Expected one of:" in error_msg
+
+
+def test_extra_forbidden_error_message() -> None:
+    loader = ConfigLoader()
+    invalid_data = {
+        "version": "1",
+        "llm": {
+            "provider": "openai",
+            "model": "m",
+            "api_key": "k",
+            "base_url": "http://u",
+            "invalid_extra_key": "value",
+        },
+        "executor": {},
+        "pipeline": [{"type": "seed_source", "path": "p"}],
+        "output": {"format": "chatml", "path": "p"},
+    }
+
+    with pytest.raises(ConfigValidationError) as exc:
+        loader.load_dict(invalid_data)
+
+    error_msg = str(exc.value)
+    assert "Unknown field 'invalid_extra_key' at 'llm.invalid_extra_key'" in error_msg
+    assert "(this key is not allowed here)" in error_msg
