@@ -164,14 +164,45 @@ class StageContext:
     ) -> list[Any]:
         """Bounded parallel execution helper reusing ctx.executor or creating bounded pool."""
         from arka.common.concurrency import bounded_worker_count
+        import sys
+        from concurrent.futures import as_completed
 
         if not items:
             return []
         workers = bounded_worker_count(len(items), max_workers or self.max_workers)
-        if self.executor is not None:
-            return list(self.executor.map(fn, items))
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            return list(pool.map(fn, items))
+
+        total = len(items)
+        results = [None] * total
+        completed = 0
+
+        # Ensure the task closure is picklable if a ProcessPoolExecutor is somehow provided in the future,
+        # but realistically, Arka uses ThreadPoolExecutor synchronously.
+        # However, to avoid duplicate code and nested function pickling issues, we can just use a helper or loop.
+        pool_to_use = self.executor
+        own_pool = None
+        if pool_to_use is None:
+            own_pool = ThreadPoolExecutor(max_workers=workers)
+            pool_to_use = own_pool
+
+        try:
+            # DX: Added live progress indicator during parallel execution to keep developers informed on long-running batches
+            futures = {pool_to_use.submit(fn, item): i for i, item in enumerate(items)}
+            for future in as_completed(futures):
+                idx = futures[future]
+                results[idx] = future.result()
+                completed += 1
+                # Only write progress if attached to a terminal to avoid polluting log files
+                if sys.stdout.isatty():
+                    sys.stdout.write(f"\r  Processing: {completed}/{total} records")
+                    sys.stdout.flush()
+            if sys.stdout.isatty() and total > 0:
+                sys.stdout.write("\n")
+                sys.stdout.flush()
+        finally:
+            if own_pool is not None:
+                own_pool.shutdown(wait=True)
+
+        return results
 
 
 @dataclass(frozen=True)
