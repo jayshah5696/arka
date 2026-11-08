@@ -163,15 +163,39 @@ class StageContext:
         max_workers: int | None = None,
     ) -> list[Any]:
         """Bounded parallel execution helper reusing ctx.executor or creating bounded pool."""
+        import concurrent.futures
+        import sys
+
         from arka.common.concurrency import bounded_worker_count
 
         if not items:
             return []
         workers = bounded_worker_count(len(items), max_workers or self.max_workers)
+
+        def _run_with_pool(pool: ThreadPoolExecutor) -> list[Any]:
+            # DX: Provide a live progress indicator during parallel batch processing
+            results = [None] * len(items)
+            future_to_index = {pool.submit(fn, item): i for i, item in enumerate(items)}
+            total = len(items)
+            completed = 0
+            is_tty = sys.stdout.isatty()
+
+            for future in concurrent.futures.as_completed(future_to_index):
+                index = future_to_index[future]
+                results[index] = future.result()
+                completed += 1
+                if is_tty:
+                    sys.stdout.write(f"\r  Processed {completed}/{total} items...")
+                    sys.stdout.flush()
+            if is_tty and total > 0:
+                sys.stdout.write("\n")
+                sys.stdout.flush()
+            return results
+
         if self.executor is not None:
-            return list(self.executor.map(fn, items))
+            return _run_with_pool(self.executor)
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            return list(pool.map(fn, items))
+            return _run_with_pool(pool)
 
 
 @dataclass(frozen=True)
