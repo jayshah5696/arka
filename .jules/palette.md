@@ -50,3 +50,9 @@
 * **Why**: To remove developer friction by preventing raw Python tracebacks from cluttering the terminal when a user intentionally cancels a long-running pipeline, providing a clean, professional error message instead.
 * **Before**: Hitting Ctrl+C resulted in a raw `KeyboardInterrupt` traceback dumped to `stderr`.
 * **After**: Hitting Ctrl+C cleanly prints `Error: Pipeline execution failed - Pipeline execution interrupted by user` and exits with code 1.
+
+## 2024-11-20 - Palette: Live progress indicator during parallel batch processing
+* **What**: Replaced `executor.map` with `concurrent.futures.as_completed` in the `StageContext.map_parallel` function to display a real-time progress indicator using `sys.stdout` (e.g. `[completed/total] items processed...`) for slow batch stages. Output updates are gated by `sys.stdout.isatty()`. Reassembled return values preserving initial input array index order.
+* **Why**: To remove developer friction where the application appeared hung during long-running batch stages (e.g. generator models, embeddings), providing visible, granular progress within the stage.
+* **Before**: The CLI output announced the stage had started and then hung with no feedback until the entire stage finished (or failed).
+* **After**: The CLI dynamically overwrites the current progress counter below the stage announcement, finishing gracefully on completion before logging the standard stage completion message.
