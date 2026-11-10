@@ -146,3 +146,34 @@ def test_seed_source_stage_missing_file_raises_not_found(tmp_path: Path) -> None
 
     assert "Seed source file not found at expected path:" in str(exc.value)
     assert "does_not_exist.jsonl" in str(exc.value)
+
+
+@pytest.mark.parametrize("suffix", ["jsonl", "csv"])
+def test_seed_source_hashes_file_once(tmp_path: Path, monkeypatch, suffix) -> None:
+    from unittest.mock import Mock
+
+    from arka.pipeline import source_stages
+
+    source = tmp_path / f"seeds.{suffix}"
+    source.write_text(
+        '{"instruction":"one","response":"a"}\n{"instruction":"two","response":"b"}\n'
+        if suffix == "jsonl"
+        else "instruction,response\none,a\ntwo,b\n"
+    )
+    hash_file = Mock(wraps=source_stages.file_hash)
+    monkeypatch.setattr(source_stages, "file_hash", hash_file)
+    config = ConfigLoader().load_dict(build_config(source.name))
+    ctx = StageContext(
+        run_id="test",
+        stage_name="01_source",
+        work_dir=tmp_path / "work",
+        config=config,
+        executor_mode=config.executor.mode,
+        max_workers=config.executor.max_workers,
+    )
+
+    records = SeedSourceStage(project_root=tmp_path).run([], ctx)
+
+    assert len(records) == 2
+    assert records[0].source.seed_file_hash == records[1].source.seed_file_hash
+    hash_file.assert_called_once_with(source)

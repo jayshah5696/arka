@@ -15,3 +15,7 @@ Run the shared skill's Doctor first. Use `just verify` for fresh default evidenc
 | [Reasoning and exports](reasoning.md) | ChatML in both helpers | Native language and HF token checks |
 
 Every default workflow runs the installed CLI and checks resume. This map is a bounded set of verification recipes, not exhaustive product coverage. Preserve evidence and name every optional path left unverified.
+
+Run path containment, config identity, seed file hashing, optional-field canary checks and resumed
+input counts have focused tests listed in the shared skill. These boundaries
+are unit-tested; the default CLI recipes provide separate integration proof.

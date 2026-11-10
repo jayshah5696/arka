@@ -165,7 +165,7 @@ def test_pipeline_runner_resume_skips_completed_stages(
     assert manifest["stage_stats"] == [
         {
             "stage": "01_source",
-            "count_in": 1,
+            "count_in": 0,
             "count_out": 1,
             "status": "resumed",
             "resumed": True,

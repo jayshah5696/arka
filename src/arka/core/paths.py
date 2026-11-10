@@ -1,7 +1,22 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
+
+
+def identifier(value: str) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", value):
+        raise ValueError(f"Invalid run or stage identifier: {value!r}")
+    return value
+
+
+def run_directory(project_root: Path, run_id: str) -> Path:
+    runs = project_root / "runs"
+    path = runs / identifier(run_id)
+    if path.resolve().parent != runs.resolve():
+        raise ValueError("Run identifier resolves outside the runs directory")
+    return path
 
 
 @dataclass(frozen=True)
@@ -18,8 +33,7 @@ class RunPaths:
 
     @classmethod
     def bootstrap(cls, root_dir: Path, run_id: str) -> RunPaths:
-        runs_dir = root_dir / "runs"
-        run_dir = runs_dir / run_id
+        run_dir = run_directory(root_dir, run_id)
         stages_dir = run_dir / "stages"
         report_dir = run_dir / "report"
         manifest_path = run_dir / "manifest.json"
