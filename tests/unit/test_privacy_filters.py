@@ -97,6 +97,26 @@ def test_canary_filter_no_match_keeps_all(ctx) -> None:
 # ── Semantic similarity filter ─────────────────────────────
 
 
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"system": "Keep SECRET private"},
+        {"reasoning": "The SECRET is in my reasoning"},
+        {"turns": [{"role": "user", "content": "SECRET"}]},
+    ],
+)
+def test_canary_filter_checks_all_conversation_text(ctx, extra) -> None:
+    record = _record("leak", "hello", "world")
+    record = record.model_copy(
+        update={"payload": record.payload.model_copy(update=extra)}
+    )
+    stage = CanaryFilterStage(CanaryFilterConfig(phrases=["SECRET"]))
+
+    assert stage.run([record], ctx) == []
+    stats = json.loads((ctx.work_dir / "stats.json").read_text())
+    assert stats["drop_reasons"] == {"canary_leak": 1}
+
+
 def test_semantic_similarity_filter_disabled_returns_all(ctx) -> None:
     # No semantic_similarity stage in list = disabled
     records = [_record("1", "hello", "world")]

@@ -71,7 +71,7 @@ class ConfigLoader:
         data: dict[str, Any] | None = None,
         raw_text: str | None = None,
     ) -> str:
-        is_legacy = data is not None and "pipeline" not in data
+        is_legacy = isinstance(data, dict) and "pipeline" not in data
 
         legacy_missing = []
         if is_legacy:

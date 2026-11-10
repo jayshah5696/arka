@@ -7,7 +7,6 @@ from pydantic import (
     Discriminator,
     Field,
     HttpUrl,
-    PrivateAttr,
     SecretStr,
     Tag,
     model_validator,
@@ -821,8 +820,6 @@ __all__ = ["LegacyConfigNamespace", "ResolvedConfig"]
 
 
 class ResolvedConfig(StrictModel):
-    _computed_hash: str | None = PrivateAttr(default=None)
-
     version: str
     run_id: str | None = None
     llm: LLMConfig

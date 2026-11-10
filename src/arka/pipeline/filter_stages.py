@@ -51,7 +51,19 @@ class CanaryFilterStage(BaseFilterStage):
     def _check_record(
         self, record: ConversationRecord, config: CanaryFilterConfig
     ) -> tuple[str, str] | None:
-        text = f"{record.payload.instruction}\n{record.payload.response}"
+        text = "\n".join(
+            value
+            for value in (
+                record.payload.instruction,
+                record.payload.response,
+                record.payload.system,
+                record.payload.reasoning,
+                json.dumps(record.payload.turns, ensure_ascii=False)
+                if record.payload.turns
+                else None,
+            )
+            if value is not None
+        )
         matched = next((p for p in config.phrases if p in text), None)
         if matched is None:
             return None

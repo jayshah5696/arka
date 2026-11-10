@@ -482,3 +482,39 @@ def test_loader_formats_union_tag_invalid_errors_readably() -> None:
     error_msg = str(exc.value)
     assert "Invalid pipeline stage type: 'invalid_stage_type'" in error_msg
     assert "Expected one of:" in error_msg
+
+
+@pytest.mark.parametrize("text", ["42", "true", "a string", "[llm, output]"])
+def test_loader_rejects_non_mapping_yaml(tmp_path: Path, text: str) -> None:
+    path = tmp_path / "invalid.yaml"
+    path.write_text(text)
+    with pytest.raises(ConfigValidationError, match="Configuration is invalid"):
+        ConfigLoader().load(path)
+
+
+@pytest.mark.parametrize("copy_config", [False, True])
+def test_config_hash_tracks_changed_configuration(copy_config: bool) -> None:
+    from arka.records.identity import config_hash
+
+    config = ConfigLoader().load_dict(
+        {
+            "version": "1",
+            "llm": {
+                "provider": "openai",
+                "model": "m",
+                "api_key": "k",
+                "base_url": "http://localhost/v1",
+            },
+            "executor": {},
+            "pipeline": [],
+            "output": {"format": "jsonl", "path": "out.jsonl"},
+        }
+    )
+    original = config_hash(config)
+    if copy_config:
+        changed = config.model_copy(update={"version": "2"})
+    else:
+        changed = config
+        changed.llm.model = "different-model"
+
+    assert config_hash(changed) != original

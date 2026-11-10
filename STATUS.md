@@ -1,26 +1,18 @@
 # Status
 
-## Current State
+Arka has an implemented CLI and a configurable pipeline for synthetic SFT data.
+It supports seed and PDF ingestion, generation, deduplication, filtering,
+decision scoring, bounded answer repair, distilled scoring, and source audits.
+Runs save stage artifacts and SQLite checkpoints for resume.
 
-Project scaffold is in progress for Slice 1 foundation.
-A minimal uv-based Python package exists, with initial tests and pipeline skeleton under development.
-Common project tasks use `just`.
+Use `just check` for lint, formatting, and tests. Use `uv build` to check the
+package build. Use `just verify` for installed CLI checks with local HTTP
+fixtures. These fixtures do not establish production model quality.
 
-## Next Up
+See [features](docs/features.md) for supported behavior and
+[verification paths](.agents/skills/verify-arka/features/README.md) for the
+scope and prerequisites of runtime checks. The broader goals in
+[scope](docs/SCOPE.md) include work that is not implemented.
 
-1. Finish Slice 1 red/green TDD cycle
-2. Add LLM client abstraction beyond factory shape
-3. Add manifest/stage stats improvements
-4. Add CLI config path + resume support
-
-## Known Issues
-
-- Foundation is intentionally minimal and not yet feature-complete versus `docs/SPEC.md`
-- LLM client behavior is only scaffolded, not fully implemented
-
-## Recent Changes
-
-- 2026-04-04: Added uv project scaffold
-- 2026-04-04: Added initial Slice 1 tests and minimal pipeline/checkpoint implementation
-- 2026-04-04: Added explicit red/green TDD rule to `AGENTS.md`
-- 2026-04-04: Switched common task runner from `Makefile` to `justfile`
+The [project review](docs/project-review-2026-11-09.md) records confirmed fixes
+and issues that need review.

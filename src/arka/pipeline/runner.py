@@ -12,7 +12,7 @@ import yaml
 
 from arka.config.loader import ConfigLoader
 from arka.config.models import ResolvedConfig
-from arka.core.paths import RunPaths
+from arka.core.paths import RunPaths, run_directory
 from arka.decisions.factory import DecisionClientFactory
 from arka.pipeline.artifacts import StageArtifacts, StageReport, get_extra
 from arka.pipeline.checkpoint import CheckpointManager
@@ -57,7 +57,7 @@ class PipelineRunner:
         resolved_config = self._resolve_config(config)
         privacy = build_policy(resolved_config.pii, self.project_root)
         # Check before opening existing artifacts or overwriting resolved config.
-        policy_path = self.project_root / "runs" / run_id / "pii_policy.json"
+        policy_path = run_directory(self.project_root, run_id) / "pii_policy.json"
         policy_identity = privacy.fingerprint if privacy else None
         if policy_path.exists():
             if json.loads(policy_path.read_text())["fingerprint"] != policy_identity:
@@ -134,7 +134,7 @@ class PipelineRunner:
                         stage_stats.append(
                             self._build_stage_stat(
                                 stage_name=stage.name,
-                                count_in=int(stage_checkpoint["count_out"]),
+                                count_in=int(stage_checkpoint["count_in"]),
                                 count_out=len(records),
                                 status="resumed",
                                 resumed=True,

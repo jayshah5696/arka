@@ -2,7 +2,7 @@
 
 Config-driven synthetic data generation for supervised fine-tuning.
 
-![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue) ![License](https://img.shields.io/badge/license-MIT-green) ![Tests](https://img.shields.io/badge/tests-325%20passed-brightgreen) ![Coverage](https://img.shields.io/badge/coverage-90%25-brightgreen)
+![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)
 
 ## Why arka
 
@@ -75,12 +75,12 @@ output:
 - [Distilled quality scoring](docs/distilled-quality.md) explains separate training, reusable predictions and cost evaluation.
 - [Source audits](docs/source-audits.md) explains deterministic samples, source evidence and observed failure rates.
 - **[Configuration Reference](docs/configuration.md)** — every YAML key explained
-- **[Example Configs](examples/README.md)** — 8 runnable examples from minimal to privacy guardrails
+- **[Example Configs](examples/README.md)** — runnable examples for generation, privacy, scoring, repair, and source audits
 
 ## Development
 
 ```bash
-just check   # ruff lint + format check + pytest (325 tests)
+just check   # ruff lint + format check + pytest
 just test    # pytest only
 ```
 

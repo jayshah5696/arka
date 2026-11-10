@@ -77,6 +77,7 @@ class SeedSourceStage(Stage):
         self, source_path: Path, config_hash: str
     ) -> list[ConversationRecord]:
         records: list[ConversationRecord] = []
+        source_hash = file_hash(source_path)
         with source_path.open("r", encoding="utf-8") as handle:
             for line in handle:
                 row = json.loads(line)
@@ -85,6 +86,7 @@ class SeedSourceStage(Stage):
                         instruction=str(row["instruction"]),
                         response=str(row["response"]),
                         source_path=source_path,
+                        source_hash=source_hash,
                         config_hash=config_hash,
                         reasoning=row.get("reasoning"),
                     )
@@ -95,6 +97,7 @@ class SeedSourceStage(Stage):
         self, source_path: Path, config_hash: str
     ) -> list[ConversationRecord]:
         records: list[ConversationRecord] = []
+        source_hash = file_hash(source_path)
         with source_path.open("r", encoding="utf-8", newline="") as handle:
             reader = csv.DictReader(handle)
             for row in reader:
@@ -103,6 +106,7 @@ class SeedSourceStage(Stage):
                         instruction=str(row["instruction"]),
                         response=str(row["response"]),
                         source_path=source_path,
+                        source_hash=source_hash,
                         config_hash=config_hash,
                         reasoning=row.get("reasoning"),
                     )
@@ -114,6 +118,7 @@ class SeedSourceStage(Stage):
         instruction: str,
         response: str,
         source_path: Path,
+        source_hash: str,
         config_hash: str,
         reasoning: str | None = None,
     ) -> ConversationRecord:
@@ -135,7 +140,7 @@ class SeedSourceStage(Stage):
             content_hash=content_hash(payload),
             source=RecordSource(
                 type="seed",
-                seed_file_hash=file_hash(source_path),
+                seed_file_hash=source_hash,
             ),
             lineage=RecordLineage(root_id=rid, parent_ids=[]),
             payload=payload,

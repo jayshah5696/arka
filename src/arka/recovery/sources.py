@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
 
+from arka.core.paths import identifier, run_directory
 from arka.pipeline.output import OutputWriter
 from arka.records.identity import content_hash, file_hash
 from arka.records.models import ConversationRecord, GroundedChunkRecord, Record
@@ -19,20 +19,6 @@ def digest(value: object) -> str:
             value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
         ).encode()
     ).hexdigest()
-
-
-def identifier(value: str) -> str:
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", value):
-        raise ValueError(f"Invalid run or stage identifier: {value!r}")
-    return value
-
-
-def run_directory(project_root: Path, run_id: str) -> Path:
-    runs = (project_root / "runs").resolve()
-    path = runs / identifier(run_id)
-    if path.resolve().parent != runs:
-        raise ValueError("Run identifier resolves outside the runs directory")
-    return path
 
 
 @dataclass(frozen=True)

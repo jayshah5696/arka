@@ -45,7 +45,13 @@ Run `just check` and `uv build` for code changes. Then run `just verify`. It che
 - Bounded answer repair, rubric eligibility, PDF grounding, PII rejection, downstream deduplication, and interrupted resume.
 - Distilled quality training and scoring, source audits, PDF evidence, uncertain judgments, PII rejection and interrupted audit resume.
 
-All five use actual SDK HTTP requests to deterministic loopback fixtures. No internal setter substitutes for the CLI path.
+All six use actual SDK HTTP requests to deterministic loopback fixtures. No internal setter substitutes for the CLI path.
+
+For config identity, seed ingestion, canary coverage and resume counts, also run
+`uv run pytest tests/unit/test_paths.py tests/unit/test_config_loader.py tests/unit/test_seed_source_stage.py tests/unit/test_privacy_filters.py tests/unit/test_pipeline_runner.py`.
+These checks cover changed config hashes, one file hash per seed input, canaries
+in optional conversation fields, and original input counts in resumed reports.
+Run path tests reject invalid identifiers and symlinks outside the runs directory.
 
 Run optional checks only when relevant:
 
