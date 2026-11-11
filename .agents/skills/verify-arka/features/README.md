@@ -4,6 +4,7 @@ Run the shared skill's Doctor first. Use `just verify` for fresh default evidenc
 
 | User path | Default local recipe | Optional extension |
 | --- | --- | --- |
+| [Generated experiments and safe resume](experiments.md) | Experiments helper | Other version 2 stage/backend combinations |
 | [PDF ingestion and provenance](pdf.md) | Cleanup helper | Repeated-header removal |
 | [Generated text cleanup](cleanup.md) | Cleanup helper | Representative data audits |
 | [Selection and benchmark filtering](selection.md) | Cleanup and decisions helpers | Native stack benchmark case |

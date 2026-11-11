@@ -19,7 +19,7 @@ class StageBuilder:
 
     def build(self) -> list[Stage]:
         stages: list[Stage] = []
-        for cfg in self.config.pipeline:
+        for index, cfg in enumerate(self.config.pipeline):
             try:
                 stage_cls = get_stage_class(cfg.type)
             except ValueError as e:
@@ -31,13 +31,18 @@ class StageBuilder:
                 project_root=self.project_root,
                 resolved_config=self.config,
             )
-            if isinstance(built, list):
-                for s in built:
-                    if getattr(s, "config", None) is None:
-                        s.config = cfg
-                stages.extend(built)
-            else:
-                if getattr(built, "config", None) is None:
-                    built.config = cfg
-                stages.append(built)
+            instances = built if isinstance(built, list) else [built]
+            for part, stage in enumerate(instances, 1):
+                if getattr(stage, "config", None) is None:
+                    stage.config = cfg
+                if self.config._stage_ids:
+                    identity = self.config._stage_ids[index]
+                    stage.name = (
+                        identity if len(instances) == 1 else f"{identity}_{part:02d}"
+                    )
+                    stage.llm_config = self.config._stage_models[index]
+                stages.append(stage)
+        names = [stage.name for stage in stages]
+        if self.config._stage_ids and len(names) != len(set(names)):
+            raise ValueError("Stage names collide; use version 2 with unique stage IDs")
         return stages

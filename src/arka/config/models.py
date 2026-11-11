@@ -7,6 +7,7 @@ from pydantic import (
     Discriminator,
     Field,
     HttpUrl,
+    PrivateAttr,
     SecretStr,
     Tag,
     model_validator,
@@ -820,7 +821,11 @@ __all__ = ["LegacyConfigNamespace", "ResolvedConfig"]
 
 
 class ResolvedConfig(StrictModel):
-    version: str
+    _experiment: Any = PrivateAttr(default=None)
+    _stage_ids: tuple[str, ...] = PrivateAttr(default=())
+    _stage_models: tuple[LLMConfig, ...] = PrivateAttr(default=())
+
+    version: Literal["1"]
     run_id: str | None = None
     llm: LLMConfig
     decisions: DecisionConfig | None = None

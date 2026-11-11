@@ -1138,6 +1138,31 @@
       "title": "ExactDedupConfig",
       "type": "object"
     },
+    "ExecutionSettings": {
+      "additionalProperties": false,
+      "properties": {
+        "max_workers": {
+          "default": 4,
+          "minimum": 1,
+          "title": "Max Workers",
+          "type": "integer"
+        },
+        "timeout_seconds": {
+          "default": 30,
+          "exclusiveMinimum": 0,
+          "title": "Timeout Seconds",
+          "type": "number"
+        },
+        "max_retries": {
+          "default": 3,
+          "minimum": 1,
+          "title": "Max Retries",
+          "type": "integer"
+        }
+      },
+      "title": "ExecutionSettings",
+      "type": "object"
+    },
     "ExecutorConfig": {
       "additionalProperties": false,
       "properties": {
@@ -1158,6 +1183,254 @@
         }
       },
       "title": "ExecutorConfig",
+      "type": "object"
+    },
+    "ExperimentConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": "2",
+          "title": "Version",
+          "type": "string"
+        },
+        "models": {
+          "additionalProperties": {
+            "$ref": "#/$defs/NamedModel"
+          },
+          "minProperties": 1,
+          "title": "Models",
+          "type": "object"
+        },
+        "default_model": {
+          "title": "Default Model",
+          "type": "string"
+        },
+        "execution": {
+          "$ref": "#/$defs/ExecutionSettings"
+        },
+        "pipeline": {
+          "items": {
+            "$ref": "#/$defs/ExperimentStage"
+          },
+          "minItems": 1,
+          "title": "Pipeline",
+          "type": "array"
+        },
+        "output": {
+          "$ref": "#/$defs/OutputConfig"
+        },
+        "embeddings": {
+          "$ref": "#/$defs/EmbeddingsConfig"
+        },
+        "decisions": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "labeling_engine": {
+          "$ref": "#/$defs/LabelingEngineConfig"
+        },
+        "pii": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PIIConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "version",
+        "models",
+        "default_model",
+        "pipeline",
+        "output"
+      ],
+      "title": "ExperimentConfig",
+      "type": "object"
+    },
+    "ExperimentStage": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "config": {
+          "discriminator": {
+            "mapping": {
+              "artifact_filter": "#/$defs/ArtifactFilterConfig",
+              "canary": "#/$defs/CanaryFilterConfig",
+              "complexity_elo": "#/$defs/ComplexityEloFilterConfig",
+              "decision_panel": "#/$defs/DecisionPanelConfig",
+              "decontaminate": "#/$defs/DecontaminateConfig",
+              "distilled_quality_score": "#/$defs/DistilledQualityScoreConfig",
+              "distilled_quality_train": "#/$defs/DistilledQualityTrainConfig",
+              "distilled_ridge": "#/$defs/DistilledRidgeConfig",
+              "double_critic": "#/$defs/DoubleCriticFilterConfig",
+              "evol_instruct_generator": "#/$defs/EvolInstructGeneratorConfig",
+              "exact": "#/$defs/ExactDedupConfig",
+              "identity_claim": "#/$defs/IdentityClaimFilterConfig",
+              "ifd": "#/$defs/IFDFilterConfig",
+              "labeling_engine": "#/$defs/LabelingFilterConfig",
+              "labeling_score": "#/$defs/LabelingScoreConfig",
+              "language": "#/$defs/LanguageFilterConfig",
+              "length": "#/$defs/LengthFilterConfig",
+              "near": "#/$defs/NearDedupConfig",
+              "normalize_conversation": "#/$defs/NormalizeConversationConfig",
+              "pair_delta": "#/$defs/PairDeltaFilterConfig",
+              "pdf_source": "#/$defs/PDFSourceConfig",
+              "prompt_based_generator": "#/$defs/PromptBasedGeneratorConfig",
+              "quality_repair": "#/$defs/QualityRepairConfig",
+              "reasoning_language_gate": "#/$defs/ReasoningLanguageGateConfig",
+              "repetition": "#/$defs/RepetitionFilterConfig",
+              "reward_model": "#/$defs/RewardModelFilterConfig",
+              "seed_gate": "#/$defs/SeedGateConfig",
+              "seed_source": "#/$defs/SeedSourceConfig",
+              "select": "#/$defs/CompositeSelectConfig",
+              "semantic_similarity": "#/$defs/SemanticSimilarityFilterConfig",
+              "sentence_variance": "#/$defs/SentenceVarianceFilterConfig",
+              "source_audit": "#/$defs/SourceAuditConfig",
+              "taxonomy_generator": "#/$defs/TaxonomyGeneratorConfig",
+              "transform_generator": "#/$defs/TransformGeneratorConfig"
+            },
+            "propertyName": "type"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/SeedSourceConfig"
+            },
+            {
+              "$ref": "#/$defs/DecisionPanelConfig"
+            },
+            {
+              "$ref": "#/$defs/SeedGateConfig"
+            },
+            {
+              "$ref": "#/$defs/PDFSourceConfig"
+            },
+            {
+              "$ref": "#/$defs/NormalizeConversationConfig"
+            },
+            {
+              "$ref": "#/$defs/PromptBasedGeneratorConfig"
+            },
+            {
+              "$ref": "#/$defs/TransformGeneratorConfig"
+            },
+            {
+              "$ref": "#/$defs/EvolInstructGeneratorConfig"
+            },
+            {
+              "$ref": "#/$defs/TaxonomyGeneratorConfig"
+            },
+            {
+              "$ref": "#/$defs/ExactDedupConfig"
+            },
+            {
+              "$ref": "#/$defs/NearDedupConfig"
+            },
+            {
+              "$ref": "#/$defs/LengthFilterConfig"
+            },
+            {
+              "$ref": "#/$defs/LanguageFilterConfig"
+            },
+            {
+              "$ref": "#/$defs/RepetitionFilterConfig"
+            },
+            {
+              "$ref": "#/$defs/IdentityClaimFilterConfig"
+            },
+            {
+              "$ref": "#/$defs/ArtifactFilterConfig"
+            },
+            {
+              "$ref": "#/$defs/DecontaminateConfig"
+            },
+            {
+              "$ref": "#/$defs/ReasoningLanguageGateConfig"
+            },
+            {
+              "$ref": "#/$defs/SentenceVarianceFilterConfig"
+            },
+            {
+              "$ref": "#/$defs/IFDFilterConfig"
+            },
+            {
+              "$ref": "#/$defs/LabelingFilterConfig"
+            },
+            {
+              "$ref": "#/$defs/LabelingScoreConfig"
+            },
+            {
+              "$ref": "#/$defs/QualityRepairConfig"
+            },
+            {
+              "$ref": "#/$defs/DistilledQualityTrainConfig"
+            },
+            {
+              "$ref": "#/$defs/DistilledQualityScoreConfig"
+            },
+            {
+              "$ref": "#/$defs/DistilledRidgeConfig"
+            },
+            {
+              "$ref": "#/$defs/SourceAuditConfig"
+            },
+            {
+              "$ref": "#/$defs/RewardModelFilterConfig"
+            },
+            {
+              "$ref": "#/$defs/PairDeltaFilterConfig"
+            },
+            {
+              "$ref": "#/$defs/CompositeSelectConfig"
+            },
+            {
+              "$ref": "#/$defs/SemanticSimilarityFilterConfig"
+            },
+            {
+              "$ref": "#/$defs/CanaryFilterConfig"
+            },
+            {
+              "$ref": "#/$defs/DoubleCriticFilterConfig"
+            },
+            {
+              "$ref": "#/$defs/ComplexityEloFilterConfig"
+            }
+          ],
+          "title": "Config"
+        }
+      },
+      "required": [
+        "id",
+        "config"
+      ],
+      "title": "ExperimentStage",
       "type": "object"
     },
     "FidelityCheckConfig": {
@@ -1730,6 +2003,65 @@
         }
       },
       "title": "LengthFilterConfig",
+      "type": "object"
+    },
+    "NamedModel": {
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "const": "openai",
+          "title": "Provider",
+          "type": "string"
+        },
+        "model": {
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "api_key": {
+          "format": "password",
+          "title": "Api Key",
+          "type": "string",
+          "writeOnly": true
+        },
+        "base_url": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Base Url",
+          "type": "string"
+        },
+        "supports_json_schema": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Supports Json Schema"
+        },
+        "openai_compatible": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OpenAICompatibleConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "provider",
+        "model",
+        "api_key",
+        "base_url"
+      ],
+      "title": "NamedModel",
       "type": "object"
     },
     "NearDedupConfig": {
@@ -2420,6 +2752,222 @@
       "title": "RepetitionFilterConfig",
       "type": "object"
     },
+    "ResolvedConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": "1",
+          "title": "Version",
+          "type": "string"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Run Id"
+        },
+        "llm": {
+          "$ref": "#/$defs/LLMConfig"
+        },
+        "decisions": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "executor": {
+          "$ref": "#/$defs/ExecutorConfig"
+        },
+        "pipeline": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "artifact_filter": "#/$defs/ArtifactFilterConfig",
+                "canary": "#/$defs/CanaryFilterConfig",
+                "complexity_elo": "#/$defs/ComplexityEloFilterConfig",
+                "decision_panel": "#/$defs/DecisionPanelConfig",
+                "decontaminate": "#/$defs/DecontaminateConfig",
+                "distilled_quality_score": "#/$defs/DistilledQualityScoreConfig",
+                "distilled_quality_train": "#/$defs/DistilledQualityTrainConfig",
+                "distilled_ridge": "#/$defs/DistilledRidgeConfig",
+                "double_critic": "#/$defs/DoubleCriticFilterConfig",
+                "evol_instruct_generator": "#/$defs/EvolInstructGeneratorConfig",
+                "exact": "#/$defs/ExactDedupConfig",
+                "identity_claim": "#/$defs/IdentityClaimFilterConfig",
+                "ifd": "#/$defs/IFDFilterConfig",
+                "labeling_engine": "#/$defs/LabelingFilterConfig",
+                "labeling_score": "#/$defs/LabelingScoreConfig",
+                "language": "#/$defs/LanguageFilterConfig",
+                "length": "#/$defs/LengthFilterConfig",
+                "near": "#/$defs/NearDedupConfig",
+                "normalize_conversation": "#/$defs/NormalizeConversationConfig",
+                "pair_delta": "#/$defs/PairDeltaFilterConfig",
+                "pdf_source": "#/$defs/PDFSourceConfig",
+                "prompt_based_generator": "#/$defs/PromptBasedGeneratorConfig",
+                "quality_repair": "#/$defs/QualityRepairConfig",
+                "reasoning_language_gate": "#/$defs/ReasoningLanguageGateConfig",
+                "repetition": "#/$defs/RepetitionFilterConfig",
+                "reward_model": "#/$defs/RewardModelFilterConfig",
+                "seed_gate": "#/$defs/SeedGateConfig",
+                "seed_source": "#/$defs/SeedSourceConfig",
+                "select": "#/$defs/CompositeSelectConfig",
+                "semantic_similarity": "#/$defs/SemanticSimilarityFilterConfig",
+                "sentence_variance": "#/$defs/SentenceVarianceFilterConfig",
+                "source_audit": "#/$defs/SourceAuditConfig",
+                "taxonomy_generator": "#/$defs/TaxonomyGeneratorConfig",
+                "transform_generator": "#/$defs/TransformGeneratorConfig"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/SeedSourceConfig"
+              },
+              {
+                "$ref": "#/$defs/DecisionPanelConfig"
+              },
+              {
+                "$ref": "#/$defs/SeedGateConfig"
+              },
+              {
+                "$ref": "#/$defs/PDFSourceConfig"
+              },
+              {
+                "$ref": "#/$defs/NormalizeConversationConfig"
+              },
+              {
+                "$ref": "#/$defs/PromptBasedGeneratorConfig"
+              },
+              {
+                "$ref": "#/$defs/TransformGeneratorConfig"
+              },
+              {
+                "$ref": "#/$defs/EvolInstructGeneratorConfig"
+              },
+              {
+                "$ref": "#/$defs/TaxonomyGeneratorConfig"
+              },
+              {
+                "$ref": "#/$defs/ExactDedupConfig"
+              },
+              {
+                "$ref": "#/$defs/NearDedupConfig"
+              },
+              {
+                "$ref": "#/$defs/LengthFilterConfig"
+              },
+              {
+                "$ref": "#/$defs/LanguageFilterConfig"
+              },
+              {
+                "$ref": "#/$defs/RepetitionFilterConfig"
+              },
+              {
+                "$ref": "#/$defs/IdentityClaimFilterConfig"
+              },
+              {
+                "$ref": "#/$defs/ArtifactFilterConfig"
+              },
+              {
+                "$ref": "#/$defs/DecontaminateConfig"
+              },
+              {
+                "$ref": "#/$defs/ReasoningLanguageGateConfig"
+              },
+              {
+                "$ref": "#/$defs/SentenceVarianceFilterConfig"
+              },
+              {
+                "$ref": "#/$defs/IFDFilterConfig"
+              },
+              {
+                "$ref": "#/$defs/LabelingFilterConfig"
+              },
+              {
+                "$ref": "#/$defs/LabelingScoreConfig"
+              },
+              {
+                "$ref": "#/$defs/QualityRepairConfig"
+              },
+              {
+                "$ref": "#/$defs/DistilledQualityTrainConfig"
+              },
+              {
+                "$ref": "#/$defs/DistilledQualityScoreConfig"
+              },
+              {
+                "$ref": "#/$defs/DistilledRidgeConfig"
+              },
+              {
+                "$ref": "#/$defs/SourceAuditConfig"
+              },
+              {
+                "$ref": "#/$defs/RewardModelFilterConfig"
+              },
+              {
+                "$ref": "#/$defs/PairDeltaFilterConfig"
+              },
+              {
+                "$ref": "#/$defs/CompositeSelectConfig"
+              },
+              {
+                "$ref": "#/$defs/SemanticSimilarityFilterConfig"
+              },
+              {
+                "$ref": "#/$defs/CanaryFilterConfig"
+              },
+              {
+                "$ref": "#/$defs/DoubleCriticFilterConfig"
+              },
+              {
+                "$ref": "#/$defs/ComplexityEloFilterConfig"
+              }
+            ]
+          },
+          "title": "Pipeline",
+          "type": "array"
+        },
+        "embeddings": {
+          "$ref": "#/$defs/EmbeddingsConfig"
+        },
+        "labeling_engine": {
+          "$ref": "#/$defs/LabelingEngineConfig"
+        },
+        "output": {
+          "$ref": "#/$defs/OutputConfig"
+        },
+        "pii": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PIIConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "version",
+        "llm",
+        "executor",
+        "output"
+      ],
+      "title": "ResolvedConfig",
+      "type": "object"
+    },
     "RewardModelFilterConfig": {
       "additionalProperties": false,
       "properties": {
@@ -3019,217 +3567,12 @@
       "type": "object"
     }
   },
-  "additionalProperties": false,
-  "properties": {
-    "version": {
-      "title": "Version",
-      "type": "string"
+  "anyOf": [
+    {
+      "$ref": "#/$defs/ResolvedConfig"
     },
-    "run_id": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Run Id"
-    },
-    "llm": {
-      "$ref": "#/$defs/LLMConfig"
-    },
-    "decisions": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/DecisionConfig"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null
-    },
-    "executor": {
-      "$ref": "#/$defs/ExecutorConfig"
-    },
-    "pipeline": {
-      "items": {
-        "discriminator": {
-          "mapping": {
-            "artifact_filter": "#/$defs/ArtifactFilterConfig",
-            "canary": "#/$defs/CanaryFilterConfig",
-            "complexity_elo": "#/$defs/ComplexityEloFilterConfig",
-            "decision_panel": "#/$defs/DecisionPanelConfig",
-            "decontaminate": "#/$defs/DecontaminateConfig",
-            "distilled_quality_score": "#/$defs/DistilledQualityScoreConfig",
-            "distilled_quality_train": "#/$defs/DistilledQualityTrainConfig",
-            "distilled_ridge": "#/$defs/DistilledRidgeConfig",
-            "double_critic": "#/$defs/DoubleCriticFilterConfig",
-            "evol_instruct_generator": "#/$defs/EvolInstructGeneratorConfig",
-            "exact": "#/$defs/ExactDedupConfig",
-            "identity_claim": "#/$defs/IdentityClaimFilterConfig",
-            "ifd": "#/$defs/IFDFilterConfig",
-            "labeling_engine": "#/$defs/LabelingFilterConfig",
-            "labeling_score": "#/$defs/LabelingScoreConfig",
-            "language": "#/$defs/LanguageFilterConfig",
-            "length": "#/$defs/LengthFilterConfig",
-            "near": "#/$defs/NearDedupConfig",
-            "normalize_conversation": "#/$defs/NormalizeConversationConfig",
-            "pair_delta": "#/$defs/PairDeltaFilterConfig",
-            "pdf_source": "#/$defs/PDFSourceConfig",
-            "prompt_based_generator": "#/$defs/PromptBasedGeneratorConfig",
-            "quality_repair": "#/$defs/QualityRepairConfig",
-            "reasoning_language_gate": "#/$defs/ReasoningLanguageGateConfig",
-            "repetition": "#/$defs/RepetitionFilterConfig",
-            "reward_model": "#/$defs/RewardModelFilterConfig",
-            "seed_gate": "#/$defs/SeedGateConfig",
-            "seed_source": "#/$defs/SeedSourceConfig",
-            "select": "#/$defs/CompositeSelectConfig",
-            "semantic_similarity": "#/$defs/SemanticSimilarityFilterConfig",
-            "sentence_variance": "#/$defs/SentenceVarianceFilterConfig",
-            "source_audit": "#/$defs/SourceAuditConfig",
-            "taxonomy_generator": "#/$defs/TaxonomyGeneratorConfig",
-            "transform_generator": "#/$defs/TransformGeneratorConfig"
-          },
-          "propertyName": "type"
-        },
-        "oneOf": [
-          {
-            "$ref": "#/$defs/SeedSourceConfig"
-          },
-          {
-            "$ref": "#/$defs/DecisionPanelConfig"
-          },
-          {
-            "$ref": "#/$defs/SeedGateConfig"
-          },
-          {
-            "$ref": "#/$defs/PDFSourceConfig"
-          },
-          {
-            "$ref": "#/$defs/NormalizeConversationConfig"
-          },
-          {
-            "$ref": "#/$defs/PromptBasedGeneratorConfig"
-          },
-          {
-            "$ref": "#/$defs/TransformGeneratorConfig"
-          },
-          {
-            "$ref": "#/$defs/EvolInstructGeneratorConfig"
-          },
-          {
-            "$ref": "#/$defs/TaxonomyGeneratorConfig"
-          },
-          {
-            "$ref": "#/$defs/ExactDedupConfig"
-          },
-          {
-            "$ref": "#/$defs/NearDedupConfig"
-          },
-          {
-            "$ref": "#/$defs/LengthFilterConfig"
-          },
-          {
-            "$ref": "#/$defs/LanguageFilterConfig"
-          },
-          {
-            "$ref": "#/$defs/RepetitionFilterConfig"
-          },
-          {
-            "$ref": "#/$defs/IdentityClaimFilterConfig"
-          },
-          {
-            "$ref": "#/$defs/ArtifactFilterConfig"
-          },
-          {
-            "$ref": "#/$defs/DecontaminateConfig"
-          },
-          {
-            "$ref": "#/$defs/ReasoningLanguageGateConfig"
-          },
-          {
-            "$ref": "#/$defs/SentenceVarianceFilterConfig"
-          },
-          {
-            "$ref": "#/$defs/IFDFilterConfig"
-          },
-          {
-            "$ref": "#/$defs/LabelingFilterConfig"
-          },
-          {
-            "$ref": "#/$defs/LabelingScoreConfig"
-          },
-          {
-            "$ref": "#/$defs/QualityRepairConfig"
-          },
-          {
-            "$ref": "#/$defs/DistilledQualityTrainConfig"
-          },
-          {
-            "$ref": "#/$defs/DistilledQualityScoreConfig"
-          },
-          {
-            "$ref": "#/$defs/DistilledRidgeConfig"
-          },
-          {
-            "$ref": "#/$defs/SourceAuditConfig"
-          },
-          {
-            "$ref": "#/$defs/RewardModelFilterConfig"
-          },
-          {
-            "$ref": "#/$defs/PairDeltaFilterConfig"
-          },
-          {
-            "$ref": "#/$defs/CompositeSelectConfig"
-          },
-          {
-            "$ref": "#/$defs/SemanticSimilarityFilterConfig"
-          },
-          {
-            "$ref": "#/$defs/CanaryFilterConfig"
-          },
-          {
-            "$ref": "#/$defs/DoubleCriticFilterConfig"
-          },
-          {
-            "$ref": "#/$defs/ComplexityEloFilterConfig"
-          }
-        ]
-      },
-      "title": "Pipeline",
-      "type": "array"
-    },
-    "embeddings": {
-      "$ref": "#/$defs/EmbeddingsConfig"
-    },
-    "labeling_engine": {
-      "$ref": "#/$defs/LabelingEngineConfig"
-    },
-    "output": {
-      "$ref": "#/$defs/OutputConfig"
-    },
-    "pii": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/PIIConfig"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null
+    {
+      "$ref": "#/$defs/ExperimentConfig"
     }
-  },
-  "required": [
-    "version",
-    "llm",
-    "executor",
-    "output"
-  ],
-  "title": "ResolvedConfig",
-  "type": "object"
+  ]
 }

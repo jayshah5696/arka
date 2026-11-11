@@ -57,6 +57,15 @@ def main() -> int:
     cli = str(Path(sys.executable).with_name("arka"))
     checks = [
         (
+            "experiments",
+            [
+                sys.executable,
+                str(ROOT / "scripts/verify_experiment_cli.py"),
+                "--output",
+                str(output / "experiments"),
+            ],
+        ),
+        (
             "recovery",
             [
                 sys.executable,

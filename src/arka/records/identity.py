@@ -75,8 +75,14 @@ def config_hash(config: ResolvedConfig) -> str:
     """
     # Configs are mutable, and model_copy copies private attributes. Hash current
     # values so changed configs cannot reuse an earlier checkpoint identity.
+    if config._experiment is not None:
+        from arka.config.plan import experiment_settings
+
+        payload = experiment_settings(config)
+    else:
+        payload = config.model_dump(mode="json")
     return hashlib.sha256(
-        json.dumps(config.model_dump(mode="json"), sort_keys=True).encode("utf-8")
+        json.dumps(payload, sort_keys=True).encode("utf-8")
     ).hexdigest()
 
 
