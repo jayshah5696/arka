@@ -50,3 +50,9 @@
 * **Why**: To remove developer friction by preventing raw Python tracebacks from cluttering the terminal when a user intentionally cancels a long-running pipeline, providing a clean, professional error message instead.
 * **Before**: Hitting Ctrl+C resulted in a raw `KeyboardInterrupt` traceback dumped to `stderr`.
 * **After**: Hitting Ctrl+C cleanly prints `Error: Pipeline execution failed - Pipeline execution interrupted by user` and exits with code 1.
+
+## 2024-11-20 - Palette: Add live per-stage progress indicator
+* **What**: Updated `map_parallel` in `src/arka/pipeline/models.py` to use `concurrent.futures.as_completed` instead of `executor.map`, adding a live progress indicator using `sys.stdout.write` and `\r`.
+* **Why**: To remove developer friction by providing a live visual cue of progress during long-running batch processing stages, reducing perceived wait time and uncertainty about pipeline status.
+* **Before**: The CLI simply printed `Running stage...` and hung with no indication of progress until the entire stage finished.
+* **After**: The CLI prints a live updating `  Processed X/Y records...` indicator directly below the stage announcement.
