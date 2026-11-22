@@ -128,7 +128,7 @@ def test_config_validation_error_is_human_readable(
         ConfigLoader().load(config_path)
 
     message = str(exc_info.value)
-    assert "  - Missing required field: 'llm'" in message
+    assert "  - Missing required field: 'output'" in message
     assert "  - Missing required field: 'filters'" in message
 
     # Check that unknown fields are formatted nicely and include line hints

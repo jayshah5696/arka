@@ -66,7 +66,7 @@ def init_config(
         "default_model": "writer",
         "execution": {"max_workers": 4, "timeout_seconds": 30, "max_retries": 3},
         "pipeline": pipeline,
-        "output": {"format": "jsonl", "path": "output/dataset.jsonl"},
+        "output": {"format": "chatml", "path": "output/dataset.jsonl"},
     }
     try:
         ExperimentConfig.model_validate(data)

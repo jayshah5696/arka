@@ -238,6 +238,66 @@ class ConversationPayload(StrictModel):
     turns: list[dict[str, Any]] | None = None
     reasoning: str | None = Field(default=None, exclude_if=lambda value: value is None)
 
+    @classmethod
+    def from_messages(cls, messages: object) -> ConversationPayload:
+        """Keep the final training pair separate from its preceding context."""
+        if not isinstance(messages, list) or not messages:
+            raise ValueError("messages must be a nonempty list")
+        for message in messages:
+            if (
+                not isinstance(message, dict)
+                or set(message) != {"role", "content"}
+                or not isinstance(message["content"], str)
+            ):
+                raise ValueError("expected text-only messages with role and content")
+        system = None
+        if messages[0]["role"] == "system":
+            system = messages[0]["content"]
+            messages = messages[1:]
+        if (
+            len(messages) < 2
+            or len(messages) % 2
+            or any(
+                message["role"] != ("assistant" if index % 2 else "user")
+                for index, message in enumerate(messages)
+            )
+        ):
+            raise ValueError(
+                "expected alternating user and assistant messages ending with an answer"
+            )
+        return cls(
+            system=system,
+            turns=messages[:-2] or None,
+            instruction=messages[-2]["content"],
+            response=messages[-1]["content"],
+        )
+
+    def chat_messages(self, *, include_reasoning: bool = True) -> list[dict[str, str]]:
+        messages = []
+        if self.system is not None:
+            messages.append({"role": "system", "content": self.system})
+        history = self.turns or []
+        for index, turn in enumerate(history):
+            if (
+                set(turn) != {"role", "content"}
+                or not isinstance(turn["content"], str)
+                or turn["role"] != ("assistant" if index % 2 else "user")
+            ):
+                raise ValueError("invalid text chat history")
+        if len(history) % 2:
+            raise ValueError("chat history must contain complete user/assistant pairs")
+        messages.extend(history)
+        messages.append({"role": "user", "content": self.instruction})
+        messages.append(
+            {"role": "assistant", "content": self.assistant_text(include_reasoning)}
+        )
+        return messages
+
+    def assistant_text(self, include_reasoning: bool) -> str:
+        if include_reasoning and self.reasoning:
+            return f"<think>\n{self.reasoning}\n</think>\n\n{self.response}"
+        return self.response
+
 
 class ConversationRecord(Record):
     payload: ConversationPayload

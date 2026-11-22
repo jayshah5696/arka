@@ -126,7 +126,17 @@ The `pipeline` is an ordered list of stages that run sequentially to ingest, nor
 ### Data Source Stages
 
 #### `seed_source`
-Loads seed data from a structured dataset.
+CSV accepts instruction/response pairs. JSONL also accepts text chat rows with a
+`messages` list. Use an optional system message followed by user/assistant pairs.
+Each message has a role and string content. Arka stores earlier pairs as history
+and exposes the last pair as instruction and response for existing stages.
+Pair-based filters and generators operate on those final fields unless they
+explicitly read history. Use `chatml` to export the conversation in order.
+
+For local curation, omit the LLM settings. Version 1 defaults to four executor
+workers. Version 2 also accepts a local pipeline without named models.
+Give repeated stages distinct version 2 IDs so each owns its checkpoint.
+A version 1 pipeline with colliding names must start a new version 2 run.
 ```yaml
 - type: seed_source
   path: ./seeds.jsonl
@@ -691,3 +701,10 @@ output:
 | :--- | :--- | :--- | :--- |
 | `format` | `str` | **Required** | Output schema format: `"jsonl"`, `"chatml"`, or `"alpaca"`. |
 | `path` | `str` | **Required** | Target path where the dataset will be saved. |
+| `include_reasoning` | `bool` | `true` | Include the separate reasoning field in raw JSONL, or render it in a think block for chat and Alpaca. Set to false for answer-only exports. |
+
+Literal text in imported messages remains part of their content. Alpaca accepts
+single-turn pairs without a system message. Use raw JSONL for document chunks.
+An incompatible row fails the run and preserves any previous dataset.
+
+See [the rewrite evaluation recipe](rewrite-evaluation.md) for a downstream test.

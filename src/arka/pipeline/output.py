@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any
 
 import polars as pl
@@ -21,17 +22,25 @@ class OutputWriter:
         path: Path,
         *,
         output_format: str = "jsonl",
+        include_reasoning: bool = True,
     ) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("w", encoding="utf-8") as handle:
-            for record in records:
-                handle.write(
-                    json.dumps(
-                        self._export_record(record, output_format=output_format),
-                        separators=(",", ":"),
+        with NamedTemporaryFile(
+            "w", dir=path.parent, encoding="utf-8", delete=False
+        ) as handle:
+            temporary = Path(handle.name)
+            try:
+                for record in records:
+                    row = self._export_record(
+                        record,
+                        output_format=output_format,
+                        include_reasoning=include_reasoning,
                     )
-                    + "\n"
-                )
+                    handle.write(json.dumps(row, separators=(",", ":")) + "\n")
+                handle.close()
+                temporary.replace(path)
+            finally:
+                temporary.unlink(missing_ok=True)
         return path
 
     def write_parquet(self, records: list[Record], path: Path) -> Path:
@@ -79,38 +88,40 @@ class OutputWriter:
             "created_at": record.created_at,
         }
 
-    def _export_record(self, record: Record, *, output_format: str) -> dict[str, Any]:
+    def _export_record(
+        self, record: Record, *, output_format: str, include_reasoning: bool = True
+    ) -> dict[str, Any]:
         if output_format == "jsonl":
-            return record.export_payload()
+            row = record.export_payload()
+            if not include_reasoning and isinstance(record, ConversationRecord):
+                row.pop("reasoning", None)
+            return row
+        if not isinstance(record, ConversationRecord):
+            raise ValueError(
+                f"{output_format} requires conversation records, got {record.record_type}"
+            )
         if output_format == "chatml":
-            return self._format_chatml(record)
+            return {
+                "messages": record.payload.chat_messages(
+                    include_reasoning=include_reasoning
+                )
+            }
         if output_format == "alpaca":
-            return self._format_alpaca(record)
+            return self._format_alpaca(record, include_reasoning)
         raise ValueError(f"Unsupported output format: {output_format!r}")
 
-    def _format_chatml(self, record: Record) -> dict[str, Any]:
-        if not isinstance(record, ConversationRecord):
-            return record.export_payload()
-        messages: list[dict[str, str]] = []
-        if record.payload.system is not None:
-            messages.append({"role": "system", "content": record.payload.system})
-        messages.append({"role": "user", "content": record.payload.instruction})
-        messages.append({"role": "assistant", "content": self._assistant_text(record)})
-        return {"messages": messages}
-
-    def _format_alpaca(self, record: Record) -> dict[str, Any]:
-        if not isinstance(record, ConversationRecord):
-            return record.export_payload()
+    def _format_alpaca(
+        self, record: ConversationRecord, include_reasoning: bool
+    ) -> dict[str, Any]:
+        if record.payload.system is not None or record.payload.turns:
+            raise ValueError(
+                "alpaca cannot preserve conversation context; use chatml or jsonl"
+            )
         return {
             "instruction": record.payload.instruction,
             "input": "",
-            "output": self._assistant_text(record),
+            "output": record.payload.assistant_text(include_reasoning),
         }
-
-    def _assistant_text(self, record: ConversationRecord) -> str:
-        if record.payload.reasoning:
-            return f"<think>\n{record.payload.reasoning}\n</think>\n\n{record.payload.response}"
-        return record.payload.response
 
     def _dropped_storage_row(self, record: Record) -> dict[str, Any]:
         last_event = self._last_stage_event(record)

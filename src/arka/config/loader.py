@@ -114,8 +114,6 @@ class ConfigLoader:
         legacy_missing = []
         if is_legacy:
             for field in [
-                "llm",
-                "executor",
                 "data_source",
                 "generator",
                 "filters",

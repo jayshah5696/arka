@@ -51,8 +51,8 @@ class ExperimentStage(StrictModel):
 
 class ExperimentConfig(StrictModel):
     version: Literal["2"]
-    models: dict[str, NamedModel] = Field(min_length=1)
-    default_model: str
+    models: dict[str, NamedModel] = Field(default_factory=dict)
+    default_model: str | None = Field(default=None, min_length=1)
     execution: ExecutionSettings = Field(default_factory=ExecutionSettings)
     pipeline: list[ExperimentStage] = Field(min_length=1)
     output: OutputConfig
@@ -67,7 +67,9 @@ class ExperimentConfig(StrictModel):
         if len(ids) != len(set(ids)):
             raise ValueError("pipeline stage IDs must be unique")
         references = [self.default_model, *(s.model for s in self.pipeline if s.model)]
-        for name in references:
+        if self.models and self.default_model is None:
+            raise ValueError("default_model is required when models are configured")
+        for name in filter(None, references):
             if name not in self.models:
                 raise ValueError(f"Unknown model reference: {name!r}")
         for stage in self.pipeline:
@@ -99,7 +101,7 @@ class ExperimentConfig(StrictModel):
         }
         resolved = ResolvedConfig(
             version="1",
-            llm=models[self.default_model],
+            llm=models.get(self.default_model),
             executor={"mode": "threadpool", "max_workers": self.execution.max_workers},
             pipeline=[stage.config for stage in self.pipeline],
             output=self.output,
@@ -113,6 +115,6 @@ class ExperimentConfig(StrictModel):
         resolved._experiment = self
         resolved._stage_ids = tuple(stage.id for stage in self.pipeline)
         resolved._stage_models = tuple(
-            models[stage.model or self.default_model] for stage in self.pipeline
+            models.get(stage.model or self.default_model) for stage in self.pipeline
         )
         return resolved

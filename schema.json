@@ -1197,13 +1197,21 @@
           "additionalProperties": {
             "$ref": "#/$defs/NamedModel"
           },
-          "minProperties": 1,
           "title": "Models",
           "type": "object"
         },
         "default_model": {
-          "title": "Default Model",
-          "type": "string"
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default Model"
         },
         "execution": {
           "$ref": "#/$defs/ExecutionSettings"
@@ -1250,8 +1258,6 @@
       },
       "required": [
         "version",
-        "models",
-        "default_model",
         "pipeline",
         "output"
       ],
@@ -2147,6 +2153,11 @@
     "OutputConfig": {
       "additionalProperties": false,
       "properties": {
+        "include_reasoning": {
+          "default": true,
+          "title": "Include Reasoning",
+          "type": "boolean"
+        },
         "on_unresolved_escalation": {
           "default": "keep",
           "enum": [
@@ -2773,7 +2784,15 @@
           "title": "Run Id"
         },
         "llm": {
-          "$ref": "#/$defs/LLMConfig"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LLMConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "decisions": {
           "anyOf": [
@@ -2961,8 +2980,6 @@
       },
       "required": [
         "version",
-        "llm",
-        "executor",
         "output"
       ],
       "title": "ResolvedConfig",

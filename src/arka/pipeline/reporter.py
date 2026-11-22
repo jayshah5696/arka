@@ -100,7 +100,10 @@ class RunReporter:
     ) -> dict[str, Any]:
         report_dir.mkdir(parents=True, exist_ok=True)
         samples_path = self._write_samples(
-            records, report_dir / "samples.jsonl", config
+            records,
+            report_dir / "samples.jsonl",
+            config,
+            output_format="jsonl" if status == "failed" else config.output.format,
         )
         canaries_path = report_dir / "canaries.json"
         canaries = self._build_canaries(config=config, report_path=canaries_path)
@@ -194,6 +197,8 @@ class RunReporter:
         records: list[Record],
         path: Path,
         config: ResolvedConfig,
+        *,
+        output_format: str,
     ) -> Path:
         rng = random.Random(0)
         samples = list(records)
@@ -202,7 +207,8 @@ class RunReporter:
         return self._output_writer.write_jsonl(
             records=samples,
             path=path,
-            output_format=config.output.format,
+            output_format=output_format,
+            include_reasoning=config.output.include_reasoning,
         )
 
     def _build_canaries(

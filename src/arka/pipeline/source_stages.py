@@ -79,17 +79,29 @@ class SeedSourceStage(Stage):
         records: list[ConversationRecord] = []
         source_hash = file_hash(source_path)
         with source_path.open("r", encoding="utf-8") as handle:
-            for line in handle:
-                row = json.loads(line)
+            for number, line in enumerate(handle, 1):
+                try:
+                    row = json.loads(line)
+                    if not isinstance(row, dict):
+                        raise ValueError("expected a JSON object")
+                    if "messages" in row:
+                        payload = ConversationPayload.from_messages(row["messages"])
+                    elif "turns" in row or "system" in row:
+                        canonical = ConversationPayload.model_validate(
+                            {
+                                key: row[key]
+                                for key in ConversationPayload.model_fields
+                                if key in row
+                            }
+                        )
+                        canonical.chat_messages()
+                        payload = canonical
+                    else:
+                        payload = self._pair_payload(row, source_path)
+                except (KeyError, ValueError, TypeError) as exc:
+                    raise ValueError(f"{source_path}:{number}: {exc}") from exc
                 records.append(
-                    self._build_conversation_record(
-                        instruction=str(row["instruction"]),
-                        response=str(row["response"]),
-                        source_path=source_path,
-                        source_hash=source_hash,
-                        config_hash=config_hash,
-                        reasoning=row.get("reasoning"),
-                    )
+                    self._build_conversation_record(payload, source_hash, config_hash)
                 )
         return records
 
@@ -103,37 +115,33 @@ class SeedSourceStage(Stage):
             for row in reader:
                 records.append(
                     self._build_conversation_record(
-                        instruction=str(row["instruction"]),
-                        response=str(row["response"]),
-                        source_path=source_path,
-                        source_hash=source_hash,
-                        config_hash=config_hash,
-                        reasoning=row.get("reasoning"),
+                        self._pair_payload(row, source_path), source_hash, config_hash
                     )
                 )
         return records
 
-    def _build_conversation_record(
-        self,
-        instruction: str,
-        response: str,
-        source_path: Path,
-        source_hash: str,
-        config_hash: str,
-        reasoning: str | None = None,
-    ) -> ConversationRecord:
+    @staticmethod
+    def _pair_payload(row: dict, source_path: Path) -> ConversationPayload:
+        instruction = str(row["instruction"])
+        response = str(row["response"])
+        reasoning = row.get("reasoning")
         # SECURITY: Sanitize seed input by limiting length to mitigate prompt injection and context overflow
         normalized_instruction = sanitize_for_prompt(instruction.strip()[:16384])
         normalized_response = sanitize_for_prompt(response.strip()[:16384])
         if reasoning is not None and not isinstance(reasoning, str):
             raise ValueError(f"{source_path}: seed reasoning must be a string or null")
-        payload = ConversationPayload(
+        return ConversationPayload(
             instruction=normalized_instruction,
             response=normalized_response,
             reasoning=sanitize_for_prompt(reasoning.strip()[:16384]) or None
             if reasoning is not None
             else None,
         )
+
+    @staticmethod
+    def _build_conversation_record(
+        payload: ConversationPayload, source_hash: str, config_hash: str
+    ) -> ConversationRecord:
         rid = record_id(payload)
         return ConversationRecord(
             id=rid,
