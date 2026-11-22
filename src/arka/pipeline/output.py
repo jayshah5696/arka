@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from tempfile import NamedTemporaryFile
+from stat import S_IMODE
+from tempfile import TemporaryDirectory
 from typing import Any
 
 import polars as pl
@@ -25,11 +26,11 @@ class OutputWriter:
         include_reasoning: bool = True,
     ) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
-        with NamedTemporaryFile(
-            "w", dir=path.parent, encoding="utf-8", delete=False
-        ) as handle:
-            temporary = Path(handle.name)
-            try:
+        # Stage the complete file on the same filesystem. Normal creation respects
+        # the process umask without changing it for other worker threads.
+        with TemporaryDirectory(dir=path.parent) as staging:
+            temporary = Path(staging) / "dataset"
+            with temporary.open("x", encoding="utf-8") as handle:
                 for record in records:
                     row = self._export_record(
                         record,
@@ -37,10 +38,13 @@ class OutputWriter:
                         include_reasoning=include_reasoning,
                     )
                     handle.write(json.dumps(row, separators=(",", ":")) + "\n")
-                handle.close()
-                temporary.replace(path)
-            finally:
-                temporary.unlink(missing_ok=True)
+            try:
+                existing_mode = path.stat().st_mode
+            except FileNotFoundError:
+                pass
+            else:
+                temporary.chmod(S_IMODE(existing_mode) & 0o777)
+            temporary.replace(path)
         return path
 
     def write_parquet(self, records: list[Record], path: Path) -> Path:

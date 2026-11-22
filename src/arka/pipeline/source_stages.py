@@ -30,6 +30,8 @@ from arka.records.models import (
     RecordSource,
 )
 
+MAX_SEED_FIELD_CHARS = 16384
+
 
 class SeedSourceStage(Stage):
     name = "01_source"
@@ -87,17 +89,17 @@ class SeedSourceStage(Stage):
                     if "messages" in row:
                         payload = ConversationPayload.from_messages(row["messages"])
                     elif "turns" in row or "system" in row:
-                        canonical = ConversationPayload.model_validate(
+                        payload = ConversationPayload.model_validate(
                             {
                                 key: row[key]
                                 for key in ConversationPayload.model_fields
                                 if key in row
                             }
                         )
-                        canonical.chat_messages()
-                        payload = canonical
                     else:
                         payload = self._pair_payload(row, source_path)
+                    if "messages" in row or "system" in row or "turns" in row:
+                        self._validate_chat_seed(payload)
                 except (KeyError, ValueError, TypeError) as exc:
                     raise ValueError(f"{source_path}:{number}: {exc}") from exc
                 records.append(
@@ -121,19 +123,40 @@ class SeedSourceStage(Stage):
         return records
 
     @staticmethod
+    def _validate_chat_seed(payload: ConversationPayload) -> None:
+        """Reject inadmissible chat content so accepted conversations round-trip exactly."""
+        fields = [
+            msg["content"] for msg in payload.chat_messages(include_reasoning=False)
+        ]
+        if payload.reasoning is not None:
+            fields.append(payload.reasoning)
+        for value in fields:
+            if len(value) > MAX_SEED_FIELD_CHARS:
+                raise ValueError(
+                    f"chat seed field exceeds {MAX_SEED_FIELD_CHARS} characters"
+                )
+            if sanitize_for_prompt(value) != value:
+                raise ValueError("chat seed field contains a reserved prompt delimiter")
+
+    @staticmethod
     def _pair_payload(row: dict, source_path: Path) -> ConversationPayload:
         instruction = str(row["instruction"])
         response = str(row["response"])
         reasoning = row.get("reasoning")
         # SECURITY: Sanitize seed input by limiting length to mitigate prompt injection and context overflow
-        normalized_instruction = sanitize_for_prompt(instruction.strip()[:16384])
-        normalized_response = sanitize_for_prompt(response.strip()[:16384])
+        normalized_instruction = sanitize_for_prompt(
+            instruction.strip()[:MAX_SEED_FIELD_CHARS]
+        )
+        normalized_response = sanitize_for_prompt(
+            response.strip()[:MAX_SEED_FIELD_CHARS]
+        )
         if reasoning is not None and not isinstance(reasoning, str):
             raise ValueError(f"{source_path}: seed reasoning must be a string or null")
         return ConversationPayload(
             instruction=normalized_instruction,
             response=normalized_response,
-            reasoning=sanitize_for_prompt(reasoning.strip()[:16384]) or None
+            reasoning=sanitize_for_prompt(reasoning.strip()[:MAX_SEED_FIELD_CHARS])
+            or None
             if reasoning is not None
             else None,
         )

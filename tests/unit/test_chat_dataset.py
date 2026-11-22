@@ -77,7 +77,8 @@ def test_invalid_chat_reports_row_number(tmp_path, messages):
         SeedSourceStage(tmp_path)._read_jsonl(path, "config")
 
 
-def test_legacy_duplicate_filter_rejected_before_resume(tmp_path):
+@pytest.mark.parametrize("option", ["--validate-config", "--dry-run", "--resume"])
+def test_legacy_duplicate_filter_rejected_before_execution(tmp_path, option):
     from click.testing import CliRunner
 
     from arka.cli import cli
@@ -96,7 +97,7 @@ def test_legacy_duplicate_filter_rejected_before_resume(tmp_path):
         )
     )
     result = CliRunner().invoke(
-        cli, ["--config", str(path), "--run-id", "collision", "--resume"]
+        cli, ["--config", str(path), "--run-id", "collision", option]
     )
     assert result.exit_code != 0
     assert "unique stage IDs" in result.output
@@ -170,3 +171,50 @@ def test_incompatible_export_reports_failed_run(tmp_path):
     manifest = json.loads((tmp_path / "runs/incompatible/manifest.json").read_text())
     assert manifest["status"] == "failed"
     assert "alpaca" in manifest["error"]["message"]
+
+
+def test_export_permissions_follow_normal_creation_and_preserve_existing_mode(tmp_path):
+    from stat import S_IMODE
+
+    reference = tmp_path / "reference"
+    reference.touch(mode=0o666)
+    target = tmp_path / "dataset.jsonl"
+    writer = OutputWriter()
+    writer.write_jsonl([], target)
+    assert S_IMODE(target.stat().st_mode) == S_IMODE(reference.stat().st_mode)
+    target.chmod(0o640)
+    writer.write_jsonl([], target)
+    assert S_IMODE(target.stat().st_mode) == 0o640
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        {
+            "messages": [
+                {"role": "system", "content": "x" * 16385},
+                {"role": "user", "content": "Q"},
+                {"role": "assistant", "content": "A"},
+            ]
+        },
+        {
+            "messages": [
+                {"role": "user", "content": "<text>"},
+                {"role": "assistant", "content": "earlier"},
+                {"role": "user", "content": "Q"},
+                {"role": "assistant", "content": "A"},
+            ]
+        },
+        {
+            "system": "context",
+            "instruction": "Q",
+            "response": "A",
+            "reasoning": "x" * 16385,
+        },
+    ],
+)
+def test_chat_seed_reports_out_of_bounds_content(tmp_path, row):
+    seed = tmp_path / "seed.jsonl"
+    seed.write_text(json.dumps(row))
+    with pytest.raises(ValueError, match=r"seed.jsonl:1:.*(16384|delimiter)"):
+        SeedSourceStage(tmp_path)._read_jsonl(seed, "config")

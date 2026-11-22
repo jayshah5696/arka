@@ -128,7 +128,9 @@ The `pipeline` is an ordered list of stages that run sequentially to ingest, nor
 #### `seed_source`
 CSV accepts instruction/response pairs. JSONL also accepts text chat rows with a
 `messages` list. Use an optional system message followed by user/assistant pairs.
-Each message has a role and string content. Arka stores earlier pairs as history
+Each message has a role and string content. Chat seed fields may contain up to
+16,384 characters each. Fields containing reserved `<text>` or `</text>` delimiters
+(case-insensitive) or exceeding that length produce a line-numbered error. Arka stores earlier pairs as history
 and exposes the last pair as instruction and response for existing stages.
 Pair-based filters and generators operate on those final fields unless they
 explicitly read history. Use `chatml` to export the conversation in order.
