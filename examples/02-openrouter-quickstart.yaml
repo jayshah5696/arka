@@ -6,22 +6,12 @@
 # TEACHES:   OpenRouter generation with local diversity embeddings.
 # COST:      low
 version: "1"
-run_id: null
 
 llm:
   provider: openai
   model: google/gemini-3.1-flash-lite-preview
   api_key: ${OPENROUTER_API_KEY}
   base_url: https://openrouter.ai/api/v1
-  timeout_seconds: 30
-  max_retries: 3
-  openai_compatible:
-    referer: https://example.com
-    title: arka
-
-executor:
-  mode: threadpool
-  max_workers: 4
 
 pipeline:
   - type: seed_source
@@ -76,5 +66,5 @@ embeddings:
   batch_size: 256
 
 output:
-  format: jsonl
+  format: chatml
   path: ./output/02-openrouter-quickstart-dataset.jsonl

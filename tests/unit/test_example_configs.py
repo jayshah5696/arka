@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-import yaml
 
 from arka.examples_validation import (
     ALLOWED_COSTS,
@@ -36,7 +35,9 @@ def test_all_example_yaml_files_parse_without_schema_errors(config_path: Path) -
 
     resolved = load_example_config(config_path)
 
-    assert resolved.llm.api_key.get_secret_value()
+    if resolved.llm is not None:
+        assert resolved.llm.api_key.get_secret_value()
+    assert resolved.pipeline
 
 
 @pytest.mark.parametrize("config_path", example_yaml_paths(Path(".")))
@@ -55,14 +56,25 @@ def test_all_examples_use_valid_cost_values(config_path: Path) -> None:
 
 
 @pytest.mark.parametrize("config_path", example_yaml_paths(Path(".")))
-def test_openrouter_configs_reference_openrouter_api_key(config_path: Path) -> None:
-    raw_text = config_path.read_text(encoding="utf-8")
-    if "openrouter.ai" not in raw_text:
-        return
+def test_openrouter_configs_resolve_the_openrouter_key(config_path: Path) -> None:
+    from arka.examples_validation import load_example_config
 
-    llm_key = yaml.safe_load(raw_text)["llm"]["api_key"]
-    assert "${OPENROUTER_API_KEY}" in llm_key
-    assert "${OPENAI_API_KEY}" not in llm_key
+    resolved = load_example_config(config_path)
+    for connection in (resolved.llm, resolved.decisions):
+        if connection and "openrouter.ai" in str(connection.base_url):
+            assert connection.api_key.get_secret_value() == "openrouter-test-key"
+
+
+def test_validator_checks_named_openrouter_model_key(tmp_path):
+    from arka.examples_validation import validate_example_file
+
+    original = Path("examples/07-resume-debug.yaml").read_text()
+    path = tmp_path / "invalid-key.yaml"
+    path.write_text(original.replace("${OPENROUTER_API_KEY}", "${OPENAI_API_KEY}"))
+    assert any(
+        "must reference OPENROUTER_API_KEY" in error
+        for error in validate_example_file(path)
+    )
 
 
 @pytest.mark.parametrize("config_path", example_yaml_paths(Path(".")))

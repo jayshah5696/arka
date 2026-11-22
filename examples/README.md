@@ -2,6 +2,20 @@
 
 Runnable example configs live here.
 
+## Run a local chat example
+
+From the repository root, run the following commands. The first writes the included
+five-message conversation to `examples/output/00-local-chat-dataset.jsonl`.
+The second reuses the two named checkpoints. Neither command needs an API key.
+
+```bash
+uv run arka --config examples/00-local-chat.yaml --run-id local-chat
+uv run arka --config examples/00-local-chat.yaml --run-id local-chat --resume
+```
+
+For answer-only SFT, set `output.include_reasoning: false` to omit Arka’s separate
+reasoning field. Literal text already in assistant messages stays in the dataset.
+
 ## What this directory is for
 
 These files are user-facing examples, not test fixtures.
@@ -15,7 +29,7 @@ They are organized from simplest to more advanced workflows.
 4. `04-evol-instruct.yaml` — multi-round Evol-Instruct
 5. `05-pdf-grounded.yaml` — PDF chunk to grounded generation
 6. `06-dedup-quality-filter.yaml` — dedup + quality filter
-7. `07-resume-debug.yaml` — resume-oriented debug workflow
+7. `07-resume-debug.yaml` uses a named model and version 2 stage IDs. Resume with the same config and run ID plus `--resume`. Start a new run ID when moving from the old version 1 example.
 8. `08-privacy-guardrails.yaml` checks similarity and canary phrases.
 9. `09-decision-models.yaml` uses seed gating, candidate ranking, and decision judges without an LLM fallback.
 10. `10-quality-repair.yaml` repairs eligible failed answers once and checks replacements before deduplication.

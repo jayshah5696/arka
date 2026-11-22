@@ -6,13 +6,7 @@
 # TEACHES:   Separate training, source separation and holdout evaluation.
 # COST:      low
 version: "1"
-llm:
-  provider: openai
-  model: unused-during-training
-  api_key: unused
-  base_url: https://api.openai.com/v1
 executor:
-  mode: threadpool
   max_workers: 2
 embeddings:
   provider: huggingface

@@ -1,0 +1,1 @@
+{"messages":[{"role":"system","content":"Keep the original facts when rewriting."},{"role":"user","content":"Shorten this: The meeting will take place on Friday at noon."},{"role":"assistant","content":"The meeting is Friday at noon."},{"role":"user","content":"Make it an invitation."},{"role":"assistant","content":"Join us Friday at noon."}]}
