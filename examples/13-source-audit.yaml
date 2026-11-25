@@ -12,7 +12,6 @@ llm:
   api_key: ${OPENROUTER_API_KEY}
   base_url: https://openrouter.ai/api/v1
 executor:
-  mode: threadpool
   max_workers: 2
 pipeline:
   - type: seed_source

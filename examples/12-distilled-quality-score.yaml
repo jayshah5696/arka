@@ -6,13 +6,7 @@
 # TEACHES:   Reusable inference with filtering disabled by default.
 # COST:      low
 version: "1"
-llm:
-  provider: openai
-  model: unused-during-scoring
-  api_key: unused
-  base_url: https://api.openai.com/v1
 executor:
-  mode: threadpool
   max_workers: 2
 embeddings:
   provider: huggingface

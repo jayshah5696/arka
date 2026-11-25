@@ -193,28 +193,13 @@ def _embedding_llm_config(config: ResolvedConfig) -> LLMConfig:
     ``PipelineRunner._embedding_llm_config``.
     """
     embedding_cfg = config.embeddings
-    api_key = embedding_cfg.api_key or config.llm.api_key
-    base_url = embedding_cfg.base_url or config.llm.base_url
-    timeout_seconds = (
-        embedding_cfg.timeout_seconds
-        if embedding_cfg.timeout_seconds is not None
-        else config.llm.timeout_seconds
-    )
-    max_retries = (
-        embedding_cfg.max_retries
-        if embedding_cfg.max_retries is not None
-        else config.llm.max_retries
-    )
-    openai_compatible = embedding_cfg.openai_compatible or config.llm.openai_compatible
-    return LLMConfig(
-        provider="openai",
-        model=embedding_cfg.model,
-        api_key=api_key,
-        base_url=base_url,
-        timeout_seconds=timeout_seconds,
-        max_retries=max_retries,
-        openai_compatible=openai_compatible,
-    )
+    values = config.llm.model_dump() if config.llm else {}
+    if config.llm:
+        values["api_key"] = config.llm.api_key
+    values.update(embedding_cfg.model_dump(exclude_none=True, exclude={"batch_size"}))
+    if embedding_cfg.api_key:
+        values["api_key"] = embedding_cfg.api_key
+    return LLMConfig.model_validate(values)
 
 
 def _kmeans_labels(embeddings: np.ndarray, cluster_count: int) -> np.ndarray:

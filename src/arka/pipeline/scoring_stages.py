@@ -48,6 +48,14 @@ class LabelingScoreStage(Stage):
             self.config = self.get_stage_config(
                 ctx, LabelingScoreConfig, "labeling_score"
             ) or self.get_stage_config(ctx, LabelingFilterConfig, "labeling_engine")
+        if (
+            self.config is None
+            and ctx.config
+            and ctx.config.labeling_engine.rubric_path
+        ):
+            self.config = LabelingScoreConfig(
+                rubric_path=ctx.config.labeling_engine.rubric_path
+            )
         return evaluate_labeling(
             stage=self,
             records=records,

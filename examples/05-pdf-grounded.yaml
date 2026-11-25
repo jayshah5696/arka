@@ -6,22 +6,12 @@
 # TEACHES:   PDF chunk source -> grounded prompt generation.
 # COST:      medium
 version: "1"
-run_id: null
 
 llm:
   provider: openai
   model: google/gemini-3.1-flash-lite-preview
   api_key: ${OPENROUTER_API_KEY}
   base_url: https://openrouter.ai/api/v1
-  timeout_seconds: 30
-  max_retries: 3
-  openai_compatible:
-    referer: https://example.com
-    title: arka
-
-executor:
-  mode: threadpool
-  max_workers: 4
 
 pipeline:
   - type: pdf_source
@@ -44,11 +34,6 @@ pipeline:
 
   - type: language
     allowed: [en]
-
-embeddings:
-  provider: huggingface
-  model: all-MiniLM-L6-v2
-  batch_size: 256
 
 output:
   format: chatml

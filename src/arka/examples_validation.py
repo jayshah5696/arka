@@ -74,16 +74,21 @@ def validate_example_file(path: Path) -> list[str]:
     if cost and cost not in ALLOWED_COSTS:
         errors.append(f"{path}: COST must be one of {sorted(ALLOWED_COSTS)}")
 
-    if _OPENROUTER_PATTERN.search(raw_text):
-        raw_llm = (yaml.safe_load(raw_text) or {}).get("llm", {})
-        llm_key = raw_llm.get("api_key", "")
-        if "${OPENROUTER_API_KEY}" not in llm_key:
+    raw = yaml.safe_load(raw_text) or {}
+    connections = [
+        raw.get("llm", {}),
+        raw.get("decisions", {}),
+        raw.get("embeddings", {}),
+        *raw.get("models", {}).values(),
+    ]
+    for connection in connections:
+        if (
+            connection
+            and _OPENROUTER_PATTERN.search(connection.get("base_url") or "")
+            and connection.get("api_key") != "${OPENROUTER_API_KEY}"
+        ):
             errors.append(
                 f"{path}: OpenRouter config must reference OPENROUTER_API_KEY"
-            )
-        if "${OPENAI_API_KEY}" in llm_key:
-            errors.append(
-                f"{path}: OpenRouter config must not reference OPENAI_API_KEY"
             )
 
     if path.parent.name == "future" and _TODO_PATTERN.search(raw_text) is None:

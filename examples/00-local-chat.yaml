@@ -1,0 +1,19 @@
+# WHAT:      Curate a multi-turn chat dataset locally.
+# WHEN:      Use this to import and re-export text conversations for SFT.
+# REQUIRES:  The included seeds/00-chat.jsonl file. No provider credentials.
+# RUN:       uv run arka --config examples/00-local-chat.yaml --run-id local-chat
+# ARTIFACTS: examples/output/00-local-chat-dataset.jsonl and examples/runs/local-chat/.
+# TEACHES:   Version 2 stage IDs, exact deduplication, and chat export.
+# COST:      free
+version: "2"
+pipeline:
+  - id: source
+    config:
+      type: seed_source
+      path: ./seeds/00-chat.jsonl
+  - id: deduplicate
+    config:
+      type: exact
+output:
+  format: chatml
+  path: ./output/00-local-chat-dataset.jsonl

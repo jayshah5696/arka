@@ -625,6 +625,9 @@ class FiltersConfig(StrictModel):
 
 
 class OutputConfig(StrictModel):
+    include_reasoning: bool = Field(
+        default=True, exclude_if=lambda value: value is True
+    )
     on_unresolved_escalation: Literal["keep", "drop"] = "keep"
     format: Literal["jsonl", "chatml", "alpaca"]
     path: str
@@ -823,13 +826,13 @@ __all__ = ["LegacyConfigNamespace", "ResolvedConfig"]
 class ResolvedConfig(StrictModel):
     _experiment: Any = PrivateAttr(default=None)
     _stage_ids: tuple[str, ...] = PrivateAttr(default=())
-    _stage_models: tuple[LLMConfig, ...] = PrivateAttr(default=())
+    _stage_models: tuple[LLMConfig | None, ...] = PrivateAttr(default=())
 
     version: Literal["1"]
     run_id: str | None = None
-    llm: LLMConfig
+    llm: LLMConfig | None = None
     decisions: DecisionConfig | None = None
-    executor: ExecutorConfig
+    executor: ExecutorConfig = Field(default_factory=ExecutorConfig)
     pipeline: list[PipelineStageConfig] = Field(default_factory=list)
     embeddings: EmbeddingsConfig = Field(default_factory=EmbeddingsConfig)
     labeling_engine: LabelingEngineConfig = Field(default_factory=LabelingEngineConfig)
@@ -840,6 +843,14 @@ class ResolvedConfig(StrictModel):
     def validate_decision_pipeline(self):
         from arka.pipeline.registry import get_stage_spec
 
+        if (
+            self.llm is None
+            and self.embeddings.provider == "openai"
+            and not (self.embeddings.api_key and self.embeddings.base_url)
+        ):
+            raise ValueError(
+                "OpenAI embeddings require api_key and base_url when llm is omitted"
+            )
         generator_seen = False
         if sum(stage.type == "quality_repair" for stage in self.pipeline) > 1:
             raise ValueError("Only one quality_repair stage is supported per run")
@@ -866,6 +877,13 @@ class ResolvedConfig(StrictModel):
                 raise ValueError(
                     "labeling_engine backend decision requires rubric_path"
                 )
+            if self.llm is None and (
+                stage.type.endswith("generator")
+                or stage.type == "ifd"
+                or getattr(stage, "backend", None) in ("llm", "elo")
+                or (stage.type == "quality_repair" and stage.max_repairs > 0)
+            ):
+                raise ValueError(f"llm config is required for {stage.type}")
             if stage.type.endswith("generator"):
                 generator_seen = True
             if stage.type == "seed_gate" and generator_seen:

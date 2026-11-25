@@ -43,6 +43,6 @@ class StageBuilder:
                     stage.llm_config = self.config._stage_models[index]
                 stages.append(stage)
         names = [stage.name for stage in stages]
-        if self.config._stage_ids and len(names) != len(set(names)):
+        if len(names) != len(set(names)):
             raise ValueError("Stage names collide; use version 2 with unique stage IDs")
         return stages

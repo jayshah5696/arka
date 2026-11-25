@@ -23,10 +23,6 @@ decisions:
   max_state_chars: 24000
   # Reported provider cost takes precedence over input_cost_per_million.
 
-executor:
-  mode: threadpool
-  max_workers: 4
-
 pipeline:
   - type: seed_source
     path: ./seeds/07-humanizer-rewrite.jsonl

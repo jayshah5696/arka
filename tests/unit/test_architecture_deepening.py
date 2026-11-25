@@ -890,12 +890,29 @@ overall_weights:
 """
         )
 
-    cfg = _minimal_config(tmp_path).model_copy(
-        update={
+    cfg = ConfigLoader().load_dict(
+        {
+            "version": "2",
+            "models": {
+                "judge": {
+                    "provider": "openai",
+                    "model": "test",
+                    "api_key": "test",
+                    "base_url": "http://localhost:1",
+                }
+            },
+            "default_model": "judge",
             "pipeline": [
-                LabelingScoreConfig(rubric_path="first-rubric.yaml"),
-                LabelingScoreConfig(rubric_path="second-rubric.yaml"),
-            ]
+                {
+                    "id": name,
+                    "config": {
+                        "type": "labeling_score",
+                        "rubric_path": f"{name}-rubric.yaml",
+                    },
+                }
+                for name in ("first", "second")
+            ],
+            "output": {"format": "jsonl", "path": "dataset.jsonl"},
         }
     )
     stages = StageBuilder(cfg, tmp_path).build()

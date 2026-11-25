@@ -57,10 +57,15 @@ class PipelineRunner:
         plan: ExecutionPlan | None = None,
     ) -> RunResult:
         resolved_config = self._resolve_config(config)
+        names = [stage.name for stage in stages]
+        if len(names) != len(set(names)):
+            raise ValueError(
+                "Stage names collide; use version 2 with unique stage IDs and a new run ID"
+            )
         run_dir = run_directory(self.project_root, run_id)
         if resolved_config._experiment is not None:
             current_plan = ExecutionPlan.build(
-                resolved_config, self.project_root, [stage.name for stage in stages]
+                resolved_config, self.project_root, names
             )
             if plan is not None and plan.fingerprint != current_plan.fingerprint:
                 raise ValueError("Inputs changed after planning; create a new run plan")
@@ -284,7 +289,37 @@ class PipelineRunner:
                     print(
                         f"\033[32mCompleted stage {stage.name} in {stage_duration:.1f}s ({len(records)} records out)\033[0m"
                     )
-        except Exception:
+            decision_report = self._decision_report(records, stages, run_paths)
+            if resolved_config.output.on_unresolved_escalation == "drop":
+                unresolved = [
+                    r.dropped_by("output", "unresolved_escalation")
+                    for r in records
+                    if r.is_escalated()
+                ]
+                if unresolved:
+                    self.output_writer.write_dropped_parquet(
+                        records=unresolved,
+                        path=run_paths.run_dir / "unresolved_escalations.parquet",
+                    )
+                records = [r for r in records if not r.is_escalated()]
+            output_path = self.project_root / resolved_config.output.path
+            dataset_path = self.output_writer.write_jsonl(
+                records=records,
+                path=output_path,
+                output_format=resolved_config.output.format,
+                include_reasoning=resolved_config.output.include_reasoning,
+            )
+        except Exception as exc:
+            if failed_error is None:
+                failed_error = StageErrorInfo(
+                    type=type(exc).__name__,
+                    message="Run failed while PII protection was enabled"
+                    if privacy
+                    else str(exc),
+                )
+                failed_stage_name = (
+                    "output" if len(stage_stats) == len(stages) else None
+                )
             failed_error_payload = RunReporter.serialize_error(
                 failed_stage_name, failed_error
             )
@@ -316,25 +351,6 @@ class PipelineRunner:
             checkpoint_manager.close()
             raise
 
-        decision_report = self._decision_report(records, stages, run_paths)
-        if resolved_config.output.on_unresolved_escalation == "drop":
-            unresolved = [
-                r.dropped_by("output", "unresolved_escalation")
-                for r in records
-                if r.is_escalated()
-            ]
-            if unresolved:
-                self.output_writer.write_dropped_parquet(
-                    records=unresolved,
-                    path=run_paths.run_dir / "unresolved_escalations.parquet",
-                )
-            records = [r for r in records if not r.is_escalated()]
-        output_path = self.project_root / resolved_config.output.path
-        dataset_path = self.output_writer.write_jsonl(
-            records=records,
-            path=output_path,
-            output_format=resolved_config.output.format,
-        )
         manifest = self.reporter.build_manifest(
             run_id=run_id,
             config_hash=config_hash,

@@ -1,13 +1,7 @@
 # Train models/quality.json first and replace model_sha256 with the printed hash.
 # This example ranks existing English instruction-answer records without judging.
 version: "1"
-llm:
-  provider: openai
-  model: unused
-  api_key: unused
-  base_url: https://api.openai.com/v1
 executor:
-  mode: threadpool
   max_workers: 1
 embeddings:
   provider: huggingface

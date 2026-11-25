@@ -6,22 +6,12 @@
 # TEACHES:   Exact dedup, near dedup, cheap filters, and quality filtering together.
 # COST:      medium
 version: "1"
-run_id: null
 
 llm:
   provider: openai
   model: google/gemini-3.1-flash-lite-preview
   api_key: ${OPENROUTER_API_KEY}
   base_url: https://openrouter.ai/api/v1
-  timeout_seconds: 30
-  max_retries: 3
-  openai_compatible:
-    referer: https://example.com
-    title: arka
-
-executor:
-  mode: threadpool
-  max_workers: 4
 
 pipeline:
   - type: seed_source
@@ -74,11 +64,6 @@ pipeline:
 labeling_engine:
   rubric_path: ../rubrics/sft_quality.yaml
   mode: single
-
-embeddings:
-  provider: huggingface
-  model: all-MiniLM-L6-v2
-  batch_size: 256
 
 output:
   format: chatml
